@@ -1,0 +1,157 @@
+[
+  {
+    "folder": "threejs-interactive-grass",
+    "title": "Interactive Grass",
+    "category": "Three.js",
+    "description": "Grass reacting to player + wind simulation",
+    "created": "2025-11-06"
+  },
+  {
+    "folder": "threejs-complete-sky-system",
+    "title": "Complete Sky System",
+    "category": "Three.js",
+    "description": "Full dynamic day/night sky system",
+    "created": "2025-11-04"
+  },
+  {
+    "folder": "threejs-water-ripples",
+    "title": "Water Ripples",
+    "category": "Three.js",
+    "description": "Screen-space water ripple system",
+    "created": "2025-10-28"
+  },
+  {
+    "folder": "threejs-xzfog",
+    "title": "XZ Fog",
+    "category": "Three.js",
+    "description": "Horizontal distance-based fog",
+    "created": "2025-10-20"
+  },
+
+  {
+    "folder": "nibbles",
+    "title": "Nibbles.BAS JS",
+    "category": "Game",
+    "description": "Canvas 2D tribute to classic QBasic game",
+    "created": "2026-05-03"
+  },
+  {
+    "folder": "jumping-jack",
+    "title": "Jumping Jack",
+    "category": "Game",
+    "description": "Retro 2D platformer",
+    "created": "2026-04-28"
+  },
+  {
+    "folder": "velvetshuffle-cards",
+    "title": "VelvetShuffle — Card Games",
+    "category": "Game",
+    "description": "Original procedural card games",
+    "created": "2026-04-20"
+  },
+  {
+    "folder": "threejs-instanced-windmills",
+    "title": "Instanced Windmills",
+    "category": "Three.js",
+    "description": "Large-scale instanced windmill rendering",
+    "created": "2026-02-18"
+  },
+  {
+    "folder": "wheres-walter",
+    "title": "Where’s Walter?",
+    "category": "Game",
+    "description": "Instanced crowd engine + search gameplay",
+    "created": "2026-02-16"
+  },
+  {
+    "folder": "calendar-cubes",
+    "title": "Calendar Cubes",
+    "category": "Other",
+    "description": "Date cubes with clever 6↔9 flipping logic",
+    "created": "2026-02-13"
+  },
+  {
+    "folder": "threejs-procedural-rocks-100k",
+    "title": "100K Procedural Rocks",
+    "category": "Three.js",
+    "description": "Massive marching cubes + LOD system",
+    "created": "2026-02-01"
+  },
+  {
+    "folder": "hiss-highness-snake",
+    "title": "Hiss Highness Snake",
+    "category": "Game",
+    "description": "Procedural snake with terrain-following animation",
+    "created": "2025-12-25"
+  },
+  {
+    "folder": "threejs-cylinder-plane-align",
+    "title": "Cylinder Plane Align",
+    "category": "Three.js",
+    "description": "Cylinder aligned to arbitrary plane in world space",
+    "created": "2025-12-21"
+  },
+  {
+    "folder": "graveyard",
+    "title": "Graveyard",
+    "category": "Three.js",
+    "description": "Canvas + audio recording experiment",
+    "created": "2025-12-18"
+  },
+  {
+    "folder": "ravenfall",
+    "title": "RAVENFALL",
+    "category": "Game",
+    "description": "First-person raven shooter with physics",
+    "created": "2025-12-17"
+  },
+  {
+    "folder": "snow-brawl",
+    "title": "Snow Brawl",
+    "category": "Game",
+    "description": "Snowball fight with AI opponents",
+    "created": "2025-12-12"
+  },
+  {
+    "folder": "threejs-procedural-forest",
+    "title": "Procedural Instanced Forest — Culling",
+    "category": "Three.js",
+    "description": "Per-tree frustum culling",
+    "created": "2025-12-11"
+  },
+  {
+    "folder": "threejs-procedural-forest-trees",
+    "title": "Procedural Instanced Forest — Real Trees",
+    "category": "Three.js",
+    "description": "High-performance instanced tree rendering",
+    "created": "2025-12-10"
+  },
+  {
+    "folder": "threejs-ground-fog",
+    "title": "Ground Fog",
+    "category": "Three.js",
+    "description": "High-performance ground fog effect",
+    "created": "2025-12-06"
+  },
+  {
+    "folder": "threejs-multi-boat-water",
+    "title": "Multi-Boat Water Simulation",
+    "category": "Three.js",
+    "description": "Multiple boats interacting with water",
+    "created": "2025-11-27"
+  },
+  {
+    "folder": "threejs-parametric-boat",
+    "title": "Parametric Boat",
+    "category": "Three.js",
+    "description": "Procedural boat with dynamic water physics",
+    "created": "2025-11-13"
+  },
+  {
+    "folder": "threejs-volumetric-fire",
+    "title": "Volumetric Fire",
+    "category": "Three.js",
+    "description": "Instanced volumetric fire simulation",
+    "created": "2025-11-12"
+  }
+]
