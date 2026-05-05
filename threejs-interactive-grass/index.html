@@ -1,0 +1,697 @@
+<!-- https://codepen.io/the-red-reddington/full/VYeOoWY -->
+<!-- https://discourse.threejs.org/t/interactive-grass-with-multi-player-physics-and-wind-fps-friendly-and-suitable-for-games/87994/1 -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive Grass with Multi-Player Physics and Wind, FPS-friendly and Suitable for Games (Three.js)</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #container {
+        width: 100dvw;
+        height: 100dvh;
+      }
+      #controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        color: white;
+        font-family: monospace;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        border-radius: 5px;
+      }
+      #performanceStats {
+        display: none;
+        position: fixed;
+        display: flex;
+        flex-direction: column;
+        bottom: 70px;
+        right: 10px;
+        gap: 10px;
+      }
+      #performanceStats.gl {
+        bottom: 120px !important;
+        right: 280px !important;
+      }
+      #performanceStats div {
+        visibility: visible !important;
+        position: relative !important;
+        top: unset !important;
+        left: unset !important;
+        cursor: pointer !important;
+        opacity: 0.9 !important;
+        z-index: 10000 !important;
+      }
+    </style>
+    <script
+      async
+      src="https://cdn.jsdelivr.net/npm/es-module-shims@2.6.2/dist/es-module-shims.js"
+    ></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/",
+          "stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@3.6.0/+esm"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="container"></div>
+    <div id="controls">
+      <strong>Move:</strong> WASD / ↑↓←→<br />
+      <strong>Jump:</strong> SPACE<br />
+      <strong>Rotate:</strong> Mouse drag<br />
+      <strong>Zoom:</strong> Scroll<br />
+      <strong>Pan:</strong> Right-click drag / Ctrl + drag
+    </div>
+    <div id="performanceStats"></div>
+    <script type="module">
+      import * as THREE from "three";
+      import StatsGL from "stats-gl";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      let renderer = new THREE.WebGLRenderer({
+        alpha: false,
+        antialias: true,
+        precision: "highp",
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.physicallyCorrectLights = true;
+      renderer.toneMappingExposure = 1.0;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.getElementById("container").appendChild(renderer.domElement);
+
+      // --- Stats ---
+      const stats = new StatsGL({
+        trackGPU: true,
+        trackHz: true,
+      });
+      const statsContainer = document.getElementById("performanceStats");
+      statsContainer.classList.add("gl");
+      statsContainer.appendChild(stats.dom);
+      stats.init(renderer);
+
+      // --- Cameras ---
+      let camera = new THREE.PerspectiveCamera(60, 1.0, 0.1, 1000);
+      camera.position.set(15, 0, 15);
+      camera.up.set(0, 0, 1);
+
+      // --- Controls ---
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
+      controls.dampingFactor = 0.05;
+      controls.minDistance = 1;
+      controls.maxDistance = 900;
+      controls.maxPolarAngle = Math.PI / 2;
+      controls.enableKeys = false;
+      
+      // --- Scene ---
+      let scene = new THREE.Scene();      
+      scene.background = new THREE.Color(0x87ceeb);
+      const FOG_NEAR = 50;
+      const FOG_FAR = 60;
+      scene.fog = new THREE.Fog(0x87ceeb, FOG_NEAR, FOG_FAR); // color, near, far
+
+      // --- Simple environment ---
+      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      const tempScene = new THREE.Scene();
+      tempScene.background = new THREE.Color(0xcccccc);
+      const envRT = pmremGenerator.fromScene(tempScene);
+      scene.environment = envRT.texture;
+      pmremGenerator.dispose();
+
+      // --- Ground ---
+      const GROUND_SIZE = 700;
+      let groundGeometry = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
+      let groundMaterial = new THREE.MeshStandardMaterial({
+        color: 0x8B6F47,   // brown       
+        side: THREE.FrontSide,
+        transparent: true,
+        fog: false,
+      });      
+
+      groundMaterial.onBeforeCompile = (shader) => {
+        shader.uniforms.uPlayerPos = { value: new THREE.Vector3() };
+        
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <common>',
+          `#include <common>
+          varying vec3 vWorldPos;`
+        );
+        
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldPos = worldPos.xyz;`
+        );
+        
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <common>',
+          `#include <common>
+          uniform vec3 uPlayerPos;
+          varying vec3 vWorldPos;`
+        );
+        
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <dithering_fragment>',
+          `
+          float dist = length(vWorldPos.xy - uPlayerPos.xy);
+          float fogFactor = smoothstep(${scene.fog.near.toFixed(1)}, ${scene.fog.far.toFixed(1)}, dist);
+          gl_FragColor.a = mix(1.0, 0.0, fogFactor);
+          #include <dithering_fragment>`
+        );
+        
+        groundMaterial.userData.shader = shader;
+      };
+
+      let groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+      scene.add(groundPlane);
+      
+      // --- Player ---
+      const PLAYER_RADIUS = 0.8;
+      const PLAYER_HEIGHT = 1.8;
+      const PLAYER_HALF_HEIGHT = PLAYER_HEIGHT/2;
+      const player = new THREE.Mesh(
+        new THREE.CylinderGeometry(PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_HEIGHT),
+        new THREE.MeshStandardMaterial({
+          color: 0xff3333,
+          fog: false,
+        })
+      );
+      player.position.set(0, 0, PLAYER_HALF_HEIGHT);
+      player.rotateX(Math.PI / 2);
+      scene.add(player);
+
+      // --- Grass (with Wind and Player Interaction) ---
+
+ const GrassShader = {
+  vertexShader: `
+uniform vec3 grassSize;
+uniform float time;
+
+uniform vec3 playerPositions[6];
+uniform int numPlayerPositions;
+uniform float playerInteractionRadius;
+uniform float playerInteractionStrength;
+uniform vec3 sunDirection;
+
+varying vec2 vUv;
+varying float vGrassHeight;
+varying vec3 vWorldPosition;
+varying vec3 vNormal;
+varying vec3 vGrassColor;
+
+// --- Simple, cheaper hash / noise ---
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+float hash(vec2 p) { return hash(p.x + p.y*57.0); }
+
+float noise(vec2 p){
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0,0.0));
+    float c = hash(i + vec2(0.0,1.0));
+    float d = hash(i + vec2(1.0,1.0));
+    vec2 u = f*f*(3.0-2.0*f);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+mat3 rotateZ(float a){
+    float c = cos(a);
+    float s = sin(a);
+    return mat3(c,-s,0.0,s,c,0.0,0.0,0.0,1.0);
+}
+
+void main() {
+    vec3 localPos = position;
+
+    // --- Instance-based variation ---
+    float id = float(gl_InstanceID);
+    float heightVariation = mix(0.7, 1.3, hash(id*3.0));
+    localPos.z *= heightVariation;
+    vGrassHeight = localPos.z / grassSize.z;
+
+    float bladeTaper = mix(0.4, 1.0, 1.0 - vGrassHeight*vGrassHeight);
+    float widthVariation = mix(0.8, 1.5, hash(id*5.0));
+    localPos.x *= bladeTaper * grassSize.x * widthVariation;
+
+    // --- Lean ---
+    float leanAngle = (hash(id*1.0) - 0.5) * 0.25 * 0.8 + 0.2;
+    float leanFactor = pow(1.0 - vGrassHeight, 1.2);
+    localPos.x += leanFactor * grassSize.z * tan(leanAngle);
+
+    // --- Random spin ---
+    float angle = (hash(id*7.0) - 0.5) * 0.5 * 3.14159;
+    localPos = rotateZ(angle) * localPos;
+
+    // --- World position ---
+    vec4 worldPos = instanceMatrix * vec4(localPos, 1.0);
+
+    // --- Multi-player push ---
+    vec3 totalPush = vec3(0.0);
+    for (int i=0;i<6;i++){
+        if(i>=numPlayerPositions) break;
+        vec3 pp = playerPositions[i];
+        float d = distance(worldPos.xyz, pp);
+        if(d>playerInteractionRadius) continue;
+        float inf = pow(1.0 - smoothstep(0.0, playerInteractionRadius, d),1.5);
+        float heightFade = smoothstep(0.2, 0.8, abs(pp.z - worldPos.z));
+        inf *= (1.0 - heightFade);
+        totalPush += -normalize(pp - worldPos.xyz) * inf * playerInteractionStrength * vGrassHeight * grassSize.z;
+    }
+    worldPos.xyz += totalPush;
+
+    // --- Wind ---
+    // base time
+    float t = time * 0.6;
+
+    // Large-scale global sway
+    float driftAngle = sin(t*0.07)*1.2;
+    float baseWindX = cos(driftAngle);
+    float baseWindY = sin(driftAngle);
+
+    // Multi-scale noise for natural flutter
+    float largeScaleNoise = noise(worldPos.xz*0.05 + t*0.05);
+    float smallScaleNoise = noise(worldPos.xz*1.2 + t*0.6);
+    float windNoise = mix(largeScaleNoise, smallScaleNoise, 0.3);
+
+    // Optional localized gusts
+    vec2 burstCenter = vec2(sin(t*0.3)*80.0, cos(t*0.25)*80.0);
+    float burstDist = distance(worldPos.xz, burstCenter);
+    float burst = smoothstep(40.0, 0.0, burstDist);
+    windNoise += burst * 1.0;
+
+    // Per-blade variation
+    float bladeFactor = hash(id)*0.5 + 0.75; // 0.75-1.25 strength
+    float bladeAngleOffset = (hash(id*13.0)-0.5) * 0.5; // per-blade sway direction
+
+    vec2 windDir = normalize(vec2(baseWindX, baseWindY) + vec2(cos(bladeAngleOffset), sin(bladeAngleOffset))*0.25);
+
+    // Height-dependent sway
+    float swayFactor = 0.3 + 0.7 * vGrassHeight; // base subtle, tip stronger
+
+    // Apply final wind offset
+    vec3 windOffset = vec3(windDir, 0.0) * windNoise * swayFactor * bladeFactor;
+    worldPos.xyz += windOffset;
+
+    // --- Coloring ---
+    vWorldPosition = worldPos.xyz;
+    vUv = uv;
+    vNormal = vec3(0.0,0.0,1.0);
+
+    // Per-instance seed
+    float bladeSeed = id * 12.9898;
+    float baseNoise = hash(vec2(bladeSeed, 0.0));
+    float tipNoise  = hash(vec2(bladeSeed, 1.0));
+
+    // Base and tip tones
+    vec3 b1 = vec3(0.20, 0.40, 0.10) + (baseNoise - 0.5) * 0.08;
+    vec3 b2 = vec3(0.25, 0.45, 0.15) + (baseNoise - 0.5) * 0.08;
+    vec3 t1 = vec3(0.30, 0.50, 0.10) + (tipNoise  - 0.5) * 0.08;
+    vec3 t2 = vec3(0.35, 0.55, 0.15) + (tipNoise  - 0.5) * 0.08;
+
+    // Height-based blend with extra noise
+    float heightPercent = clamp(localPos.z/grassSize.z,0.0,1.0);
+    float blend = pow(heightPercent,1.35) + noise(worldPos.xz*1.3 + bladeSeed)*0.05;
+    blend = clamp(blend,0.0,1.0);
+
+    // Final per-blade color
+    vec3 grassColor = mix(
+        mix(b1, b2, noise(worldPos.xz*0.3 + bladeSeed)),
+        mix(t1, t2, noise(worldPos.xz*0.35 + bladeSeed)),
+        blend
+    );
+
+    // Terrain occlusion
+    float terrainOcclusion = clamp(dot(vNormal, normalize(sunDirection))*0.5 + 0.5,0.2,1.0);
+    grassColor *= mix(0.9,1.1,terrainOcclusion);
+
+    // Slight hue noise for richness
+    grassColor *= mix(0.95,1.05, noise(worldPos.xz*0.4 + 50.0));
+
+    // Sun modulation
+    float sunFactor = max(0.0,dot(vNormal, normalize(sunDirection)));
+    grassColor *= (0.7 + 0.3*sunFactor);
+
+    vGrassColor = grassColor;
+
+    gl_Position = projectionMatrix * viewMatrix * worldPos;
+}
+
+
+
+`,
+  fragmentShader: `
+uniform float nearFadeStart;
+uniform float farFadeEnd;
+uniform vec3 sunDirection;
+uniform vec3 sunColor;
+uniform float sunIntensity;
+uniform vec3 ambientLight;
+
+varying vec2 vUv;
+varying float vGrassHeight;
+varying vec3 vWorldPosition;
+varying vec3 vNormal;
+varying vec3 vGrassColor;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+float noise(vec2 p){
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f*f*(3.0-2.0*f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0,0.0));
+    float c = hash(i + vec2(0.0,1.0));
+    float d = hash(i + vec2(1.0,1.0));
+    return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+}
+
+void main() {
+    vec3 N = normalize(vNormal);
+    vec3 V = normalize(cameraPosition - vWorldPosition);
+    vec3 L = normalize(sunDirection);
+
+    // --- Core lighting ---
+    float NdotL = max(dot(N,L), 0.0);
+    float diffuse = NdotL * sunIntensity * 0.25;
+    float SSS = pow(max(dot(N,-L),0.0),2.0)*0.6;
+    float backScatter = pow(max(dot(-N,-L),0.0),2.0)*0.5;
+    float rim = pow(1.0 - abs(dot(V,N)), 2.0) * 0.3;
+    float terrainOcclusion = max(dot(N,L),0.0);
+
+    vec3 lightTerm =
+        ambientLight*0.8 +
+        sunColor * (diffuse*terrainOcclusion + SSS*0.4 + backScatter*0.25 + rim*0.2);
+
+    vec3 litColor = vGrassColor * lightTerm;
+
+    // --- Height-based subtle hue shift ---
+    float heightShift = vGrassHeight * 0.1;
+    litColor.r = clamp(litColor.r + heightShift, 0.0, 1.0);
+    litColor.g = clamp(litColor.g + heightShift*0.5, 0.0, 1.0);
+    litColor.b = clamp(litColor.b - heightShift*0.2, 0.0, 1.0);
+
+    // --- Per-pixel, per-blade jitter for richness ---
+    float bladeNoise = noise(vWorldPosition.xz * 0.5);
+    float instanceNoise = noise(vWorldPosition.xz * 0.25 + vec2(12.3,45.6));
+    float jitter = mix(bladeNoise, instanceNoise, 0.5);
+    litColor *= mix(0.85, 1.15, jitter);
+
+    // --- Distance fade (for performance / blending into terrain) ---
+    float dist = length(vWorldPosition.xz - cameraPosition.xz);
+    float fadeFactor = 1.0 - smoothstep(40.0, 80.0, dist);
+    litColor *= mix(0.8, 1.0, fadeFactor);
+
+    gl_FragColor = vec4(litColor, 1.0);  // fully opaque
+}
+
+`
+};
+
+      const bladeCount = 1500000;
+      const grassHeight = 1.2;
+      const grassWidth = 0.15;
+
+      const GRASS_RADIUS = 40; // or you can just do FOG_FAR;
+      
+      // Detailed blade with nice taper and segments
+      const widthSegments = 1;
+      const heightSegments = 3;
+      
+      // Plane is XY; rotate it so Z is up
+      const baseBlade = new THREE.PlaneGeometry(grassWidth, grassHeight, widthSegments,
+        heightSegments);
+      
+      // Get the positions array and count of vertices per row
+      const positions = baseBlade.attributes.position.array;
+      const verticesPerRow = widthSegments + 1;
+      const rowCount = heightSegments + 1;
+
+      // Process each row of vertices
+      for (let row = 0; row < rowCount; row++) {
+        // Calculate the height percentage for this row
+        const heightPercent = row / heightSegments;
+
+        // Calculate width scale factor based on height
+        // Using quadratic scaling for more natural-looking taper
+        const widthScale = 1.0 - heightPercent * heightPercent * 0.8;
+
+        // Process each vertex in the current row
+        for (let col = 0; col < verticesPerRow; col++) {
+          const vertexIndex = (row * verticesPerRow + col) * 3;
+          positions[vertexIndex] *= widthScale; // Scale X coordinate
+        }
+      }
+
+      // Update the geometry
+      baseBlade.attributes.position.needsUpdate = true;
+
+      baseBlade.rotateX(-Math.PI / 2);
+      baseBlade.translate(0, 0, grassHeight / 2); // lift from ground
+
+      const grassMaterial = new THREE.ShaderMaterial({
+        vertexShader: GrassShader.vertexShader,
+        fragmentShader: GrassShader.fragmentShader,
+        uniforms: THREE.UniformsUtils.merge([
+          THREE.UniformsLib.fog,
+          {
+            time: { value: 0 },
+            grassHeight: { value: grassHeight },
+            grassSize: { value: new THREE.Vector3(grassWidth, 0, grassHeight) },
+            playerPosition: { value: new THREE.Vector3() },
+            playerInteractionRadius: { value: 5.0 },
+            playerInteractionStrength: { value: 0.5 },
+            numPlayerPositions: { value: 0 },
+            nearFadeStart: { value: 40.0 },
+            farFadeEnd: { value: 600.0 },
+            sunDirection: { value: new THREE.Vector3(1, 1, 1).normalize() },
+            sunColor: { value: new THREE.Color(1,1,0.9) },
+            sunIntensity: { value: 1.0 },
+            ambientLight: { value: new THREE.Color(0.5, 0.5, 0.5) },
+            cameraPosition: { value: camera.position },
+          }
+        ]),
+        fog: false,
+        side: THREE.DoubleSide,
+        transparent: false,
+        alphaTest: 0.01, // very low, just discards near-zero pixels
+        depthWrite: true,
+        depthTest: true, 
+        blending: THREE.NormalBlending
+      });
+
+      const grassMesh = new THREE.InstancedMesh(baseBlade, grassMaterial, bladeCount);
+      scene.add(grassMesh);
+
+      const dummy = new THREE.Object3D();
+      for (let i = 0; i < bladeCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.sqrt(Math.random()) * GRASS_RADIUS; // <-- square root here for even distribution
+      const x = player.position.x + Math.cos(angle) * radius;
+      const z = player.position.z + Math.sin(angle) * radius;
+
+        dummy.position.set(x, z, 0);
+        dummy.rotation.z = Math.random() * Math.PI * 2; // spin around vertical
+        dummy.updateMatrix();
+        grassMesh.setMatrixAt(i, dummy.matrix);
+      }
+      grassMesh.instanceMatrix.needsUpdate = true;
+
+
+
+      // --- WASD ---
+      const keys = {};
+      window.addEventListener("keydown", (e) => {
+        keys[e.code] = true;
+        // prevent page scroll when using space
+        if (e.code === "Space") e.preventDefault();
+      });
+      window.addEventListener("keyup", (e) => {
+        keys[e.code] = false;
+      });
+
+      // vertical movement / jump
+      let velocityY = 0;
+      const gravity = -9.8;
+      const jumpSpeed = 6;
+      let onGround = true;
+
+      const moveVec = new THREE.Vector3();
+      const forwardVec = new THREE.Vector3();
+      const rightVec = new THREE.Vector3();
+      const worldUp = new THREE.Vector3(0, 0, 1);
+
+      function updatePlayer(dt) {
+        const speed = 6;
+        moveVec.set(0, 0, 0);
+        forwardVec.set(0, 0, 0);
+        rightVec.set(0, 0, 0);
+
+        camera.getWorldDirection(forwardVec);
+        forwardVec.z = 0;
+        forwardVec.normalize();
+        rightVec.crossVectors(forwardVec, worldUp).normalize();
+
+        if (keys["KeyW"] || keys["ArrowUp"]) moveVec.add(forwardVec);
+        if (keys["KeyS"] || keys["ArrowDown"]) moveVec.sub(forwardVec);
+        if (keys["KeyD"] || keys["ArrowRight"]) moveVec.add(rightVec);
+        if (keys["KeyA"] || keys["ArrowLeft"]) moveVec.sub(rightVec);
+
+        if (moveVec.lengthSq() > 0) {
+          moveVec.normalize().multiplyScalar(speed * dt);
+          player.position.add(moveVec);
+        }
+
+        // Jump trigger (Space)
+        if (keys["Space"] && onGround) {
+          velocityY = jumpSpeed;
+          onGround = false;
+        }
+
+        // Apply gravity
+        velocityY += gravity * dt;
+        player.position.z += velocityY * dt;
+
+        // Ground clamp
+        if (player.position.z <= PLAYER_HALF_HEIGHT) {
+          player.position.z = PLAYER_HALF_HEIGHT;
+          velocityY = 0;
+          onGround = true;
+        }
+      }      
+
+      // --- Resize ---
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio, 1.5);
+        renderer.setPixelRatio(dpr);
+        renderer.setSize(window.innerWidth, window.innerHeight, true);                
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener("resize", resize);
+      resize();
+      
+      // --- Extra animated players ---
+      const animatedPlayers = [];
+
+      // === Multi-player uniform setup ===
+      const MAX_PLAYERS = 6; // main player + up to 5 animated players
+      const NUM_EXTRA_PLAYERS = MAX_PLAYERS - 1;
+
+      for (let i = 0; i < NUM_EXTRA_PLAYERS; i++) {
+        const p = new THREE.Mesh(
+          new THREE.CylinderGeometry(PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_HEIGHT),
+          new THREE.MeshStandardMaterial({ color: new THREE.Color(`hsl(${i * 50}, 100%, 50%)`), fog: false })
+        );
+        p.position.set(Math.random() * 10 - 5, Math.random() * 10 - 5, PLAYER_HALF_HEIGHT);
+        p.rotateX(Math.PI / 2);
+        scene.add(p);
+        animatedPlayers.push(p);
+      }
+
+
+      // initialize array of Vector3 for the uniform
+      grassMaterial.uniforms.playerPositions = { value: new Array(MAX_PLAYERS) };
+      for (let i = 0; i < MAX_PLAYERS; i++) {
+        grassMaterial.uniforms.playerPositions.value[i] = new THREE.Vector3(1e6, 1e6, 1e6); // default far-away
+      }
+
+      // --- Animate ---
+      let lastTime = 0;
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const t = performance.now() / 1000;
+        let dt = t - lastTime;
+        lastTime = t;
+
+        // Player
+        updatePlayer(dt);
+        controls.target.lerp(player.position, 0.05);
+        // controls.update(); -- only if enableDamping = true
+        
+        /* Optional if you want the ground mesh to move with the player
+        // Ground
+        if (groundMaterial.userData.shader) {
+          groundMaterial.userData.shader.uniforms.uPlayerPos.value.copy(player.position);
+        }
+	      */
+
+        // Grass
+        grassMaterial.uniforms.time.value = t;
+        grassMaterial.uniforms.cameraPosition.value.copy(camera.position);
+
+        // Main player at index 0
+        grassMaterial.uniforms.playerPositions.value[0].copy(player.position);
+
+        // Other players
+	      // Animate extra players along more randomized paths
+        for (let i = 0; i < animatedPlayers.length; i++) {
+          const p = animatedPlayers[i];
+
+          // Each player has its own randomized parameters (store them once)
+          if (!p.userData.path) {
+            p.userData.path = {
+              radius: 4 + Math.random() * 8,       // how far they wander
+              speed: 0.3 + Math.random() * 0.4,    // how fast they move
+              offset: Math.random() * Math.PI * 2, // random phase offset
+              wobble: Math.random() * 2 + 0.5,     // side-to-side wobble amplitude
+              axisTilt: Math.random() * Math.PI,   // random orbital plane tilt
+              center: new THREE.Vector2(           // unique center around origin
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 20
+              )
+            };
+          }
+
+          const path = p.userData.path;
+          const angle = t * path.speed + path.offset;
+
+          // Compute base orbit
+          const baseX = Math.cos(angle) * path.radius;
+          const baseY = Math.sin(angle) * path.radius;
+
+          // Apply random tilt and wobble for variety
+          const wobble = Math.sin(angle * 2.3) * path.wobble;
+          const x = path.center.x + baseX * Math.cos(path.axisTilt) - baseY * Math.sin(path.axisTilt) + wobble * 0.3;
+          const y = path.center.y + baseX * Math.sin(path.axisTilt) + baseY * Math.cos(path.axisTilt) + wobble * 0.3;
+
+          // Keep constant height
+          p.position.set(x, y, PLAYER_HALF_HEIGHT);
+        }      
+
+        let count = 1;
+        // copy extra animated players into indices 1..N
+        for (let i = 0; i < animatedPlayers.length && count < MAX_PLAYERS; i++) {
+          grassMaterial.uniforms.playerPositions.value[count].copy(animatedPlayers[i].position);
+          count++;
+        }
+        // set remaining unused slots to a far away value so they don't influence blades
+        for (let i = count; i < MAX_PLAYERS; i++) {
+          grassMaterial.uniforms.playerPositions.value[i].set(1e6, 1e6, 1e6);
+        }
+
+        // set number of valid players
+        grassMaterial.uniforms.numPlayerPositions.value = count;
+
+        // Render
+        renderer.render(scene, camera);
+        stats.update();
+      }
+
+      animate();
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+    </script>
+  </body>
+</html>

@@ -1,0 +1,346 @@
+<!-- https://codepen.io/the-red-reddington/full/vEKBppy -->
+<!-- https://discourse.threejs.org/t/world-space-cylinder-side-aligned-to-arbitrary-plane-normals/88770 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>World‑Space Cylinder Side‑Aligned to Arbitrary Plane Normals</title>
+
+<!-- ------------------------------------------------- -->
+<!-- Import map: allows ES module imports in browser   -->
+<!-- ------------------------------------------------- -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+  }
+}
+</script>
+
+<!-- ------------------------------------------------- -->
+<!-- Minimal CSS: full‑screen canvas                  -->
+<!-- ------------------------------------------------- -->
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #111;
+}
+canvas { display: block; }
+</style>
+</head>
+
+<body>
+<script type="module">
+
+/* ================================================= */
+/* Imports                                           */
+/* ================================================= */
+
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+/* ================================================= */
+/* Scene setup                                       */
+/* ================================================= */
+
+const scene = new THREE.Scene();
+
+// Perspective camera
+// - FOV chosen for comfortable inspection
+// - Near/far planes wide enough for experimentation
+const camera = new THREE.PerspectiveCamera(
+  60,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  200
+);
+camera.position.set(20, 10, 30);
+
+// WebGL renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Orbit controls rotate the CAMERA only.
+// Geometry stays fixed in world space.
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// Lighting kept intentionally simple
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+const light = new THREE.DirectionalLight(0xffffff, 1.2);
+light.position.set(10, 20, 10);
+scene.add(light);
+
+/* ================================================= */
+/* Ground plane definition                            */
+/* ================================================= */
+/**
+ * Arbitrary surface normal.
+ * This defines the plane the cylinder will rest against.
+ * Change this vector to test different orientations.
+ */
+const surfaceNormal = new THREE.Vector3(0, 1, 0)
+  .applyAxisAngle(
+    new THREE.Vector3(0, 0, 1),
+    THREE.MathUtils.degToRad(15)
+  )
+  .normalize();
+
+/**
+ * Any point on the plane.
+ * Using the origin keeps things simple.
+ */
+const surfacePoint = new THREE.Vector3(0, 0, 0);
+
+/* ================================================= */
+/* Helpers aligned to the plane                      */
+/* ================================================= */
+
+// Grid helper rotated so it visually matches the plane
+const grid = new THREE.GridHelper(50, 50);
+alignObjectToNormal(grid, surfaceNormal);
+scene.add(grid);
+
+// Axes helper rotated the same way for orientation clarity
+const axes = new THREE.AxesHelper(5);
+alignObjectToNormal(axes, surfaceNormal);
+scene.add(axes);
+
+/**
+ * Rotates an object so its local +Y axis aligns with a given normal.
+ * This is purely visual — geometry math remains world‑space.
+ */
+function alignObjectToNormal(obj, normal) {
+  const up = new THREE.Vector3(0, 1, 0);
+  obj.quaternion.setFromUnitVectors(up, normal);
+}
+
+/* ================================================= */
+/* Cap helper                                        */
+/* ================================================= */
+/**
+ * Adds a circular end cap as a triangle fan.
+ *
+ * - One center vertex
+ * - Triangles connecting center to an existing ring
+ *
+ * Works for any orientation and does not assume Y‑up.
+ */
+function addCap({
+  positions,
+  indices,
+  center,
+  ringStartIndex,
+  radialSegments,
+  flip = false
+}) {
+  const centerIndex = positions.length / 3;
+  positions.push(center.x, center.y, center.z);
+
+  for (let i = 0; i < radialSegments; i++) {
+    const a = ringStartIndex + i;
+    const b = ringStartIndex + i + 1;
+
+    if (flip) indices.push(centerIndex, b, a);
+    else indices.push(centerIndex, a, b);
+  }
+}
+
+/* ================================================= */
+/* World‑space sagged cylinder on arbitrary plane    */
+/* ================================================= */
+/**
+ * Builds a tapered cylinder whose SIDE rests against an arbitrary plane.
+ *
+ * Key properties:
+ * - Geometry is generated directly in world space
+ * - Alignment is driven by a plane normal
+ * - Sag is applied along the plane normal
+ * - Centerline is lifted by radius to preserve roundness
+ * - Optional caps per end
+ */
+function makeSaggedCylinderOnPlane({
+  length = 10,
+  rNarrow = 0.1,
+  rWide = 5,
+  radialSegments = 64,
+  lengthSegments = 200,
+  sag = 6,
+  sagPower = 2,
+  planeNormal,
+  planePoint,
+  capStart = false,
+  capEnd = false
+} = {}) {
+
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+  const centers = [];
+
+  // Normalized plane normal
+  const n = planeNormal.clone().normalize();
+
+  // Tangent direction along the plane
+  const tangent = new THREE.Vector3(1, 0, 0);
+  if (Math.abs(tangent.dot(n)) > 0.9) tangent.set(0, 0, 1);
+  tangent.projectOnPlane(n).normalize();
+
+  // Bitangent completes the local frame
+  const bitangent = new THREE.Vector3()
+    .crossVectors(n, tangent)
+    .normalize();
+
+  /* ---------------------------------------------- */
+  /* Vertex generation                              */
+  /* ---------------------------------------------- */
+
+  for (let i = 0; i <= lengthSegments; i++) {
+    const t = i / lengthSegments;
+
+    // Position along the cylinder length
+    const xOffset = -length / 2 + t * length;
+    const center = planePoint.clone().addScaledVector(tangent, xOffset);
+
+    // Radius interpolation
+    const r = rNarrow + (rWide - rNarrow) * t;
+
+    // Sag profile (world‑space)
+    const sagOffset = -sag * Math.pow(t, sagPower);
+
+    // Lift centerline by radius to preserve roundness at contact
+    center.addScaledVector(n, sagOffset + r);
+    centers.push(center.clone());
+
+    for (let j = 0; j <= radialSegments; j++) {
+      const theta = (j / radialSegments) * Math.PI * 2;
+
+      // Circular cross‑section in plane‑space
+      const ringOffset =
+        bitangent.clone().multiplyScalar(Math.cos(theta) * r)
+        .add(n.clone().multiplyScalar(Math.sin(theta) * r));
+
+      const p = center.clone().add(ringOffset);
+
+      // Hard plane constraint: project onto plane if below
+      const d = p.clone().sub(planePoint).dot(n);
+      if (d < 0) p.addScaledVector(n, -d);
+
+      positions.push(p.x, p.y, p.z);
+      uvs.push(t, j / radialSegments);
+    }
+  }
+
+  /* ---------------------------------------------- */
+  /* Side faces                                     */
+  /* ---------------------------------------------- */
+
+  const stride = radialSegments + 1;
+  for (let i = 0; i < lengthSegments; i++) {
+    for (let j = 0; j < radialSegments; j++) {
+      const a = i * stride + j;
+      const b = (i + 1) * stride + j;
+      const c = (i + 1) * stride + j + 1;
+      const d = i * stride + j + 1;
+      indices.push(a, b, d);
+      indices.push(b, c, d);
+    }
+  }
+
+  /* ---------------------------------------------- */
+  /* Optional caps                                  */
+  /* ---------------------------------------------- */
+
+  if (capStart) {
+    addCap({
+      positions,
+      indices,
+      center: centers[0],
+      ringStartIndex: 0,
+      radialSegments,
+      flip: true
+    });
+  }
+
+  if (capEnd) {
+    addCap({
+      positions,
+      indices,
+      center: centers[lengthSegments],
+      ringStartIndex: lengthSegments * stride,
+      radialSegments,
+      flip: false
+    });
+  }
+
+  /* ---------------------------------------------- */
+  /* Final geometry                                 */
+  /* ---------------------------------------------- */
+
+  const geom = new THREE.BufferGeometry();
+  geom.setIndex(indices);
+  geom.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3)
+  );
+  geom.setAttribute(
+    "uv",
+    new THREE.Float32BufferAttribute(uvs, 2)
+  );
+  geom.computeVertexNormals();
+
+  return geom;
+}
+
+/* ================================================= */
+/* Create mesh                                      */
+/* ================================================= */
+
+const geom = makeSaggedCylinderOnPlane({
+  length: 10,
+  rNarrow: 1.0,
+  rWide: 3.2,
+  radialSegments: 96,
+  lengthSegments: 260,
+  sag: 0,
+  sagPower: 0.1,
+  planeNormal: surfaceNormal,
+  planePoint: surfacePoint,
+  capStart: true,
+  capEnd: true
+});
+
+const mesh = new THREE.Mesh(
+  geom,
+  new THREE.MeshNormalMaterial({ side: THREE.DoubleSide })
+);
+scene.add(mesh);
+
+/* ================================================= */
+/* Resize + animate                                 */
+/* ================================================= */
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+window.addEventListener("resize", onResize);
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+</script>
+</body>
+</html>

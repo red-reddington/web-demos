@@ -1,0 +1,638 @@
+<!-- https://codepen.io/the-red-reddington/full/wBGQQwO -->
+<!-- https://discourse.threejs.org/t/high-performance-ground-fog-for-games-three-js/88522 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>High-Performance Ground Fog for Games (Three.js)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  html,body{height:100%;margin:0;background:#111;overflow:hidden}
+  #info{position:absolute;left:10px;top:10px;z-index:10;color:#ddd;font-family:monospace;background:rgba(0,0,0,0.35);padding:8px;border-radius:6px}
+  #container{width:100%;height:100%}
+  
+/**************************************************************************
+ * PERFORMANCE STATS
+ **************************************************************************/
+#performanceStats {
+  display: none;
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  bottom: 70px;
+  right: 10px;
+  gap: 10px;
+}
+#performanceStats.gl {
+  bottom: 60px !important;
+  right: 280px !important;
+}
+#performanceStats div {
+  visibility: visible !important;
+  position: relative !important;
+  top: unset !important;
+  left: unset !important;
+  cursor: pointer !important;
+  opacity: 0.9 !important;
+  z-index: 10000 !important;
+}  
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/",
+    "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.18.0/dist/lil-gui.esm.min.js",	
+	"stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@3.8.0/+esm"
+  }
+}
+</script>
+</head>
+<body>
+<div id="info">WASD = move camera · Rotate = mouse drag · Zoom = scroll</div>
+<div id="performanceStats"></div>
+<div id="container"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import StatsGL from "stats-gl";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import GUI from "lil-gui";
+import { ImprovedNoise } from "three/addons/math/ImprovedNoise.js";
+
+/* ---------- Height-Fog ---------- */
+class HeightFog {
+  constructor(scene, options = {}) {
+    this.scene = scene;
+	
+	// fog radius in the horz XZ plane
+	this.radius = options.radius ?? 500.0; 
+
+    // fog params
+    this.color = new THREE.Color(options.color ?? 0xE3EAF2);
+    // fogTop = world Y where fog is minimal (above this -> no fog)
+    this.fogTop = options.fogTop ?? 4.0;
+    // fogDepth = vertical thickness from fogTop downward where fog goes from 0->1
+    this.fogDepth = options.fogDepth ?? 6.0;
+    this.opacity = options.opacity ?? 0.8;
+    this.exponent = options.exponent ?? 1.2;
+
+    // noise / FBM
+    this.noiseScale = options.noiseScale ?? 0.08;
+    this.noiseStrength = options.noiseStrength ?? 0.12;
+    this.noiseOctaves = Math.max(1, Math.min(8, options.noiseOctaves ?? 4));
+
+    // wind & billow
+    this.windDir = new THREE.Vector2(options.windDirX ?? 0.0, options.windDirZ ?? 1.0).normalize();
+    this.windSpeed = options.windSpeed ?? 0.8;
+    this.verticalBillow = options.verticalBillow ?? 0.35;
+
+    // internals
+    this.materials = new Set();
+    this._time = 0;
+
+    // patch existing scene materials
+    this.patchScene();
+  }
+
+  patchScene() {
+    this.scene.traverse(obj => {
+      if (obj.isMesh) this.patchMaterial(obj);
+    });
+  }
+
+  patchMaterial(mesh) {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (let mat of mats) {
+      if (!mat || mat.userData._heightFogPatched) continue;
+      mat.userData._heightFogPatched = true;
+      // keep transparency behavior
+      mat.transparent = mat.transparent || false;
+
+      const orig = mat.onBeforeCompile;
+      mat.onBeforeCompile = (shader) => {
+        if (orig) orig(shader);
+
+        // uniforms
+		shader.uniforms.uFogRadius = { value: this.radius };
+        shader.uniforms.uFogColor = { value: this.color.clone() };
+        shader.uniforms.uFogTop = { value: this.fogTop };
+        shader.uniforms.uFogDepth = { value: this.fogDepth };
+        shader.uniforms.uFogOpacity = { value: this.opacity };
+        shader.uniforms.uFogExponent = { value: this.exponent };
+
+        shader.uniforms.uNoiseScale = { value: this.noiseScale };
+        shader.uniforms.uNoiseStrength = { value: this.noiseStrength };
+        shader.uniforms.uNoiseOctaves = { value: this.noiseOctaves };
+        shader.uniforms.uWindDir = { value: new THREE.Vector2(this.windDir.x, this.windDir.y) };
+        shader.uniforms.uWindSpeed = { value: this.windSpeed };
+        shader.uniforms.uVerticalBillow = { value: this.verticalBillow };
+        shader.uniforms.uTime = { value: this._time };
+
+        mat.userData.heightFogUniforms = shader.uniforms;
+        // varying world pos
+        shader.vertexShader = 'varying vec3 vWorldPos;\n' + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <worldpos_vertex>',
+          `#include <worldpos_vertex>
+           #ifdef USE_INSTANCING
+             vWorldPos = (modelMatrix * instanceMatrix * vec4(position, 1.0)).xyz;
+           #else
+             vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+           #endif`
+        );
+
+        // noise + fbm (compact Ashima/Stegu)
+        const NOISE = `
+        vec3 mod289(vec3 x){ return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec4 mod289(vec4 x){ return x - floor(x * (1.0 / 289.0)) * 289.0; }
+        vec4 permute(vec4 x){ return mod289(((x*34.0)+1.0)*x); }
+        vec4 taylorInvSqrt(vec4 r){ return 1.79284291400159 - 0.85373472095314 * r; }
+
+        float snoise(vec3 v){
+          const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+          const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+          vec3 i = floor(v + dot(v, C.yyy));
+          vec3 x0 = v - i + dot(i, C.xxx);
+          vec3 g = step(x0.yzx, x0.xyz);
+          vec3 l = 1.0 - g;
+          vec3 i1 = min(g.xyz, l.zxy);
+          vec3 i2 = max(g.xyz, l.zxy);
+          vec3 x1 = x0 - i1 + C.xxx;
+          vec3 x2 = x0 - i2 + C.yyy;
+          vec3 x3 = x0 - D.yyy;
+          i = mod289(i);
+          vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+          vec3 ns = C.x * D.wyz - D.xzx;
+          vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+          vec4 x_ = floor(j * ns.z);
+          vec4 y_ = floor(j - 7.0 * x_);
+          vec4 x = x_ * ns.x + ns.yyyy;
+          vec4 y = y_ * ns.x + ns.yyyy;
+          vec4 h = 1.0 - abs(x) - abs(y);
+          vec4 b0 = vec4(x.xy, y.xy);
+          vec4 b1 = vec4(x.zw, y.zw);
+          vec4 s0 = floor(b0)*2.0 + 1.0;
+          vec4 s1 = floor(b1)*2.0 + 1.0;
+          vec4 sh = -step(h, vec4(0.0));
+          vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+          vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+          vec3 p0 = vec3(a0.xy, h.x);
+          vec3 p1 = vec3(a0.zw, h.y);
+          vec3 p2 = vec3(a1.xy, h.z);
+          vec3 p3 = vec3(a1.zw, h.w);
+          vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
+          p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+          vec4 m = max(0.5 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+          m = m * m;
+          return 105.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+        }
+
+        float fbm_base(vec3 p, int octaves) {
+          float value = 0.0;
+          float amp = 0.5;
+          float freq = 1.0;
+          for (int i = 0; i < 6; i++) {
+            if (i >= octaves) break;
+            value += amp * snoise(p * freq);
+            freq *= 2.0;
+            amp *= 0.5;
+          }
+          return value; // -1..1
+        }
+
+        float fbm01(vec3 p, int octaves) {
+          return clamp(fbm_base(p, octaves) * 0.5 + 0.5, 0.0, 1.0);
+        }
+        `;
+
+        shader.fragmentShader = `			
+          varying vec3 vWorldPos;
+		  
+		  uniform float uFogRadius;
+          uniform vec3 uFogColor;
+          uniform float uFogTop;
+          uniform float uFogDepth;
+          uniform float uFogOpacity;
+          uniform float uFogExponent;
+
+          uniform float uNoiseScale;
+          uniform float uNoiseStrength;
+          uniform int uNoiseOctaves;
+          uniform vec2 uWindDir;
+          uniform float uWindSpeed;
+          uniform float uVerticalBillow;
+          uniform float uTime;
+        \n` + NOISE + '\n' + shader.fragmentShader;
+
+        // replace fog fragment
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <fog_fragment>',
+          `#include <fog_fragment>
+		  
+		// skip if above fog top
+		if (vWorldPos.y < uFogTop) {
+		
+			// radius-limited fog (XZ distance only)
+			vec2 camXZ = cameraPosition.xz;
+			vec2 posXZ = vWorldPos.xz;
+			float distXZ = distance(camXZ, posXZ);
+
+			if (uFogRadius > 0.0 && distXZ <= uFogRadius) {
+			
+				// Height-only FBM fog with realistic drifting motion
+
+				// normalized height: 0..1 where 0 = at/above fogTop (no fog), 1 = fogTop - fogDepth (full fog)
+				float normalized = clamp((uFogTop - vWorldPos.y) / max(0.0001, uFogDepth), 0.0, 1.0);
+				float heightAtten = pow(normalized, uFogExponent);
+
+				// early exit if heightAtten is zero
+				if (heightAtten > 0.0) {				
+					// main FBM sample
+					vec3 fbmSample = vWorldPos * uNoiseScale;
+
+					// wind offset: horizontal drift scaled by noise scale for realistic speed
+					vec3 windOffset = vec3(uWindDir.x, 0.0, uWindDir.y) * uWindSpeed * uTime * uNoiseScale;
+
+					// vertical billow varies per XZ position for turbulence
+					windOffset.y += sin(uTime * 0.07 + fbmSample.x * 0.5 + fbmSample.z * 0.5) * uVerticalBillow;
+
+					// apply wind offset
+					fbmSample += windOffset;
+
+					// optional second layer for more turbulent drifting
+					vec3 fbmSample2 = vWorldPos * uNoiseScale + vec3(-uWindDir.y, 0.0, uWindDir.x) * uWindSpeed * 0.7 * uTime * uNoiseScale;
+					fbmSample2.y += sin(uTime * 0.09 + fbmSample2.x * 0.6 + fbmSample2.z * 0.6) * uVerticalBillow;
+
+					// mix two layers for natural variation
+					float n01 = mix(fbm01(fbmSample, uNoiseOctaves), fbm01(fbmSample2, uNoiseOctaves), 0.5);
+
+					// modulate fog by noise strength
+					float effectiveStrength = uNoiseStrength * 0.05; // remap 0–1 → 0–0.05
+					float noiseMod = mix(1.0 - effectiveStrength, 1.0 + effectiveStrength, n01);
+
+					float radiusFactor = 1.0 - smoothstep(uFogRadius*0.7, uFogRadius, distXZ);
+					float fogFactor = clamp(heightAtten * noiseMod * uFogOpacity * radiusFactor, 0.0, 1.0);
+
+					// apply fog color
+					// slightly dimmed version
+					gl_FragColor.rgb = mix(gl_FragColor.rgb, uFogColor * 0.92, fogFactor);
+				}
+			}
+			// else: no fog, leave gl_FragColor as-is (cheap early exit)
+		}
+
+          `
+        );
+      }; // onBeforeCompile
+
+      mat.needsUpdate = true;
+      this.materials.add(mat);
+    }
+  }
+
+  // call per-frame
+  updateTime(t) {
+    this._time = t;
+    for (let m of this.materials) {
+      if (!m.userData || !m.userData.heightFogUniforms) continue;
+      const u = m.userData.heightFogUniforms;
+	  if (u.uFogRadius) u.uFogRadius.value = this.radius;
+      if (u.uTime) u.uTime.value = t;
+      if (u.uFogColor) u.uFogColor.value.copy(this.color);
+      if (u.uFogTop) u.uFogTop.value = this.fogTop;
+      if (u.uFogDepth) u.uFogDepth.value = this.fogDepth;
+      if (u.uFogOpacity) u.uFogOpacity.value = this.opacity;
+      if (u.uFogExponent) u.uFogExponent.value = this.exponent;
+      if (u.uNoiseScale) u.uNoiseScale.value = this.noiseScale;
+      if (u.uNoiseStrength) u.uNoiseStrength.value = this.noiseStrength;
+      if (u.uNoiseOctaves) u.uNoiseOctaves.value = this.noiseOctaves;
+      if (u.uWindDir) u.uWindDir.value.set(this.windDir.x, this.windDir.y);
+      if (u.uWindSpeed) u.uWindSpeed.value = this.windSpeed;
+      if (u.uVerticalBillow) u.uVerticalBillow.value = this.verticalBillow;
+    }
+  }
+
+  // setters
+  setRadius(v) { this.radius = v; }
+  setFogTop(v){ this.fogTop = v; }
+  setFogDepth(v){ this.fogDepth = v; }
+  setColor(c){ this.color.set(c); }
+  setOpacity(v){ this.opacity = v; }
+  setExponent(v){ this.exponent = v; }
+  setNoiseScale(v){ this.noiseScale = v; }
+  setNoiseStrength(v){ this.noiseStrength = v; }
+  setNoiseOctaves(v){ this.noiseOctaves = Math.max(1, Math.min(8, Math.floor(v))); }
+  setWind(dirX, dirZ){ this.windDir.set(dirX, dirZ).normalize(); }
+  setWindSpeed(v){ this.windSpeed = v; }
+  setVerticalBillow(v){ this.verticalBillow = v; }
+}
+
+/* ---------- Scene ---------- */
+const container = document.getElementById('container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+
+const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 2000);
+camera.position.set(30, 40, 130);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, precision: "highp", powerPreference: "high-performance", });
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+ renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.physicallyCorrectLights = true;
+  renderer.toneMappingExposure = 0.5;
+  renderer.toneMapping = THREE.NeutralToneMapping; 
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.autoUpdate = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft shadows
+container.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+// lights
+scene.add(new THREE.AmbientLight(0x999999, 0.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+sun.position.set(50, 100, 50);
+sun.castShadow = true;
+sun.shadow.autoUpdate = true;
+scene.add(sun);
+
+// tweak shadow camera to cover the scene
+sun.shadow.camera.left = -100;
+sun.shadow.camera.right = 100;
+sun.shadow.camera.top = 100;
+sun.shadow.camera.bottom = -100;
+sun.shadow.camera.near = 0.1;
+sun.shadow.camera.far = 500;
+sun.shadow.mapSize.width = 2048;
+sun.shadow.mapSize.height = 2048;
+
+// terrain
+const SIZE = 200, SEG = 200, TERR_SCALE = 1.5;
+const inNoise = new ImprovedNoise();
+const terrainGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
+terrainGeo.rotateX(-Math.PI/2);
+for (let i=0;i<terrainGeo.attributes.position.count;i++){
+  const x = terrainGeo.attributes.position.getX(i)/12;
+  const z = terrainGeo.attributes.position.getZ(i)/12;
+  const y = inNoise.noise(x, 0, z) * TERR_SCALE;
+  terrainGeo.attributes.position.setY(i, y);
+}
+terrainGeo.computeVertexNormals();
+const terrainMat = new THREE.MeshStandardMaterial({ color: 0x3f5a47, roughness: 1, side: THREE.DoubleSide });
+const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+terrain.receiveShadow = true; // enable receiving shadows
+scene.add(terrain);
+
+// quick helper: sample the same noise used by terrain to get a height at world (x,z)
+function getTerrainHeight(x, z) {
+  // replicate the same scaling used when building the plane
+  return inNoise.noise(x/12, 0, z/12) * TERR_SCALE;
+}
+
+// instantiate fog (patches materials already present)
+const fog = new HeightFog(scene, {
+  color: 0xE3EAF2,       // Base color of the fog, a pale bluish-white
+  fogTop: 5.0,           // World Y coordinate where fog starts fading out (minimal fog above this)
+  fogDepth: 5.0,         // Vertical distance downward from fogTop over which fog goes from 0→full
+  opacity: 0.75,         // Maximum fog opacity at full density
+  exponent: 1.2,         // Controls the falloff curve; >1 = smoother near top, sharper near bottom
+  noiseScale: 0.6,      // Scale of the FBM noise (larger = bigger swirls)
+  noiseStrength: 0.2,   // How much the noise modulates fog density (0 = none, 1 = strong)
+  noiseOctaves: 5,       // Number of FBM octaves for detail
+  windDirX: 0.5,         // Wind direction vector X component for noise animation
+  windDirZ: 0.15,         // Wind direction vector Z component for noise animation
+  windSpeed: 1.0,        // Speed at which noise moves along wind direction
+  verticalBillow: 0.5   // Vertical oscillation of the noise over time for dynamic billowing effect
+});
+
+/* ---------- Shadow Select ---------- */
+function updateShadowQuality(quality) {
+  if (!scene) return;
+
+  let newSize;
+
+  switch (quality) {
+    case "none":
+      sun.castShadow = false;
+      renderer.shadowMap.enabled = false;
+      renderer.shadowMap.needsUpdate = true;
+      return;
+
+    case "low":
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      sun.castShadow = true;
+      newSize = 512;
+      break;
+
+    case "medium":
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      sun.castShadow = true;
+      newSize = 1024;
+      break;
+
+    case "high":
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      sun.castShadow = true;
+      newSize = 2048;
+      break;
+  }
+  
+  // Only dispose and regenerate if size actually changed
+  if (sun.shadow.mapSize.width !== newSize) {
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+    sun.shadow.mapSize.width = newSize;
+    sun.shadow.mapSize.height = newSize;
+    sun.shadow.needsUpdate = true;
+    renderer.shadowMap.needsUpdate = true;
+  } else {
+    // Even if size didn't change, still force update when re-enabling
+    sun.shadow.needsUpdate = true;
+    renderer.shadowMap.needsUpdate = true;
+  }
+}
+
+
+/* ---------- Instanced Trees (3 cones stacked + trunk) ---------- */
+function createInstancedForest(numTrees=800, radius=80) {
+  // We'll create 3 InstancedMesh for cones (levels 0,1,2) and 1 InstancedMesh for trunk.
+  // Use base geometries where height = 2 for simple math
+  const coneGeo = new THREE.ConeGeometry(1, 2, 8); // height = 2
+  const trunkGeo = new THREE.CylinderGeometry(0.25, 0.25, 2, 8); // height = 2
+
+  const leavesMat = new THREE.MeshStandardMaterial({ color: 0x2c8b3a, roughness: 0.9 });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x7b4f2b, roughness: 1.0 });
+
+  const cones = [
+    new THREE.InstancedMesh(coneGeo, leavesMat, numTrees),
+    new THREE.InstancedMesh(coneGeo, leavesMat, numTrees),
+    new THREE.InstancedMesh(coneGeo, leavesMat, numTrees)
+  ];
+  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, numTrees);
+
+  // random placement
+  const dummy = new THREE.Object3D();
+  const up = new THREE.Vector3(0,1,0);
+
+  for (let i=0;i<numTrees;i++){
+    // pick pos avoiding center a bit
+    const r = Math.sqrt(Math.random()) * radius;
+    const theta = Math.random() * Math.PI * 2;
+    const x = Math.cos(theta) * r;
+    const z = Math.sin(theta) * r;
+	
+	// **skip trees inside 5m radius bald circle**
+    if (Math.sqrt(x*x + z*z) < 5) continue;
+
+    // exact terrain height at (x,z) using getTerrainHeight
+    const terrainY = getTerrainHeight(x, z);
+
+    // tree overall scale factor
+    const scale = 0.8 + Math.random() * 2.0;
+
+    // trunk: base trunk geometry height = 2, scaled height = 2 * scaleTr
+    const trunkScaleY = 1.2 * scale;
+    const trunkHeight = 2 * trunkScaleY;
+    // position trunk so its base sits on the ground: center must be terrainY + trunkHeight/2
+    dummy.position.set(x, terrainY + trunkHeight * 0.5, z);
+    dummy.scale.set(0.8 * scale, trunkScaleY, 0.8 * scale);
+    dummy.rotation.y = Math.random() * Math.PI * 2;
+    dummy.updateMatrix();
+    trunks.setMatrixAt(i, dummy.matrix);
+
+    // stacked cones: base cone geometry height = 2
+    // We'll stack them directly above trunk
+    let currentTop = terrainY + trunkHeight; // top of trunk
+
+    for (let level = 0; level < 3; level++) {
+      const levelScale = scale * (1.4 - level * 0.28); // slightly decreasing
+      const coneScaleY = levelScale * 1.0; // how tall the cone becomes
+      const coneHeight = 2 * coneScaleY;
+      // cone center should be currentTop + coneHeight/2
+      const coneY = currentTop + coneHeight * 0.5;
+      dummy.position.set(x, coneY, z);
+      dummy.scale.set(levelScale, coneScaleY, levelScale);
+      // slight random rotation for natural look
+      dummy.rotation.y = (Math.random() - 0.5) * 0.4;
+      dummy.updateMatrix();
+      cones[level].setMatrixAt(i, dummy.matrix);
+
+      // advance currentTop for next cone
+      currentTop += coneHeight * 0.6; // slight overlap so cones look stacked and tapered
+    }
+  }
+
+  cones.forEach(c => { c.instanceMatrix.needsUpdate = true; c.castShadow = true; c.receiveShadow = true; scene.add(c); });
+  trunks.instanceMatrix.needsUpdate = true; trunks.castShadow = true; trunks.receiveShadow = true; scene.add(trunks);
+
+  // Patch these new materials for fog (as they were added after initial patch)
+  fog.patchScene();
+}
+createInstancedForest(700, 110);
+
+// ===== Set camera inside the bald circle =====
+const cameraHeight = getTerrainHeight(0, 0) + 2; // 2m above ground
+camera.position.set(0, cameraHeight, 0);
+controls.target.set(0, cameraHeight, 1); // look forward along Z+
+controls.update();
+
+/* ---------- GUI (only height + noise controls) ---------- */
+const gui = new GUI();
+const gf = gui.addFolder('Height FBM Fog');
+gf.add(fog, "radius", 0, 500).name("Fog Radius").onChange(v => fog.setRadius(v));
+gf.addColor({ color: '#E3EAF2' }, 'color').name('Fog Color').onChange(c=>fog.setColor(c));
+gf.add(fog, 'fogTop', -10, 40).name('Fog Top Y').onChange(v=>fog.setFogTop(v));
+gf.add(fog, 'fogDepth', 0.1, 40).name('Fog Depth').onChange(v=>fog.setFogDepth(v));
+gf.add(fog, 'opacity', 0, 1).name('Opacity').onChange(v=>fog.setOpacity(v));
+gf.add(fog, 'exponent', 0.1, 6).name('Exponent').onChange(v=>fog.setExponent(v));
+gf.add(fog, 'noiseScale', 0.01, 0.6).name('Noise Scale').onChange(v=>fog.setNoiseScale(v));
+gf.add(fog, 'noiseStrength', 0, 1).name('Noise Strength').onChange(v=>fog.setNoiseStrength(v));
+gf.add(fog, 'noiseOctaves', 1, 8, 1).name('Noise Octaves').onChange(v=>fog.setNoiseOctaves(v));
+gf.add({ windX: 0 }, 'windX', -1, 1, 0.01).name('Wind Dir X').onChange(x=>fog.setWind(x, fog.windDir.y));
+gf.add({ windZ: 1 }, 'windZ', -1, 1, 0.01).name('Wind Dir Z').onChange(z=>fog.setWind(fog.windDir.x, z));
+gf.add(fog, 'windSpeed', 0, 3).name('Wind Speed').onChange(v=>fog.setWindSpeed(v));
+gf.add(fog, 'verticalBillow', 0, 2).name('Vertical Billow').onChange(v=>fog.setVerticalBillow(v));
+const shadowSettings = { quality: "high" };
+gui.add(shadowSettings, "quality", ["none", "low", "medium", "high"]).name("Shadow Quality").onChange(updateShadowQuality);
+gf.open();
+
+/* ---------- WASD camera movement (no player) ---------- */
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.code] = true; });
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+  
+/* ---------- Stats ---------- */
+const stats = new StatsGL({ trackGPU: true, trackHz: true });
+const statsContainer = document.getElementById("performanceStats");
+statsContainer.classList.add("gl");
+statsContainer.appendChild(stats.dom);
+stats.init(renderer);
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const t = clock.elapsedTime;
+
+  // WASD movement relative to camera forward projection on XZ plane
+  const moveZ = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
+  const moveX = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
+  const speed = 12 * dt; // tuned speed; multiply input by this scalar
+
+  if (moveZ !== 0 || moveX !== 0) {
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize();
+
+    // delta in world space
+    const delta = new THREE.Vector3();
+    delta.addScaledVector(forward, moveZ * speed);
+    delta.addScaledVector(right, moveX * speed);
+
+    // apply both to camera and controls.target to keep orbit consistent
+    camera.position.add(delta);
+    controls.target.add(delta);
+  }
+
+  fog.updateTime(t);
+
+  controls.update();
+  renderer.render(scene, camera);
+  
+  // stats
+  if(stats) stats.update();
+}
+animate();
+
+const hasMouse = matchMedia("(pointer:fine)").matches;
+const hasKeyboard = !!navigator.keyboard; // only true if real Keyboard API present
+const isTouchDevice =
+  "ontouchstart" in window ||
+  navigator.maxTouchPoints > 0 ||
+  navigator.msMaxTouchPoints > 0;
+
+const isTouchOnly = isTouchDevice && !hasMouse && !hasKeyboard;
+
+function resize() {
+	const dpr = Math.min(window.devicePixelRatio, isTouchOnly ? 1 : 1.5); // cap pixel ratio to prevent insane resolutions:
+	renderer.setPixelRatio(dpr);
+	renderer.setSize(window.innerWidth, window.innerHeight, true);
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+}
+
+window.addEventListener("resize", resize);
+resize();
+  
+['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+</script>
+</body>
+</html>

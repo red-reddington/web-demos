@@ -1,0 +1,2645 @@
+<!-- https://codepen.io/the-red-reddington/full/QwNevbX -->
+<!-- https://discourse.threejs.org/t/canvas-recording-with-audio-for-three-js-desktop-mobile-ios/88731 -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🪦 Graveyard - Three.js Canvas + Audio Recording</title>
+    <style>
+      /* ==========================================================================
+       CSS RESET & BASE STYLES
+       ========================================================================== */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100dvh;
+        width: 100dvw;
+        overflow: hidden;
+        overscroll-behavior: none;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #0a0a0f;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
+
+      #container {
+        width: 100%;
+        height: 100%;
+      }
+
+      /* ==========================================================================
+       HUD OVERLAY - Captured in screenshots via html2canvas
+       ========================================================================== */
+      #hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        color: #c8c8d0;
+        font: 600 13px/1.6 monospace;
+        background: rgba(10, 10, 20, 0.75);
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid rgba(100, 100, 120, 0.3);
+        pointer-events: none;
+        z-index: 100;
+      }
+      #hud h1 {
+        font-size: 16px;
+        color: #9090a0;
+        border-bottom: 1px solid rgba(100, 100, 120, 0.3);
+        margin-bottom: 6px;
+        padding-bottom: 4px;
+      }
+      #hud .key {
+        color: #7a9ec2;
+        font-weight: 700;
+      }
+      #keyMappings {
+        display: block;
+      }
+      #touchMappings {
+        display: none;
+      }
+
+      /* ==========================================================================
+       RECORDER CONTROLS
+       ========================================================================== */
+      #recorderUI {
+        position: fixed;
+        bottom: 16px;
+        left: 0;
+        justify-content: center;
+        display: flex;
+        gap: 10px;
+        z-index: 200;
+        width: 100dvw;
+      }
+      .rec-btn {
+        padding: 10px 18px;
+        font: 600 13px/1 monospace;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: transform 0.1s, box-shadow 0.15s;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .rec-btn:hover {
+        transform: translateY(-1px);
+      }
+      .rec-btn:active {
+        transform: translateY(0);
+      }
+
+      #btnRecord {
+        background: linear-gradient(135deg, #c0392b, #e74c3c);
+        color: #fff;
+        box-shadow: 0 3px 12px rgba(231, 76, 60, 0.4);
+      }
+      #btnRecord.recording {
+        background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+        animation: pulse 1s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.7;
+        }
+      }
+
+      #btnScreenshot {
+        background: linear-gradient(135deg, #2980b9, #3498db);
+        color: #fff;
+        box-shadow: 0 3px 12px rgba(52, 152, 219, 0.4);
+      }
+      #btnMute {
+        background: linear-gradient(135deg, #27ae60, #2ecc71);
+        color: #fff;
+        box-shadow: 0 3px 12px rgba(46, 204, 113, 0.4);
+      }
+      #btnMute.muted {
+        background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+      }
+
+      /* Recording indicator */
+      #recIndicator {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        background: rgba(192, 57, 43, 0.9);
+        color: #fff;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font: 700 12px/1 monospace;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        z-index: 300;
+      }
+      #recIndicator::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        background: #fff;
+        border-radius: 50%;
+        animation: blink 1s infinite;
+      }
+      @keyframes blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+      #recIndicator.show {
+        display: flex;
+      }
+
+      /* Status toast */
+      #toast {
+        position: fixed;
+        bottom: 80px;
+        right: 50%;
+        transform: translate(50%, 10px);
+        background: rgba(20, 20, 30, 0.9);
+        color: #e0e0e0;
+        padding: 10px 18px;
+        border-radius: 6px;
+        font: 500 12px / 1.4 monospace;
+        opacity: 0;
+        transition: opacity 0.3s, transform 0.3s;
+        pointer-events: none;
+        z-index: 250;
+      }
+      #toast.show {
+        opacity: 1;
+        transform: translate(50%, 0);
+      }
+
+      /* ==========================================================================
+       OPTIONS PANEL
+       ========================================================================== */
+      #optionsPanel {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        background: rgba(10, 10, 20, 0.85);
+        border: 1px solid rgba(100, 100, 120, 0.3);
+        border-radius: 8px;
+        padding: 12px;
+        z-index: 150;
+        min-width: 180px;
+        font: 500 12px/1.5 monospace;
+        color: #c8c8d0;
+      }
+      #optionsPanel h2 {
+        font-size: 13px;
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(100, 100, 120, 0.3);
+        cursor: pointer;
+      }
+      #optionsPanel h2::after {
+        content: " ▼";
+        font-size: 10px;
+        opacity: 0.6;
+      }
+      #optionsPanel.collapsed h2::after {
+        content: " ▶";
+      }
+      #optionsPanel.collapsed #optionsContent {
+        display: none;
+      }
+
+      .option-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 8px 0;
+      }
+      .option-row label {
+        flex: 1;
+      }
+      .option-row input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+      }
+
+      /* ==========================================================================
+       MOBILE CONTROLS (nipplejs joysticks)
+       ========================================================================== */
+      #mobileControls {
+        display: none;
+        font-family: monospace;
+        font-size: 13px;
+        pointer-events: auto;
+        --unit: 8px;
+        --glass-bg: rgba(0, 0, 0, 0.35);
+        --glass-border: rgba(255, 255, 255, 0.2);
+      }
+
+      #mobileControls #joystick-left,
+      #mobileControls #joystick-right {
+        width: calc(14 * var(--unit)) !important;
+        height: calc(14 * var(--unit)) !important;
+        position: fixed;
+        z-index: 1000;
+      }
+      #mobileControls #joystick-left {
+        bottom: calc(3 * var(--unit));
+        left: calc(0.5 * var(--unit));
+      }
+      #mobileControls #joystick-right {
+        bottom: calc(3 * var(--unit));
+        right: calc(0.5 * var(--unit));
+      }
+
+      /* Joystick outer ring */
+      #mobileControls .back {
+        width: calc(14 * var(--unit)) !important;
+        height: calc(14 * var(--unit)) !important;
+        margin-left: calc(-7 * var(--unit)) !important;
+        margin-top: calc(-7 * var(--unit)) !important;
+        background: var(--glass-bg) !important;
+        border: 1px solid rgba(255, 255, 255, 1) !important;
+        opacity: 1 !important;
+      }
+
+      /* Joystick inner thumb */
+      #mobileControls .front {
+        width: calc(5 * var(--unit)) !important;
+        height: calc(5 * var(--unit)) !important;
+        margin-left: calc(-2.5 * var(--unit)) !important;
+        margin-top: calc(-2.5 * var(--unit)) !important;
+        background: rgba(255, 255, 255, 1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+        opacity: 1 !important;
+        text-align: center;
+        align-content: center;
+        color: black;
+        font-size: calc(1.8 * var(--unit));
+        font-weight: 600;
+      }
+
+      #mobileControls #joystick-left #nipple_0_0 .front::before {
+        content: "MOVE";
+      }
+      #mobileControls #joystick-right #nipple_1_1 .front::before {
+        content: "LOOK";
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ========================================================================
+       HTML STRUCTURE
+       ======================================================================== -->
+
+    <!-- Three.js canvas container -->
+    <div id="container"></div>
+
+    <!-- HUD overlay -->
+    <div id="hud">
+      <h1>🪦 GRAVEYARD</h1>
+      <div id="keyMappings">
+        <span class="key">WASD</span> Move ·
+        <span class="key">QE</span> Rotate<br />
+        <span class="key">CLICK+DRAG</span> Look Around
+      </div>
+      <div id="touchMappings">
+        <span class="key">L Pad</span> Move ·
+        <span class="key">R Pad</span> Look
+      </div>
+    </div>
+
+    <!-- Options panel -->
+    <div id="optionsPanel">
+      <h2 id="optionsHeader">⚙️ Options</h2>
+      <div id="optionsContent">
+        <div class="option-row">
+          <label for="optTouchControls">Touch Controls</label>
+          <input type="checkbox" id="optTouchControls" />
+        </div>
+        <div class="option-row">
+          <label for="optShadows">Shadows</label>
+          <input type="checkbox" id="optShadows" checked />
+        </div>
+      </div>
+    </div>
+
+    <!-- Recording indicator -->
+    <div id="recIndicator">REC</div>
+
+    <!-- Mobile joystick containers -->
+    <div id="mobileControls">
+      <div id="joystick-left"></div>
+      <div id="joystick-right"></div>
+    </div>
+
+    <!-- Recorder controls -->
+    <div id="recorderUI">
+      <button id="btnMute" class="rec-btn">🔊 Sound</button>
+      <button id="btnScreenshot" class="rec-btn">📷 Screenshot</button>
+      <button id="btnRecord" class="rec-btn">⏺ Record</button>
+    </div>
+
+    <!-- Status toast -->
+    <div id="toast"></div>
+
+    <!-- ========================================================================
+       IMPORT MAP - ES Module imports for CDN packages
+       ======================================================================== -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+          "howler": "https://cdn.jsdelivr.net/npm/howler@2.2.4/+esm",
+          "html2canvas": "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm",
+          "nipplejs": "https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/+esm"
+        }
+      }
+    </script>
+
+    <script type="module">
+      // ==========================================================================
+      // IMPORTS
+      // ==========================================================================
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+      import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+      import { Howl, Howler } from "howler";
+      import html2canvas from "html2canvas";
+      import nipplejs from "nipplejs";
+
+      // ==========================================================================
+      // AUDIO SYSTEM (Howler.js)
+      // .mp3 files from here https://codepen.io/samsimite/pen/RNrgmrK
+      // ==========================================================================
+      let ambientMusic = null;
+      let crowSound = null;
+      let isMuted = false;
+
+      /**
+       * Initialize audio - called on first user interaction
+       */
+      function initAudio() {
+        // Spooky Halloween ambient music
+        ambientMusic = new Howl({
+          src: [
+            "https://raw.githubusercontent.com/red-reddington/public-assets/main/spooky.mp3",
+          ], //https://tim-school.com/codepen/halloween1/75.mp3
+          loop: true,
+          volume: 0.5,
+          onplay: (id) => {
+            // positionless, head-centered
+            ambientMusic.stereo(0, id);
+          },
+        });
+        ambientMusic.play();
+
+        // Crow caw sound (spatial audio per bird)
+        crowSound = new Howl({
+          src: [
+            "https://raw.githubusercontent.com/red-reddington/public-assets/main/crowing.mp3",
+          ], // https://tim-school.com/codepen/halloween1/16.mp3
+          loop: false,
+          volume: CONFIG.CROW_SOUND.volume,
+        });
+
+        // Connect Howler.masterGain to recorder destination if it exists
+        if (recorder?.audioStreamDestination && Howler.masterGain) {
+          Howler.masterGain.disconnect();
+          Howler.masterGain.connect(recorder.audioStreamDestination);
+          Howler.masterGain.connect(Howler.ctx.destination); // keep normal playback
+        }
+
+        console.log("[Audio] Initialized");
+      }
+
+      function toggleMute() {
+        isMuted = !isMuted;
+        Howler.mute(isMuted);
+        btnMute.textContent = isMuted ? "🔇 Muted" : "🔊 Sound";
+        btnMute.classList.toggle("muted", isMuted);
+        showToast(isMuted ? "Sound muted" : "Sound enabled");
+      }
+
+      let audioInitialized = false;
+      function ensureAudio() {
+        if (audioInitialized) return;
+        audioInitialized = true;
+        if (Howler.ctx?.state === "suspended") Howler.ctx.resume();
+        initAudio();
+        Howler.mute(isMuted);
+      }
+
+      // TODO fix from here https://github.com/yoannmoinet/nipplejs/issues/38
+      if (nipplejs && nipplejs.utils && nipplejs.utils.prepareEvent) {
+        const originalPrepare = nipplejs.utils.prepareEvent;
+        nipplejs.utils.prepareEvent = function (evt) {
+          if (
+            evt.target.classList.contains("front") ||
+            evt.target.classList.contains("back")
+          ) {
+            evt.preventDefault();
+          }
+
+          // Initialize audio on first joystick interaction
+          ensureAudio();
+
+          return originalPrepare.call(this, evt);
+        };
+      }
+
+      // Init audio on first user interaction
+      ["click", "touchstart", "keydown"].forEach((evt) => {
+        document.addEventListener(evt, ensureAudio, { once: true });
+      });
+
+      // ==========================================================================
+      // CONFIGURATION
+      // All tunable parameters in one place for easy adjustment
+      // ==========================================================================
+      const CONFIG = {
+        // ----- World -----
+        WORLD_RADIUS: 35,
+        GROUND_COLOR: 0x1a1815,
+
+        // ----- Player -----
+        PLAYER_HEIGHT: 1.7,
+        MOVE_SPEED: 8,
+        SPRINT_MULTIPLIER: 2.0,
+        ROTATE_SPEED: 2.0,
+
+        // ----- Camera -----
+        FOV: 75,
+        NEAR: 0.1,
+        FAR: 500,
+
+        // ----- Moon (in sky shader) -----
+        MOON_DIR: new THREE.Vector3(0.3, 0.45, 0.8).normalize(),
+        MOON_SIZE: 0.06,
+
+        // ----- Lighting -----
+        AMBIENT_INTENSITY: 0.4,
+        HEMI_INTENSITY: 0.6,
+        MOON_LIGHT_INTENSITY: 1.8,
+        MOON_LIGHT_COLOR: 0xaaccff,
+
+        // ----- Fog -----
+        FOG_NEAR: 25,
+        FOG_FAR: 80,
+        FOG_COLOR: 0x0a0a10,
+
+        // ----- Birds -----
+        BIRD_COUNT: 5,
+        BIRD_SCALE: 1.6,
+        BIRD_SPEED_MIN: 3,
+        BIRD_SPEED_MAX: 6,
+        PERCH_DURATION_MIN: 6,
+        PERCH_DURATION_MAX: 15,
+        FLY_DURATION_MIN: 8,
+        FLY_DURATION_MAX: 18,
+        FLY_HEIGHT_MIN: 6,
+        FLY_HEIGHT_MAX: 14,
+        FLY_RADIUS: 20,
+        SPOOK_DISTANCE: 1.0, // Distance to spook perched birds
+        PECK_DISTANCE: 7.0, // Distance to trigger pecking animation
+
+        // ----- Crow Sound (spatial audio) -----
+        CROW_SOUND: {
+          refDistance: 3,
+          maxDistance: 25,
+          rolloffFactor: 2,
+          minInterval: 4,
+          maxInterval: 12,
+          volume: 0.35,
+        },
+
+        // ----- Graveyard Objects -----
+        TOMBSTONE_COUNT: 18,
+        CROSS_COUNT: 6,
+        MOUND_COUNT: 10,
+
+        // ----- Touch Controls -----
+        TOUCH_SPRINT_THRESHOLD: 0.8,
+        CAMERA_PITCH_MIN: -0.4,
+        CAMERA_PITCH_MAX: 0.8,
+        CAMERA_PITCH_SPEED: 1.2,
+        DEADZONE: 0.05,
+      };
+
+      // ==========================================================================
+      // DOM ELEMENTS
+      // ==========================================================================
+      const container = document.getElementById("container");
+      const btnRecord = document.getElementById("btnRecord");
+      const btnScreenshot = document.getElementById("btnScreenshot");
+      const btnMute = document.getElementById("btnMute");
+      const recIndicator = document.getElementById("recIndicator");
+      const toast = document.getElementById("toast");
+      const optionsPanel = document.getElementById("optionsPanel");
+      const optionsHeader = document.getElementById("optionsHeader");
+      const optTouchControls = document.getElementById("optTouchControls");
+      const optShadows = document.getElementById("optShadows");
+      const keyMappings = document.getElementById("keyMappings");
+      const touchMappings = document.getElementById("touchMappings");
+      const mobileControls = document.getElementById("mobileControls");
+
+      // ==========================================================================
+      // UTILITY FUNCTIONS
+      // ==========================================================================
+
+      /**
+       * Show a temporary toast notification
+       */
+      function showToast(msg, duration = 2500) {
+        toast.textContent = msg;
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), duration);
+      }
+
+      /**
+       * Random float between min and max
+       */
+      function randRange(min, max) {
+        return min + Math.random() * (max - min);
+      }
+
+      /**
+       * Random point within circle (uniform distribution)
+       */
+      function randomInCircle(radius) {
+        const r = radius * Math.sqrt(Math.random());
+        const theta = Math.random() * Math.PI * 2;
+        return { x: r * Math.cos(theta), z: r * Math.sin(theta) };
+      }
+
+      // ==========================================================================
+      // DEVICE DETECTION
+      // ==========================================================================
+      const hasMouse = matchMedia("(pointer:fine)").matches;
+      const isTouchDevice =
+        "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      const isTouchOnly = isTouchDevice && !hasMouse;
+
+      // ==========================================================================
+      // THREE.JS CORE SETUP
+      // ==========================================================================
+
+      // ----- Renderer -----
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        precision: "highp",
+        powerPreference: "high-performance",
+        preserveDrawingBuffer: true, // Required for screenshots
+      });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, isTouchOnly ? 1 : 1.5));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.5;
+      container.appendChild(renderer.domElement);
+
+      // ----- Scene -----
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(CONFIG.FOG_COLOR);
+      scene.fog = new THREE.Fog(
+        CONFIG.FOG_COLOR,
+        CONFIG.FOG_NEAR,
+        CONFIG.FOG_FAR
+      );
+
+      // ----- Camera -----
+      const camera = new THREE.PerspectiveCamera(
+        CONFIG.FOV,
+        innerWidth / innerHeight,
+        CONFIG.NEAR,
+        CONFIG.FAR
+      );
+      camera.position.set(0, CONFIG.PLAYER_HEIGHT, 0);
+
+      // ----- OrbitControls -----
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
+      controls.enablePan = false;
+      controls.enableZoom = false;
+      controls.minDistance = 0.01;
+      controls.maxDistance = 0.01;
+      controls.minPolarAngle = 0.2;
+      controls.maxPolarAngle = Math.PI * 0.85;
+      controls.rotateSpeed = 0.5;
+
+      // Set initial look direction toward moon
+      const lookDir = CONFIG.MOON_DIR.clone();
+      lookDir.y = 0.3;
+      controls.target.copy(camera.position).addScaledVector(lookDir, 5);
+
+      // ==========================================================================
+      // LIGHTING
+      // ==========================================================================
+
+      // Ambient fill light
+      const ambient = new THREE.AmbientLight(
+        0x303040,
+        CONFIG.AMBIENT_INTENSITY
+      );
+      scene.add(ambient);
+
+      // Hemisphere light (sky/ground color variation)
+      const hemiLight = new THREE.HemisphereLight(
+        0x6080b0,
+        0x302815,
+        CONFIG.HEMI_INTENSITY
+      );
+      scene.add(hemiLight);
+
+      // Directional moonlight with shadows
+      const moonLight = new THREE.DirectionalLight(
+        CONFIG.MOON_LIGHT_COLOR,
+        CONFIG.MOON_LIGHT_INTENSITY
+      );
+      moonLight.position.copy(CONFIG.MOON_DIR).multiplyScalar(50);
+      moonLight.castShadow = true;
+
+      // Shadow camera setup - covers entire graveyard
+      const shadowSize = CONFIG.WORLD_RADIUS * 1.3;
+      moonLight.shadow.camera.left = -shadowSize;
+      moonLight.shadow.camera.right = shadowSize;
+      moonLight.shadow.camera.top = shadowSize;
+      moonLight.shadow.camera.bottom = -shadowSize;
+      moonLight.shadow.camera.near = 1;
+      moonLight.shadow.camera.far = 120;
+      moonLight.shadow.mapSize.width = 4096;
+      moonLight.shadow.mapSize.height = 4096;
+      moonLight.shadow.normalBias = 0.02; // small offset along surface normals
+      moonLight.shadow.bias = 0.000002;
+      scene.add(moonLight);
+
+      // ==========================================================================
+      // GROUND
+      // ==========================================================================
+      const groundGeo = new THREE.CircleGeometry(CONFIG.WORLD_RADIUS, 48);
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: CONFIG.GROUND_COLOR,
+        roughness: 0.95,
+        metalness: 0,
+      });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // ==========================================================================
+      // SKY DOME WITH MOON
+      // Custom shader for gradient sky with large moon disc and glow
+      // ==========================================================================
+      const skyGeo = new THREE.SphereGeometry(180, 32, 16);
+      const skyMat = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        uniforms: {
+          topColor: { value: new THREE.Color(0x080812) },
+          bottomColor: { value: new THREE.Color(0x151520) },
+          moonDir: { value: CONFIG.MOON_DIR },
+          moonSize: { value: CONFIG.MOON_SIZE },
+        },
+        vertexShader: /* glsl */ `
+        varying vec3 vWorldPos;
+        void main() {
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldPos = worldPos.xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+        fragmentShader: /* glsl */ `
+        uniform vec3 topColor;
+        uniform vec3 bottomColor;
+        uniform vec3 moonDir;
+        uniform float moonSize;
+        varying vec3 vWorldPos;
+
+        // Simple hash-based noise
+        float hash(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        float noise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            float a = hash(i);
+            float b = hash(i + vec2(1.0, 0.0));
+            float c = hash(i + vec2(0.0, 1.0));
+            float d = hash(i + vec2(1.0, 1.0));
+            vec2 u = f*f*(3.0-2.0*f);
+            return mix(a, b, u.x) +
+                   (c - a)*u.y*(1.0 - u.x) +
+                   (d - b)*u.x*u.y;
+        }
+
+        // Fractal Brownian Motion for richer texture
+        float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.5;
+            for (int i = 0; i < 5; i++) {
+                v += a * noise(p);
+                p *= 2.0;
+                a *= 0.5;
+            }
+            return v;
+        }
+
+        void main() {
+            // Gradient sky based on height
+            float h = normalize(vWorldPos).y;
+            vec3 sky = mix(bottomColor, topColor, max(h * 0.8 + 0.2, 0.0));
+
+            // Moon calculation
+            vec3 viewDir = normalize(vWorldPos);
+            float moonDot = dot(viewDir, moonDir);
+
+            // Crisp moon disc
+            float moonDisc = smoothstep(1.0 - moonSize, 1.0 - moonSize * 0.8, moonDot);
+
+            // Soft outer glow
+            float glow = smoothstep(1.0 - moonSize * 4.0, 1.0 - moonSize, moonDot) * 0.25;
+
+            // Procedural crater texture
+            // Map viewDir onto 2D coordinates for noise
+            vec2 uv = vec2(viewDir.x, viewDir.y) * 5.0;
+            float craterPattern = fbm(uv);
+
+            // Use crater pattern to darken parts of the moon disc
+            float craterMask = smoothstep(0.3, 0.7, craterPattern);
+
+            vec3 moonColor = vec3(1.0, 0.98, 0.9);
+            vec3 craterColor = moonColor * (0.6 + 0.4 * craterMask);
+
+            vec3 moon = craterColor * moonDisc + moonColor * glow;
+
+            gl_FragColor = vec4(sky + moon, 1.0);
+        }
+
+      `,
+      });
+      scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+      // ==========================================================================
+      // GRAVEYARD MATERIALS (shared for performance)
+      // ==========================================================================
+      const stoneMat = new THREE.MeshStandardMaterial({
+        color: 0x555560,
+        roughness: 0.85,
+        metalness: 0.05,
+      });
+      const oldStoneMat = new THREE.MeshStandardMaterial({
+        color: 0x6b6d70,
+        roughness: 0.95,
+        metalness: 0,
+      });
+      const woodMat = new THREE.MeshStandardMaterial({
+        color: 0x3a2a1a,
+        roughness: 0.9,
+        metalness: 0,
+      });
+      const dirtMat = new THREE.MeshStandardMaterial({
+        color: 0x251a12,
+        roughness: 1.0,
+        metalness: 0,
+      });
+
+      // Perchable positions for birds
+      const perchPositions = [];
+
+      // ==========================================================================
+      // GRAVEYARD OBJECT GENERATORS
+      // ==========================================================================
+
+      /**
+       * Create a rounded-top tombstone
+       */
+      function createRoundedTombstone(x, z) {
+        const group = new THREE.Group();
+        group.position.set(x, 0, z);
+        group.rotation.y = Math.random() * 0.5 - 0.25;
+
+        // Realistic adult tombstone scale
+        const height = 1.25 + Math.random() * 0.35;
+        const width = 0.55 + Math.random() * 0.15;
+        const depth = 0.18 + Math.random() * 0.05;
+        const mat = Math.random() > 0.5 ? stoneMat : oldStoneMat;
+
+        // Main rectangular slab
+        const slabGeo = new THREE.BoxGeometry(width, height, depth);
+        const slab = new THREE.Mesh(slabGeo, mat);
+        slab.position.y = height / 2;
+        slab.castShadow = true;
+        slab.receiveShadow = true;
+        group.add(slab);
+
+        // Rounded top - half cylinder laying horizontally on top of slab
+        const topRadius = width / 2;
+        const topGeo = new THREE.CylinderGeometry(
+          topRadius,
+          topRadius,
+          depth,
+          16,
+          1,
+          false,
+          0,
+          Math.PI
+        );
+        const top = new THREE.Mesh(topGeo, mat);
+        top.rotation.x = Math.PI / 2;
+        top.rotation.y = Math.PI / 2;
+        top.position.set(0, height, 0);
+        top.castShadow = true;
+        group.add(top);
+
+        // Small base pedestal
+        const baseGeo = new THREE.BoxGeometry(width + 0.15, 0.12, depth + 0.08);
+        const base = new THREE.Mesh(baseGeo, mat);
+        base.position.y = 0.06;
+        base.receiveShadow = true;
+        group.add(base);
+
+        // Add perch position on top
+        perchPositions.push({ x, y: height + topRadius, z, type: "tombstone" });
+
+        scene.add(group);
+        return group;
+      }
+
+      /**
+       * Create a gothic pointed tombstone using ExtrudeGeometry
+       */
+      function createPointedTombstone(x, z) {
+        const group = new THREE.Group();
+        group.position.set(x, 0, z);
+        group.rotation.y = Math.random() * 0.4 - 0.2;
+
+        const height = 1.3 + Math.random() * 0.4;
+        const width = 0.55 + Math.random() * 0.15;
+        const depth = 0.18 + Math.random() * 0.05;
+        const mat = Math.random() > 0.4 ? stoneMat : oldStoneMat;
+        mat.side = THREE.DoubleSide;
+
+        // 2D shape for pointed top
+        const shape = new THREE.Shape();
+        const hw = width / 2;
+        // Clockwise instead of counter-clockwise
+        shape.moveTo(hw, 0); // Start right
+        shape.lineTo(hw, height * 0.7);
+        shape.lineTo(0, height); // Peak
+        shape.lineTo(-hw, height * 0.7);
+        shape.lineTo(-hw, 0); // End left
+        shape.closePath();
+
+        const bodyGeo = new THREE.ExtrudeGeometry(shape, {
+          depth,
+          bevelEnabled: false,
+        });
+        bodyGeo.center();
+        const body = new THREE.Mesh(bodyGeo, mat);
+        body.position.y = height / 2;
+        body.position.z = depth / 2;
+        body.rotation.y = Math.PI;
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+
+        perchPositions.push({ x, y: height, z, type: "pointed" });
+        scene.add(group);
+        return group;
+      }
+
+      /**
+       * Create a Celtic cross with ring
+       */
+      function createCelticCross(x, z) {
+        const group = new THREE.Group();
+        group.position.set(x, 0, z);
+        group.rotation.y = Math.random() * 0.3 - 0.15;
+
+        // Dominant landmark cross
+        const height = 2.0 + Math.random() * 0.3;
+        const armWidth = 0.75 + Math.random() * 0.2;
+        const thickness = 0.18;
+        const beamWidth = 0.18;
+
+        // Vertical beam
+        const vBeam = new THREE.Mesh(
+          new THREE.BoxGeometry(beamWidth, height, thickness),
+          stoneMat
+        );
+        vBeam.position.y = height / 2;
+        vBeam.castShadow = true;
+        group.add(vBeam);
+
+        // Horizontal beam
+        const hBeam = new THREE.Mesh(
+          new THREE.BoxGeometry(armWidth, beamWidth, thickness),
+          stoneMat
+        );
+        hBeam.position.y = height * 0.72;
+        hBeam.castShadow = true;
+        group.add(hBeam);
+
+        // Celtic ring (torus)
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(armWidth * 0.38, beamWidth * 0.5, 10, 28),
+          stoneMat
+        );
+        ring.position.y = height * 0.72;
+        //ring.position.z = -thickness / 2;
+        ring.castShadow = true;
+        group.add(ring);
+
+        // Base pedestal
+        const base = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.35, 0.45),
+          stoneMat
+        );
+        base.position.y = 0.175;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+
+        // Perch positions
+        perchPositions.push({ x, y: height, z, type: "crossTop" });
+        perchPositions.push({
+          x: x - armWidth / 2,
+          y: height * 0.72,
+          z,
+          type: "crossArm",
+        });
+        perchPositions.push({
+          x: x + armWidth / 2,
+          y: height * 0.72,
+          z,
+          type: "crossArm",
+        });
+
+        scene.add(group);
+        return group;
+      }
+
+      /**
+       * Create a simple wooden cross (slightly tilted for aged look)
+       */
+      function createWoodenCross(x, z) {
+        const group = new THREE.Group();
+        group.position.set(x, 0, z);
+        group.rotation.y = Math.random() * 0.4 - 0.2;
+        group.rotation.z = (Math.random() - 0.5) * 0.08;
+        group.rotation.x = (Math.random() - 0.5) * 0.05;
+
+        const height = 1.55 + Math.random() * 0.35;
+        const armWidth = 0.65 + Math.random() * 0.15;
+        const beamThick = 0.12;
+        const beamDepth = 0.08;
+
+        // Vertical beam
+        const vBeam = new THREE.Mesh(
+          new THREE.BoxGeometry(beamThick, height, beamDepth),
+          woodMat
+        );
+        vBeam.position.y = height / 2;
+        vBeam.castShadow = true;
+        group.add(vBeam);
+
+        // Horizontal beam
+        const hBeam = new THREE.Mesh(
+          new THREE.BoxGeometry(armWidth, beamThick * 0.9, beamDepth * 0.8),
+          woodMat
+        );
+        hBeam.position.y = height * 0.75;
+        hBeam.castShadow = true;
+        group.add(hBeam);
+
+        perchPositions.push({ x, y: height, z, type: "woodTop" });
+
+        scene.add(group);
+        return group;
+      }
+
+      /**
+       * Create a burial mound with a small cross at its head
+       */
+      function createMound(x, z) {
+        const group = new THREE.Group();
+        group.position.set(x, 0, z);
+
+        // Random rotation
+        const angle = Math.random() * Math.PI * 2;
+        group.rotation.y = angle;
+
+        // Elongated mound (half-ellipsoid)
+        const moundGeo = new THREE.SphereGeometry(
+          1.1,
+          16,
+          10,
+          0,
+          Math.PI * 2,
+          0,
+          Math.PI / 2
+        );
+        const mound = new THREE.Mesh(moundGeo, dirtMat);
+        mound.scale.set(2.0, 0.45, 1.1);
+        mound.receiveShadow = true;
+        group.add(mound);
+
+        // Small wooden cross at head of mound
+        const crossGroup = new THREE.Group();
+        const crossHeight = 1.35 + Math.random() * 0.2;
+        const crossArm = 0.85 + Math.random() * 0.1;
+
+        const vPost = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, crossHeight, 0.06),
+          woodMat
+        );
+        vPost.position.y = crossHeight / 2;
+        vPost.castShadow = true;
+        crossGroup.add(vPost);
+
+        const hPost = new THREE.Mesh(
+          new THREE.BoxGeometry(crossArm, 0.07, 0.05),
+          woodMat
+        );
+        hPost.position.y = crossHeight * 0.7;
+        hPost.castShadow = true;
+        crossGroup.add(hPost);
+
+        // Position cross at head of mound
+        crossGroup.position.x = 1.9;
+
+        // Subtle aging lean (local space, AFTER alignment)
+        crossGroup.rotation.y = Math.PI / 2;
+        crossGroup.rotation.x = (Math.random() - 0.5) * 0.08;
+        crossGroup.rotation.z = (Math.random() - 0.5) * 0.12;
+        group.add(crossGroup);
+
+        scene.add(group);
+        return group;
+      }
+
+      /**
+       * Placement helpers
+       */
+      const placedGraves = [];
+      const MIN_GRAVE_DISTANCE = 2.0; // meters
+      const MAX_PLACEMENT_ATTEMPTS = 25;
+
+      function isPositionValid(x, z) {
+        for (let i = 0; i < placedGraves.length; i++) {
+          const dx = x - placedGraves[i].x;
+          const dz = z - placedGraves[i].z;
+          if (dx * dx + dz * dz < MIN_GRAVE_DISTANCE * MIN_GRAVE_DISTANCE) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      function findValidPosition(radius, exclusion = 0) {
+        for (let i = 0; i < MAX_PLACEMENT_ATTEMPTS; i++) {
+          const pos = randomInCircle(radius);
+          if (Math.abs(pos.x) < exclusion && Math.abs(pos.z) < exclusion)
+            continue;
+          if (isPositionValid(pos.x, pos.z)) {
+            placedGraves.push({ x: pos.x, z: pos.z });
+            return pos;
+          }
+        }
+        return null;
+      }
+
+      /**
+       * Generate the entire graveyard layout
+       */
+      function generateGraveyard() {
+        placedGraves.length = 0;
+
+        // Tombstones
+        for (let i = 0; i < CONFIG.TOMBSTONE_COUNT; i++) {
+          const pos = findValidPosition(CONFIG.WORLD_RADIUS * 0.85, 2.5);
+          if (!pos) continue;
+
+          Math.random() > 0.5
+            ? createRoundedTombstone(pos.x, pos.z)
+            : createPointedTombstone(pos.x, pos.z);
+        }
+
+        // Crosses
+        for (let i = 0; i < CONFIG.CROSS_COUNT; i++) {
+          const pos = findValidPosition(CONFIG.WORLD_RADIUS * 0.8, 3);
+          if (!pos) continue;
+
+          Math.random() > 0.4
+            ? createCelticCross(pos.x, pos.z)
+            : createWoodenCross(pos.x, pos.z);
+        }
+
+        // Burial mounds
+        for (let i = 0; i < CONFIG.MOUND_COUNT; i++) {
+          const pos = findValidPosition(CONFIG.WORLD_RADIUS * 0.75);
+          if (!pos) continue;
+
+          createMound(pos.x, pos.z);
+        }
+      }
+
+      generateGraveyard();
+
+      // ==========================================================================
+      // BIRD SYSTEM
+      // Ravens that perch on tombstones, fly around, and react to player
+      // ==========================================================================
+      const STATE = {
+        PERCHING: 0,
+        FLYING: 1,
+      };
+
+      let birdPivot = null;
+      let birdAnims = null;
+      let birdMixer = null;
+      const birds = [];
+
+      // Pre-allocated vectors for bird updates (avoid GC)
+      const _birdTarget = new THREE.Vector3();
+      const _birdDir = new THREE.Vector3();
+      const _birdToCamera = new THREE.Vector3();
+
+      /**
+       * Create bird data object
+       */
+      function createBirdData(mesh, action) {
+        return {
+          mesh,
+          action,
+          mouthBone: mesh.getObjectByName("BN_Mouth_01"), // Lower jaw for pecking
+          state: STATE.PERCHING,
+          speed: randRange(CONFIG.BIRD_SPEED_MIN, CONFIG.BIRD_SPEED_MAX),
+          stateTimer: randRange(
+            CONFIG.PERCH_DURATION_MIN,
+            CONFIG.PERCH_DURATION_MAX
+          ),
+
+          // Flying parameters
+          flyHeight: randRange(CONFIG.FLY_HEIGHT_MIN, CONFIG.FLY_HEIGHT_MAX),
+          flyAngle: Math.random() * Math.PI * 2,
+          flyRadius: CONFIG.FLY_RADIUS * (0.5 + Math.random() * 0.5),
+
+          // Crow sound timing
+          crowTimer: randRange(2, CONFIG.CROW_SOUND.maxInterval),
+
+          // Wing folding state
+          wingsAreFolded: false,
+
+          // Pecking state
+          isPecking: false,
+        };
+      }
+
+      /**
+       * Set bird wings to folded (perching) or unfolded (flying)
+       * Uses animation frame manipulation like in the game
+       */
+      function setWingsFolded(bird, folded) {
+        if (bird.wingsAreFolded === folded) return;
+        bird.wingsAreFolded = folded;
+
+        if (folded) {
+          // Freeze animation at wings-down frame
+          bird.action.paused = true;
+          bird.action.time = 0.55; // Wings folded frame. Exact moment when wings are folded (checked on https://modelviewer.dev/editor/)
+          bird.action.timeScale = 0;
+        } else {
+          // Resume normal flapping
+          bird.action.paused = false;
+          bird.action.timeScale = 0.8 + Math.random() * 0.4;
+        }
+      }
+
+      /**
+       * Play crow sound at bird's 3D position with spatial audio
+       */
+      function playCrowAtBird(bird) {
+        if (!crowSound || isMuted) return;
+
+        const pos = bird.mesh.position;
+        const id = crowSound.play();
+
+        // Set 3D position
+        crowSound.pos(pos.x, pos.y, pos.z, id);
+
+        // Configure spatial falloff (HRTF for realistic 3D)
+        crowSound.pannerAttr(
+          {
+            panningModel: "HRTF",
+            distanceModel: "inverse",
+            refDistance: CONFIG.CROW_SOUND.refDistance,
+            maxDistance: CONFIG.CROW_SOUND.maxDistance,
+            rolloffFactor: CONFIG.CROW_SOUND.rolloffFactor,
+          },
+          id
+        );
+      }
+
+      /**
+       * Set bird to perching state on a random perch
+       */
+      function setPerching(bird) {
+        if (perchPositions.length === 0) return;
+
+        const perch =
+          perchPositions[Math.floor(Math.random() * perchPositions.length)];
+        bird.mesh.position.set(perch.x, perch.y - 0.2, perch.z); // slight offset so bird's feet connect at bottom
+        bird.mesh.rotation.set(0, Math.random() * Math.PI * 2, 0);
+        bird.state = STATE.PERCHING;
+        bird.stateTimer = randRange(
+          CONFIG.PERCH_DURATION_MIN,
+          CONFIG.PERCH_DURATION_MAX
+        );
+
+        // Fold wings while perching
+        setWingsFolded(bird, true);
+      }
+
+      /**
+       * Set bird to flying state
+       */
+      function setFlying(bird) {
+        bird.state = STATE.FLYING;
+        bird.stateTimer = randRange(
+          CONFIG.FLY_DURATION_MIN,
+          CONFIG.FLY_DURATION_MAX
+        );
+        bird.flyAngle = Math.random() * Math.PI * 2;
+        bird.flyHeight = randRange(
+          CONFIG.FLY_HEIGHT_MIN,
+          CONFIG.FLY_HEIGHT_MAX
+        );
+        bird.isPecking = false;
+
+        // Reset mouth if was pecking
+        if (bird.mouthBone) bird.mouthBone.rotation.z = 0;
+
+        // Unfold wings for flight
+        setWingsFolded(bird, false);
+      }
+
+      /**
+       * Spawn a single bird
+       */
+      function spawnBird() {
+        if (!birdPivot || !birdAnims) return null;
+
+        const mesh = SkeletonUtils.clone(birdPivot);
+        mesh.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+          }
+        });
+
+        const action = birdMixer.clipAction(birdAnims[0], mesh).play();
+        action.time = Math.random() * birdAnims[0].duration;
+
+        const bird = createBirdData(mesh, action);
+        setPerching(bird);
+
+        scene.add(mesh);
+        birds.push(bird);
+        return bird;
+      }
+
+      /**
+       * Update all birds each frame
+       */
+      function updateBirds(dt, time) {
+        for (const bird of birds) {
+          bird.stateTimer -= dt;
+
+          // Crow sound timing
+          bird.crowTimer -= dt;
+          if (bird.crowTimer <= 0) {
+            playCrowAtBird(bird);
+            bird.crowTimer = randRange(
+              CONFIG.CROW_SOUND.minInterval,
+              CONFIG.CROW_SOUND.maxInterval
+            );
+          }
+
+          // Calculate distance to camera
+          _birdToCamera.subVectors(camera.position, bird.mesh.position);
+          const distToCamera = _birdToCamera.length();
+
+          switch (bird.state) {
+            case STATE.PERCHING:
+              // Spook bird if player gets too close
+              if (distToCamera < CONFIG.SPOOK_DISTANCE) {
+                setFlying(bird);
+                break;
+              }
+
+              // Pecking animation when player is within range
+              if (distToCamera < CONFIG.PECK_DISTANCE) {
+                bird.isPecking = true;
+                if (bird.mouthBone) {
+                  bird.mouthBone.rotation.z = Math.sin(time * 15) * 0.3;
+                }
+              } else {
+                bird.isPecking = false;
+                if (bird.mouthBone) bird.mouthBone.rotation.z = 0;
+              }
+
+              // Time to fly?
+              if (bird.stateTimer <= 0) {
+                setFlying(bird);
+              }
+              break;
+
+            case STATE.FLYING:
+              // Circular flight pattern
+              bird.flyAngle += (bird.speed / bird.flyRadius) * dt;
+
+              const tx = Math.cos(bird.flyAngle) * bird.flyRadius;
+              const tz = Math.sin(bird.flyAngle) * bird.flyRadius;
+              const ty =
+                bird.flyHeight + Math.sin(time * 1.2 + bird.flyAngle) * 1.5;
+
+              _birdTarget.set(tx, ty, tz);
+              _birdDir.subVectors(_birdTarget, bird.mesh.position);
+
+              if (_birdDir.length() > 0.1) {
+                _birdDir.normalize().multiplyScalar(bird.speed * dt);
+                bird.mesh.position.add(_birdDir);
+              }
+
+              // Face flight direction
+              bird.mesh.rotation.y = Math.atan2(
+                Math.cos(bird.flyAngle + Math.PI / 2),
+                Math.sin(bird.flyAngle + Math.PI / 2)
+              );
+              // Gentle banking
+              bird.mesh.rotation.z = Math.sin(time * 2.5) * 0.08;
+
+              // Time to land?
+              if (bird.stateTimer <= 0) {
+                setPerching(bird);
+              }
+              break;
+          }
+        }
+
+        // Update Howler listener for spatial audio
+        Howler.pos(camera.position.x, camera.position.y, camera.position.z);
+        const forward = new THREE.Vector3();
+        camera.getWorldDirection(forward);
+        Howler.orientation(forward.x, forward.y, forward.z, 0, 1, 0);
+      }
+
+      // ==========================================================================
+      // LOAD BIRD MODEL
+      // ==========================================================================
+      const loader = new GLTFLoader();
+
+      async function loadBirdModel() {
+        try {
+          const gltf = await loader.loadAsync(
+            "https://raw.githubusercontent.com/red-reddington/public-assets/main/raven.glb"
+          );
+          if (!gltf.animations?.length) return;
+
+          const baseModel = gltf.scene;
+          birdAnims = gltf.animations;
+
+          // Scale to config size
+          const box = new THREE.Box3().setFromObject(baseModel);
+          const size = box.getSize(new THREE.Vector3());
+          const scale = CONFIG.BIRD_SCALE / Math.max(size.x, size.y, size.z);
+          baseModel.scale.setScalar(scale);
+          baseModel.updateMatrixWorld(true);
+
+          // Create pivot for alignment
+          birdPivot = new THREE.Group();
+          birdPivot.add(baseModel);
+
+          // Align bottom to origin
+          const bbox = new THREE.Box3().setFromObject(baseModel);
+          baseModel.position.y = -bbox.min.y;
+
+          // Dark raven color
+          baseModel.traverse((node) => {
+            if (node.isMesh) {
+              // Clone the material so we can modify it
+              node.material = node.material.clone();
+              node.material.side = THREE.DoubleSide;
+
+              // Boost bird visibility - if it's a MeshStandardMaterial, increase roughness and reduce metalness
+              if (node.material.isMeshStandardMaterial) {
+                node.material.roughness = Math.max(
+                  node.material.roughness,
+                  0.7
+                );
+                node.material.metalness = Math.min(
+                  node.material.metalness,
+                  0.5
+                );
+                // Add slight emissive to make birds pop
+                node.material.emissive = new THREE.Color(0x222222);
+                node.material.emissiveIntensity = 0.3;
+              }
+
+              node.castShadow = true;
+              node.receiveShadow = true;
+              node.frustumCulled = true;
+            }
+          });
+
+          // Create animation mixer
+          birdMixer = new THREE.AnimationMixer(baseModel);
+
+          // Spawn birds
+          for (let i = 0; i < CONFIG.BIRD_COUNT; i++) {
+            spawnBird();
+          }
+          console.log(`[Birds] Spawned ${CONFIG.BIRD_COUNT} ravens`);
+        } catch (err) {
+          console.error("Failed to load bird model:", err);
+        }
+      }
+
+      loadBirdModel();
+
+      // ==========================================================================
+      // THREE RECORDER CLASS
+      // Screen recording & screenshots with proper codec support
+      // ==========================================================================
+      class ThreeRecorder {
+        constructor(captureElement, options = {}) {
+          this.captureElement = captureElement || document.body;
+          this.canvas = options.canvas || null;
+          this.audioContext = options.audioContext || null;
+          this.audioDestination = options.audioDestination || null;
+
+          // Device detection - MUST come before _getSupportedMimeType()
+          this.isIOS =
+            /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+          this.isMobile =
+            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+              navigator.userAgent
+            );
+          this.isDesktop = !this.isMobile;
+
+          this.options = {
+            fps: options.fps || 30,
+            videoBitsPerSecond: options.videoBitsPerSecond || 8000000,
+            audioBitsPerSecond: options.audioBitsPerSecond || 128000,
+            filename: options.filename || "recording",
+            shareOnMobile: options.shareOnMobile !== false,
+            preferCurrentTab: options.preferCurrentTab !== false,
+            onStart: options.onStart || null,
+            onStop: options.onStop || null,
+            onError: options.onError || null,
+          };
+
+          this.mediaRecorder = null;
+          this.recordedChunks = [];
+          this.stream = null;
+          this.isRecording = false;
+          this.recordingMethod = null;
+          this.mimeType = this._getSupportedMimeType(); // Now isIOS is defined!
+          this.audioStreamDestination = null;
+
+          // Pending blob for iOS share (to preserve user gesture)
+          this._pendingShareBlob = null;
+          this._pendingShareFilename = null;
+
+          // Check what APIs are available
+          this.hasDisplayMedia = !!(
+            navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia
+          );
+          this.hasCaptureStream = !!(
+            HTMLCanvasElement.prototype.captureStream ||
+            HTMLCanvasElement.prototype.mozCaptureStream
+          );
+          this.hasMediaRecorder = !!window.MediaRecorder;
+        }
+
+        /**
+         * Find a supported mimeType for the current browser
+         */
+        _getSupportedMimeType() {
+          if (!window.MediaRecorder) return "video/mp4";
+
+          // iOS: let MediaRecorder choose automatically (don't specify codec)
+          if (this.isIOS) {
+            return null;
+          }
+
+          // Desktop: prefer webm which has better player compatibility
+          const types = [
+            "video/webm;codecs=vp9,opus",
+            "video/webm;codecs=vp8,opus",
+            "video/webm",
+            "video/mp4;codecs=h264,aac",
+            "video/mp4;codecs=h264",
+            "video/mp4",
+          ];
+
+          for (const type of types) {
+            if (MediaRecorder.isTypeSupported(type)) return type;
+          }
+
+          return "video/webm";
+        }
+
+        /**
+         * Start recording - tries getDisplayMedia first, falls back to captureStream
+         */
+        async start() {
+          if (this.isRecording) {
+            console.warn("[ThreeRecorder] Already recording");
+            return false;
+          }
+
+          // Try getDisplayMedia first (better quality, includes system audio)
+          if (this.hasDisplayMedia && !this.isIOS) {
+            const success = await this._startDisplayMedia();
+            if (success) return true;
+            console.log(
+              "[ThreeRecorder] getDisplayMedia failed, trying fallback..."
+            );
+          }
+
+          // Fallback to captureStream (works on iOS)
+          if (this.hasCaptureStream && this.canvas) {
+            const success = await this._startCaptureStream();
+            if (success) return true;
+          }
+
+          console.error("[ThreeRecorder] No recording method available");
+          if (this.options.onError) {
+            this.options.onError(new Error("No recording method available"));
+          }
+          return false;
+        }
+
+        /**
+         * Primary method: getDisplayMedia (desktop with audio)
+         */
+        async _startDisplayMedia() {
+          try {
+            const displayMediaOptions = {
+              video: {
+                displaySurface: "browser",
+                frameRate: { ideal: this.options.fps },
+              },
+              audio: {
+                suppressLocalAudioPlayback: false,
+              },
+              preferCurrentTab: this.options.preferCurrentTab,
+              selfBrowserSurface: "include",
+              systemAudio: "include",
+            };
+
+            this.stream = await navigator.mediaDevices.getDisplayMedia(
+              displayMediaOptions
+            );
+            this.recordingMethod = "displayMedia";
+
+            return this._setupMediaRecorder();
+          } catch (error) {
+            if (error.name === "NotAllowedError") {
+              console.log("[ThreeRecorder] User cancelled screen sharing");
+            } else {
+              console.warn(
+                "[ThreeRecorder] getDisplayMedia error:",
+                error.message
+              );
+            }
+            return false;
+          }
+        }
+
+        /**
+         * Fallback method: captureStream + Howler audio (iOS/mobile)
+         */
+        async _startCaptureStream() {
+          try {
+            const captureStream =
+              this.canvas.captureStream || this.canvas.mozCaptureStream;
+            const videoStream = captureStream.call(
+              this.canvas,
+              this.options.fps
+            );
+
+            let audioTrack = null;
+
+            // Get FRESH references to Howler's audio context and gain
+            // (they may not exist at construction time)
+            const ctx = Howler.ctx || this.audioContext;
+            const masterGain = Howler.masterGain || this.audioDestination;
+
+            if (ctx && ctx.state !== "closed") {
+              try {
+                this.audioStreamDestination =
+                  ctx.createMediaStreamDestination();
+
+                if (masterGain) {
+                  masterGain.connect(this.audioStreamDestination);
+                }
+
+                const audioTracks =
+                  this.audioStreamDestination.stream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                  audioTrack = audioTracks[0];
+                }
+              } catch (audioError) {
+                console.warn(
+                  "[ThreeRecorder] Could not capture audio:",
+                  audioError.message
+                );
+              }
+            }
+
+            // Combine video and audio tracks
+            const tracks = [...videoStream.getVideoTracks()];
+            if (audioTrack) {
+              tracks.push(audioTrack);
+              console.log("[ThreeRecorder] Recording with Howler audio");
+            } else {
+              console.log("[ThreeRecorder] Recording video only (no audio)");
+            }
+
+            this.stream = new MediaStream(tracks);
+            this.recordingMethod = "captureStream";
+
+            return this._setupMediaRecorder();
+          } catch (error) {
+            console.error("[ThreeRecorder] captureStream error:", error);
+            return false;
+          }
+        }
+
+        /**
+         * Common MediaRecorder setup for both methods
+         */
+        _setupMediaRecorder() {
+          this.recordedChunks = [];
+
+          const recorderOptions = {
+            videoBitsPerSecond: this.options.videoBitsPerSecond,
+            audioBitsPerSecond: this.options.audioBitsPerSecond,
+          };
+
+          if (this.mimeType) {
+            recorderOptions.mimeType = this.mimeType;
+          }
+
+          if (this.isIOS) {
+            this.mediaRecorder = new MediaRecorder(this.stream); // no options, no mime
+          } else {
+            if (this.mimeType) recorderOptions.mimeType = this.mimeType;
+            this.mediaRecorder = new MediaRecorder(
+              this.stream,
+              recorderOptions
+            );
+          }
+
+          this.mediaRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              this.recordedChunks.push(event.data);
+            }
+          };
+
+          this.mediaRecorder.onstop = () => {
+            this._handleStop(); // unified stop logic handles desktop, mobile, iOS
+          };
+
+          // Handle stream ending (user clicked browser's stop button)
+          if (this.recordingMethod === "displayMedia") {
+            const videoTrack = this.stream.getVideoTracks()[0];
+            if (videoTrack) {
+              videoTrack.onended = () => {
+                if (this.isRecording) {
+                  this.stop();
+                }
+              };
+            }
+          }
+
+          this.mediaRecorder.onerror = (event) => {
+            console.error("[ThreeRecorder] MediaRecorder error", event.error);
+            this.isRecording = false;
+            if (this.options.onError) {
+              this.options.onError(event.error);
+            }
+          };
+
+          // No timeslice on mobile - get single blob on stop
+          // iOS requires NO timeslice
+          if (this.isIOS) {
+            this.mediaRecorder.start(); // single chunk only
+          } else {
+            this.mediaRecorder.start(1000); // desktop timeslice OK
+          }
+          this.isRecording = true;
+
+          if (this.options.onStart) {
+            this.options.onStart();
+          }
+
+          const hasAudio = this.stream.getAudioTracks().length > 0;
+          console.log(
+            `[ThreeRecorder] Recording started via ${this.recordingMethod}${
+              hasAudio ? " with audio" : " (no audio)"
+            }`
+          );
+
+          return true;
+        }
+
+        /**
+         * Stop recording
+         */
+        stop() {
+          if (!this.mediaRecorder) {
+            console.warn("[ThreeRecorder] No MediaRecorder to stop");
+            return false;
+          }
+
+          // Check if we're actually recording or if the recorder is in a valid state
+          const recorderState = this.mediaRecorder.state;
+          if (recorderState === "inactive") {
+            console.warn("[ThreeRecorder] MediaRecorder already inactive");
+            this.isRecording = false;
+            return false;
+          }
+
+          // Set isRecording to false IMMEDIATELY to prevent double-stops
+          // and to ensure UI updates correctly
+          this.isRecording = false;
+
+          try {
+            this.mediaRecorder.stop();
+            console.log("[ThreeRecorder] MediaRecorder.stop() called");
+          } catch (e) {
+            console.warn("[ThreeRecorder] Error stopping MediaRecorder:", e);
+            // Even if stop fails, clean up
+            this._forceCleanup();
+          }
+
+          return true;
+        }
+
+        /**
+         * Force cleanup in case of errors
+         */
+        _forceCleanup() {
+          console.log("[ThreeRecorder] Force cleanup");
+
+          // Stop all tracks
+          if (this.stream) {
+            this.stream.getTracks().forEach((track) => {
+              try {
+                track.stop();
+              } catch (e) {
+                // ignore
+              }
+            });
+            this.stream = null;
+          }
+
+          // Clear state
+          this.mediaRecorder = null;
+          this.recordedChunks = [];
+          this.audioStreamDestination = null;
+          this.recordingMethod = null;
+          this.isRecording = false;
+        }
+
+        /**
+         * Pause recording
+         */
+        pause() {
+          if (this.mediaRecorder && this.isRecording) {
+            this.mediaRecorder.pause();
+            console.log("[ThreeRecorder] Recording paused");
+          }
+        }
+
+        /**
+         * Resume recording
+         */
+        resume() {
+          if (this.mediaRecorder && this.mediaRecorder.state === "paused") {
+            this.mediaRecorder.resume();
+            console.log("[ThreeRecorder] Recording resumed");
+          }
+        }
+
+        /**
+         * Handle stop - cleanup and save
+         */
+        async _handleStop() {
+          console.log("[ThreeRecorder] _handleStop called");
+
+          // Ensure isRecording is false
+          this.isRecording = false;
+
+          // Stop all tracks
+          if (this.stream) {
+            this.stream.getTracks().forEach((track) => {
+              try {
+                track.stop();
+              } catch (e) {
+                // ignore errors
+              }
+            });
+            this.stream = null;
+          }
+
+          // Disconnect audio capture
+          if (this.audioStreamDestination) {
+            const masterGain = Howler.masterGain || this.audioDestination;
+            if (masterGain) {
+              try {
+                masterGain.disconnect(this.audioStreamDestination);
+              } catch (e) {}
+            }
+          }
+
+          // Clear the media recorder reference
+          this.mediaRecorder = null;
+
+          // Use the passed blob if provided, otherwise build from recorded chunks
+          let blob = null;
+          if (this.recordedChunks.length > 0) {
+            // iOS: use mp4, Desktop: use mimeType or fallback to webm
+            const blobType = this.isIOS
+              ? "video/mp4"
+              : this.mimeType || "video/webm";
+            blob = new Blob(this.recordedChunks, { type: blobType });
+          }
+
+          // Clear recorded chunks
+          this.recordedChunks = [];
+          this.recordingMethod = null;
+
+          if (!blob || blob.size === 0) {
+            console.warn("[ThreeRecorder] No data recorded");
+            // Still call onStop to ensure UI updates (like hiding REC indicator)
+            if (this.options.onStop) {
+              this.options.onStop(null);
+            }
+            return;
+          }
+
+          console.log(
+            `[ThreeRecorder] Recording complete (${(
+              blob.size /
+              1024 /
+              1024
+            ).toFixed(2)} MB)`
+          );
+
+          const filename = this._getVideoFilename();
+
+          if (this.options.onStop) {
+            this.options.onStop(blob); // pass blob to main code
+          } else {
+            // fallback download for desktop
+            this.download(blob, filename);
+          }
+        }
+
+        /**
+         * Get video filename with appropriate extension
+         */
+        _getVideoFilename() {
+          const timestamp = Date.now();
+          // iOS: use .mp4, Desktop: check mimeType
+          const extension = this.isIOS
+            ? "mp4"
+            : this.mimeType && this.mimeType.includes("mp4")
+            ? "mp4"
+            : "webm";
+          return `${
+            this.options.filename
+          }-${timestamp}-${crypto.randomUUID()}.${extension}`;
+        }
+
+        /**
+         * Take a screenshot - uses html2canvas on desktop (captures HUD),
+         * falls back to direct canvas capture on iOS/mobile
+         *
+         * IMPORTANT: On iOS/mobile, this method is designed to be called
+         * directly from a user gesture (click/touch handler) to preserve
+         * the user gesture context for Web Share API.
+         */
+        screenshot(filenamePrefix = "screenshot") {
+          const filename = `${filenamePrefix}-${Date.now()}-${crypto.randomUUID()}.png`;
+
+          // On iOS/mobile, use synchronous approach to preserve user gesture
+          if (this.isIOS || this.isMobile) {
+            return this._mobileScreenshotSync(filename);
+          }
+
+          // Desktop: try html2canvas first (captures HUD overlays)
+          return this._desktopScreenshot(filename);
+        }
+
+        /**
+         * Mobile screenshot - synchronous blob creation to preserve user gesture
+         */
+        _mobileScreenshotSync(filename) {
+          const canvas =
+            this.canvas || this.captureElement.querySelector("canvas");
+          if (!canvas) {
+            console.error("[ThreeRecorder] No canvas found for screenshot");
+            return Promise.resolve(false);
+          }
+
+          // Use toDataURL for synchronous blob creation (preserves user gesture on iOS)
+          try {
+            const dataURL = canvas.toDataURL("image/png");
+            const byteString = atob(dataURL.split(",")[1]);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+              ia[i] = byteString.charCodeAt(i);
+            }
+            const blob = new Blob([ab], { type: "image/png" });
+
+            console.log(
+              `[ThreeRecorder] Screenshot captured (${(
+                blob.size / 1024
+              ).toFixed(1)} KB)`
+            );
+
+            // Try share, but gracefully fall back to download if not in valid user gesture
+            // (e.g., first click that focuses the window doesn't count as user gesture on iOS)
+            const file = new File([blob], filename, { type: blob.type });
+            const files = [file];
+
+            if (!navigator.canShare || !navigator.canShare({ files })) {
+              console.log(
+                "[ThreeRecorder] Web Share API not supported, downloading"
+              );
+              this.download(blob, filename);
+              return Promise.resolve(true);
+            }
+
+            // Attempt share - if it fails due to user gesture, download instead
+            return navigator
+              .share({ files })
+              .then(() => {
+                console.log("[ThreeRecorder] Shared successfully");
+                return true;
+              })
+              .catch((error) => {
+                if (error.name === "AbortError") {
+                  console.log("[ThreeRecorder] Share cancelled by user");
+                } else if (error.name === "NotAllowedError") {
+                  // First click focuses window - doesn't count as user gesture
+                  console.log(
+                    "[ThreeRecorder] Not in user gesture, downloading instead"
+                  );
+                  this.download(blob, filename);
+                } else {
+                  console.error("[ThreeRecorder] Share failed:", error);
+                  this.download(blob, filename);
+                }
+                return false;
+              });
+          } catch (error) {
+            console.error("[ThreeRecorder] Screenshot failed:", error);
+            return Promise.resolve(false);
+          }
+        }
+
+        /**
+         * Desktop screenshot using html2canvas
+         */
+        async _desktopScreenshot(filename) {
+          try {
+            const canvas = await html2canvas(this.captureElement, {
+              useCORS: true,
+              allowTaint: true,
+              scale: 2,
+              logging: false,
+              // Capture WebGL canvas content
+              onclone: (clonedDoc) => {
+                const originalCanvases =
+                  this.captureElement.querySelectorAll("canvas");
+                const clonedCanvases = clonedDoc.querySelectorAll("canvas");
+
+                originalCanvases.forEach((originalCanvas, index) => {
+                  if (clonedCanvases[index]) {
+                    const clonedCanvas = clonedCanvases[index];
+                    const ctx = clonedCanvas.getContext("2d");
+                    if (ctx) {
+                      try {
+                        ctx.drawImage(originalCanvas, 0, 0);
+                      } catch (e) {
+                        console.warn(
+                          "[ThreeRecorder] Could not copy canvas:",
+                          e
+                        );
+                      }
+                    }
+                  }
+                });
+              },
+            });
+
+            return new Promise((resolve) => {
+              canvas.toBlob((blob) => {
+                if (!blob) {
+                  console.error(
+                    "[ThreeRecorder] Failed to create screenshot blob"
+                  );
+                  resolve(false);
+                  return;
+                }
+
+                console.log(
+                  `[ThreeRecorder] Screenshot captured via html2canvas (${(
+                    blob.size / 1024
+                  ).toFixed(1)} KB)`
+                );
+
+                this.download(blob, filename);
+                resolve(true);
+              }, "image/png");
+            });
+          } catch (error) {
+            console.warn(
+              "[ThreeRecorder] html2canvas failed, using fallback:",
+              error.message
+            );
+            // Fallback to direct canvas for desktop too
+            return this._directCanvasScreenshot(filename);
+          }
+        }
+
+        /**
+         * Direct canvas screenshot (fallback for desktop if html2canvas fails)
+         */
+        _directCanvasScreenshot(filename) {
+          const canvas =
+            this.canvas || this.captureElement.querySelector("canvas");
+          if (!canvas) {
+            console.error("[ThreeRecorder] No canvas found for screenshot");
+            return Promise.resolve(false);
+          }
+
+          return new Promise((resolve) => {
+            // Try toBlob first
+            if (canvas.toBlob) {
+              try {
+                canvas.toBlob(
+                  (blob) => {
+                    if (blob) {
+                      console.log(
+                        `[ThreeRecorder] Screenshot captured (${(
+                          blob.size / 1024
+                        ).toFixed(1)} KB)`
+                      );
+                      this.download(blob, filename);
+                      resolve(true);
+                    } else {
+                      this._screenshotViaDataURL(canvas, filename, resolve);
+                    }
+                  },
+                  "image/png",
+                  1.0
+                );
+              } catch (e) {
+                this._screenshotViaDataURL(canvas, filename, resolve);
+              }
+            } else {
+              this._screenshotViaDataURL(canvas, filename, resolve);
+            }
+          });
+        }
+
+        /**
+         * Fallback screenshot via toDataURL (for compatibility)
+         */
+        _screenshotViaDataURL(canvas, filename, resolve) {
+          try {
+            const dataURL = canvas.toDataURL("image/png");
+            const byteString = atob(dataURL.split(",")[1]);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+              ia[i] = byteString.charCodeAt(i);
+            }
+            const blob = new Blob([ab], { type: "image/png" });
+
+            console.log(
+              `[ThreeRecorder] Screenshot captured (${(
+                blob.size / 1024
+              ).toFixed(1)} KB)`
+            );
+
+            this.download(blob, filename);
+            resolve(true);
+          } catch (error) {
+            console.error("[ThreeRecorder] Screenshot failed:", error);
+            resolve(false);
+          }
+        }
+
+        /**
+         * Download a blob as a file
+         */
+        download(blob, filename) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          link.style.display = "none";
+          document.body.appendChild(link);
+          link.click();
+
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+          }, 100);
+        }
+
+        /**
+         * Share using Web Share API (mobile) or fallback to download
+         */
+        async share(blob, filename) {
+          if (this.isDesktop) {
+            this.download(blob, filename);
+            return false;
+          }
+
+          const file = new File([blob], filename, { type: blob.type });
+          const files = [file];
+
+          if (!navigator.canShare || !navigator.canShare({ files })) {
+            console.log(
+              "[ThreeRecorder] Web Share API not supported, falling back to download"
+            );
+            this.download(blob, filename);
+            return false;
+          }
+
+          try {
+            // Just share files, no title - matches working implementation
+            await navigator.share({ files });
+            console.log("[ThreeRecorder] Shared successfully");
+            return true;
+          } catch (error) {
+            if (error.name === "AbortError") {
+              console.log("[ThreeRecorder] Share cancelled by user");
+            } else {
+              console.error("[ThreeRecorder] Share failed:", error);
+              this.download(blob, filename);
+            }
+            return false;
+          }
+        }
+
+        /**
+         * Check if any recording method is supported
+         */
+        static isSupported() {
+          const hasMediaRecorder = !!window.MediaRecorder;
+          const hasDisplayMedia = !!(
+            navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia
+          );
+          const hasCaptureStream = !!(
+            HTMLCanvasElement.prototype.captureStream ||
+            HTMLCanvasElement.prototype.mozCaptureStream
+          );
+
+          return hasMediaRecorder && (hasDisplayMedia || hasCaptureStream);
+        }
+
+        /**
+         * Get recording state
+         */
+        get state() {
+          if (!this.mediaRecorder) return "inactive";
+          return this.mediaRecorder.state;
+        }
+      }
+
+      // ==========================================================================
+      // RECORDER INSTANCE
+      // ==========================================================================
+      let recorder = null; // Video recorder instance
+      // Initialize video/screenshot recorder
+      // Uses getDisplayMedia for video (captures entire tab including HTML)
+      // Uses html2canvas for screenshots (captures canvas + HUD overlays)
+      if (ThreeRecorder.isSupported()) {
+        recorder = new ThreeRecorder(document.body, {
+          canvas: renderer.domElement, // For captureStream fallback
+          audioContext: Howler.ctx, // For audio capture in fallback
+          audioDestination: Howler.masterGain, // Howler's master gain node
+          fps: 60,
+          videoBitsPerSecond: 12000000,
+          audioBitsPerSecond: 192000,
+          shareOnMobile: true,
+          preferCurrentTab: true,
+          filename: "graveyard",
+          onStart: () => {
+            btnRecord.classList.add("recording");
+            btnRecord.textContent = "⏹ Stop";
+            recIndicator.classList.add("show");
+            showToast("Recording started");
+          },
+          onStop: (blob) => {
+            btnRecord.classList.remove("recording");
+            btnRecord.textContent = "⏺ Record";
+            recIndicator.classList.remove("show");
+
+            // Handle null blob (recording error/no data)
+            if (!blob) {
+              console.warn("[Recorder] No recording data");
+              return;
+            }
+
+            console.log("[Recorder] Recording stopped, blob size:", blob.size);
+
+            // Let recorder handle share/download
+            if (recorder.isMobile) {
+              recorder.share(blob, recorder._getVideoFilename()).catch((e) => {
+                console.log("[Recorder] Share failed, downloading instead");
+                recorder.download(blob, recorder._getVideoFilename());
+              });
+            } else {
+              recorder.download(blob, recorder._getVideoFilename());
+            }
+            showToast(
+              `Recording saved (${(blob.size / 1024 / 1024).toFixed(1)} MB)`
+            );
+          },
+          onError: (err) => {
+            btnRecord.classList.remove("recording");
+            btnRecord.textContent = "⏺ Record";
+            recIndicator.classList.remove("show");
+            showToast(`Recording error: ${err.message}`);
+          },
+        });
+      }
+
+      // ==========================================================================
+      // MOBILE TOUCH CONTROLS (nipplejs)
+      // ==========================================================================
+      let leftJoystick = null;
+      let rightJoystick = null;
+      const joystickMove = { x: 0, y: 0 };
+      const joystickLook = { x: 0, y: 0 };
+      let cameraPitch = 0;
+      let touchControlsEnabled = false;
+
+      /**
+       * Initialize nipplejs joysticks
+       */
+      function initJoysticks() {
+        const leftZone = document.getElementById("joystick-left");
+        const rightZone = document.getElementById("joystick-right");
+
+        leftZone.addEventListener("touchstart", ensureAudio, { once: true });
+        leftZone.addEventListener("mousedown", ensureAudio, { once: true });
+        rightZone.addEventListener("touchstart", ensureAudio, { once: true });
+        rightZone.addEventListener("mousedown", ensureAudio, { once: true });
+
+        const unitValue = parseFloat(
+          getComputedStyle(mobileControls).getPropertyValue("--unit")
+        );
+
+        // Left joystick (movement)
+        leftJoystick = nipplejs.create({
+          zone: leftZone,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          restJoystick: true,
+          size: unitValue * 10,
+        });
+
+        leftJoystick.on("move", (evt, data) => {
+          joystickMove.x = data.vector.x;
+          joystickMove.y = data.vector.y;
+          keys.ShiftLeft = data.force > CONFIG.TOUCH_SPRINT_THRESHOLD;
+        });
+
+        leftJoystick.on("end", () => {
+          joystickMove.x = 0;
+          joystickMove.y = 0;
+          keys.ShiftLeft = false;
+        });
+
+        // Right joystick (look)
+        rightJoystick = nipplejs.create({
+          zone: rightZone,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          restJoystick: true,
+          size: unitValue * 10,
+        });
+
+        rightJoystick.on("move", (evt, data) => {
+          joystickLook.x = data.vector.x;
+          joystickLook.y = data.vector.y;
+        });
+
+        rightJoystick.on("end", () => {
+          joystickLook.x = 0;
+          joystickLook.y = 0;
+        });
+      }
+
+      /**
+       * Enable/disable touch controls
+       */
+      function setTouchControls(enabled) {
+        touchControlsEnabled = enabled;
+
+        if (enabled) {
+          controls.enabled = false; // disable OrbitControls
+          keyMappings.style.display = "none";
+          touchMappings.style.display = "block";
+          mobileControls.style.display = "block";
+
+          if (!leftJoystick && !rightJoystick) {
+            initJoysticks();
+          }
+        } else {
+          controls.enabled = true;
+          keyMappings.style.display = "block";
+          touchMappings.style.display = "none";
+          mobileControls.style.display = "none";
+          cameraPitch = 0;
+        }
+      }
+
+      // Auto-enable touch controls on touch-only devices
+      if (isTouchOnly) {
+        optTouchControls.checked = true;
+        setTouchControls(true);
+      }
+
+      // ==========================================================================
+      // OPTIONS PANEL
+      // ==========================================================================
+
+      // Collapse/expand
+      optionsHeader.addEventListener("click", () => {
+        optionsPanel.classList.toggle("collapsed");
+      });
+
+      // Touch controls toggle
+      optTouchControls.addEventListener("change", (e) => {
+        setTouchControls(e.target.checked);
+      });
+
+      // Shadows toggle
+      optShadows.addEventListener("change", (e) => {
+        renderer.shadowMap.enabled = e.target.checked;
+        moonLight.castShadow = e.target.checked;
+
+        // Need to update all objects
+        scene.traverse((obj) => {
+          if (obj.isMesh) {
+            obj.material.needsUpdate = true;
+          }
+        });
+      });
+
+      // ==========================================================================
+      // UI EVENT HANDLERS
+      // ==========================================================================
+      btnRecord.addEventListener("click", () => {
+        if (recorder) {
+          if (recorder.isRecording) {
+            recorder.stop();
+          } else {
+            ensureAudio();
+            recorder.start();
+          }
+        }
+      });
+
+      btnScreenshot.addEventListener("click", () => {
+        // Force render to preserve WebGL buffer content
+        if (renderer && scene && camera) {
+          renderer.render(scene, camera);
+        }
+        showToast("Capturing screenshot...");
+        recorder.screenshot("graveyard");
+        showToast("Screenshot saved!");
+      });
+
+      btnMute.addEventListener("click", () => {
+        ensureAudio();
+        toggleMute();
+      });
+
+      // ==========================================================================
+      // INPUT HANDLING
+      // ==========================================================================
+      const keys = {};
+
+      window.addEventListener("keydown", (e) => {
+        keys[e.code] = true;
+      });
+      window.addEventListener("keyup", (e) => {
+        keys[e.code] = false;
+      });
+
+      // Pre-allocated movement vectors
+      const _moveDir = new THREE.Vector3();
+      const _moveForward = new THREE.Vector3();
+      const _moveRight = new THREE.Vector3();
+      const _up = new THREE.Vector3(0, 1, 0);
+      const _dir = new THREE.Vector3();
+      const _right = new THREE.Vector3();
+
+      /**
+       * Update player movement from keyboard and joystick input
+       */
+      function updateMovement(dt) {
+        // ------------------------------------------------------------------
+        // FLAT forward/right vectors (movement NEVER uses pitch)
+        // ------------------------------------------------------------------
+        camera.getWorldDirection(_moveForward);
+        _moveForward.y = 0;
+        _moveForward.normalize();
+
+        _moveRight.crossVectors(_up, _moveForward).normalize();
+
+        // ------------------------------------------------------------------
+        // INPUT
+        // ------------------------------------------------------------------
+        let moveX = 0;
+        let moveZ = 0;
+        let rotateInput = 0;
+
+        if (keys["KeyW"] || keys["ArrowUp"]) moveZ += 1;
+        if (keys["KeyS"] || keys["ArrowDown"]) moveZ -= 1;
+        if (keys["KeyA"] || keys["ArrowLeft"]) moveX += 1;
+        if (keys["KeyD"] || keys["ArrowRight"]) moveX -= 1;
+
+        if (keys["KeyQ"]) rotateInput += 1;
+        if (keys["KeyE"]) rotateInput -= 1;
+
+        // Joystick movement
+        moveX -= joystickMove.x;
+        moveZ += joystickMove.y;
+
+        // Touch: right joystick rotates
+        if (touchControlsEnabled) {
+          rotateInput -= joystickLook.x;
+        }
+
+        // ------------------------------------------------------------------
+        // YAW ROTATION ONLY (no pitch here)
+        // ------------------------------------------------------------------
+        if (rotateInput !== 0) {
+          const rotAmt = rotateInput * CONFIG.ROTATE_SPEED * dt;
+
+          _dir.subVectors(controls.target, camera.position);
+          const distance = _dir.length();
+
+          _dir.y = 0;
+          _dir.normalize();
+          _dir.applyAxisAngle(_up, rotAmt);
+
+          if (touchControlsEnabled) {
+            if (Math.abs(joystickLook.y) > CONFIG.DEADZONE) {
+              cameraPitch += joystickLook.y * CONFIG.CAMERA_PITCH_SPEED * dt;
+              cameraPitch = THREE.MathUtils.clamp(
+                cameraPitch,
+                CONFIG.CAMERA_PITCH_MIN,
+                CONFIG.CAMERA_PITCH_MAX
+              );
+            }
+            _right.crossVectors(_dir, _up).normalize();
+            _dir.applyAxisAngle(_right, cameraPitch);
+          }
+
+          _dir.setLength(distance);
+          controls.target.copy(camera.position).add(_dir);
+        }
+
+        // ------------------------------------------------------------------
+        // APPLY MOVEMENT (XZ ONLY)
+        // ------------------------------------------------------------------
+        if (moveX !== 0 || moveZ !== 0) {
+          const len = Math.hypot(moveX, moveZ);
+          if (len > 1) {
+            moveX /= len;
+            moveZ /= len;
+          }
+
+          let speed = CONFIG.MOVE_SPEED;
+          if (keys["ShiftLeft"] || keys["ShiftRight"]) {
+            speed *= CONFIG.SPRINT_MULTIPLIER;
+          }
+
+          _moveDir.set(0, 0, 0);
+          _moveDir.addScaledVector(_moveForward, moveZ);
+          _moveDir.addScaledVector(_moveRight, moveX);
+          _moveDir.normalize();
+
+          const amt = speed * dt;
+
+          camera.position.x += _moveDir.x * amt;
+          camera.position.z += _moveDir.z * amt;
+
+          controls.target.x += _moveDir.x * amt;
+          controls.target.z += _moveDir.z * amt;
+        }
+
+        // ------------------------------------------------------------------
+        // WORLD BOUNDARY CLAMP (XZ ONLY)
+        // ------------------------------------------------------------------
+
+        const distFromCenter = Math.sqrt(
+          camera.position.x * camera.position.x +
+            camera.position.z * camera.position.z
+        );
+
+        if (distFromCenter > CONFIG.WORLD_RADIUS) {
+          const scale = CONFIG.WORLD_RADIUS / distFromCenter;
+          const dx = camera.position.x - camera.position.x * scale;
+          const dz = camera.position.z - camera.position.z * scale;
+
+          camera.position.x *= scale;
+          camera.position.z *= scale;
+          controls.target.x -= dx;
+          controls.target.z -= dz;
+        }
+      }
+
+      // ==========================================================================
+      // RESIZE HANDLER
+      // ==========================================================================
+      function onResize() {
+        const dpr = Math.min(devicePixelRatio, isTouchOnly ? 1 : 1.5);
+        renderer.setPixelRatio(dpr);
+        renderer.setSize(innerWidth, innerHeight);
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+      }
+      window.addEventListener("resize", onResize);
+
+      // ==========================================================================
+      // RENDER LOOP
+      // ==========================================================================
+      const clock = new THREE.Clock();
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const dt = Math.min(clock.getDelta(), 0.05);
+        const time = clock.getElapsedTime();
+
+        updateMovement(dt);
+        controls.update();
+
+        if (birdMixer) birdMixer.update(dt);
+        updateBirds(dt, time);
+
+        renderer.render(scene, camera);
+      }
+
+      animate();
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+
+      // Expose for debugging
+      window.recorder = recorder;
+      window.THREE = THREE;
+    </script>
+  </body>
+</html>

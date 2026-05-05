@@ -1,0 +1,1439 @@
+<!-- https://codepen.io/the-red-reddington/full/MYKRZNN -->
+<!-- https://discourse.threejs.org/t/complete-sky-system-for-three-js-skybox-sun-moon-day-night-cycle-clouds-stars-lensflares/88311 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Complete Sky System for Three.js (Skybox, Sun/Moon, Day/Night Cycle, Clouds, Stars & Lensflare)</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #000;
+    }
+    #container {
+      width: 100vw;
+      height: 100vh;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: monospace;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      max-width: 300px;
+      backdrop-filter: blur(5px);
+    }
+    #controls strong {
+      color: #4fc3f7;
+    }
+    .control-section {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .control-row {
+      display: flex;
+      align-items: center;
+      margin: 8px 0;
+      gap: 10px;
+    }
+    .control-row label {
+      flex: 1;
+      color: #aaa;
+    }
+    .control-row input[type="range"] {
+      flex: 2;
+      cursor: pointer;
+    }
+    .control-row input[type="number"] {
+      width: 60px;
+      padding: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .control-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+    .time-display {
+      font-size: 18px;
+      font-weight: bold;
+      color: #4fc3f7;
+      text-align: center;
+      padding: 10px;
+      background: rgba(79, 195, 247, 0.1);
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    .time-of-day {
+      font-size: 14px;
+      color: #ffd700;
+      text-align: center;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div id="controls">
+    <strong>Movement Controls</strong><br />
+    <span style="color: #aaa;">WASD - Move (player-relative)</span><br />
+    <span style="color: #aaa;">Q/E - Rotate Player</span><br />
+    <span style="color: #aaa;">Mouse Drag - Rotate View</span><br />
+    <span style="color: #aaa;">Scroll - Zoom</span>
+    
+    <div class="control-section">
+      <strong>Time Controls</strong>
+      <div class="time-display" id="timeDisplay">12:00 PM</div>
+      <div class="time-of-day" id="timeOfDayDisplay">Midday</div>
+      <div class="control-row">
+        <label>Hour:</label>
+        <input type="range" id="hourSlider" min="0" max="23" value="12" step="1" />
+        <input type="number" id="hourInput" min="0" max="23" value="12" />
+      </div>
+      <div class="control-row">
+        <label>Minute:</label>
+        <input type="range" id="minuteSlider" min="0" max="59" value="0" step="1" />
+        <input type="number" id="minuteInput" min="0" max="59" value="0" />
+      </div>
+    </div>
+    
+    <div class="control-section">
+      <strong>Time Animation</strong>
+      <div class="control-row">
+        <label>Timescale:</label>
+        <input type="range" id="timescaleSlider" min="0" max="1200" value="1200" step="1" />
+        <span id="timescaleValue" style="color: #4fc3f7;">1200x</span>
+      </div>
+      <div style="color: #666; font-size: 10px; margin-top: 5px;">
+        60x = 1 game min/sec
+      </div>
+    </div>
+    
+    <div class="control-section">
+      <strong>Debug Helpers</strong>
+      <div class="control-row">
+        <label>Shadow Camera:</label>
+        <input type="checkbox" id="shadowHelperToggle" />
+      </div>
+      <div class="control-row">
+        <label>World Axes:</label>
+        <input type="checkbox" id="axesHelperToggle" />
+      </div>
+      <div class="control-row">
+        <label>Player Axes:</label>
+        <input type="checkbox" id="playerAxesToggle" checked="true" />
+      </div>
+    </div>
+  </div>
+
+  <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+  
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ============================================================================
+    // LENSFLARE - red-reddington
+    // Clone of three.js Lensflare with modifications for skybox sun tracking
+    // ============================================================================
+
+    class Lensflare extends THREE.Mesh {
+      constructor() {
+        const geometry = Lensflare.Geometry;
+        super(geometry, new THREE.MeshBasicMaterial({ opacity: 0, transparent: true, fog: false }));
+
+        this.isLensflare = true;
+        this.type = "Lensflare";
+        this.frustumCulled = false;
+        this.renderOrder = Infinity;
+
+        const positionScreen = new THREE.Vector3();
+        const positionView = new THREE.Vector3();
+
+        const tempMap = new THREE.FramebufferTexture(16, 16);
+        const occlusionMap = new THREE.FramebufferTexture(16, 16);
+
+        let currentType = THREE.UnsignedByteType;
+
+        const material1a = new THREE.RawShaderMaterial({
+          uniforms: {
+            scale: { value: null },
+            screenPosition: { value: null },
+          },
+          vertexShader: `
+            precision highp float;
+            uniform vec3 screenPosition;
+            uniform vec2 scale;
+            attribute vec3 position;
+            void main() {
+              gl_Position = vec4( position.xy * scale + screenPosition.xy, screenPosition.z, 1.0 );
+            }`,
+          fragmentShader: `
+            precision highp float;
+            void main() {
+              gl_FragColor = vec4( 1.0, 0.0, 1.0, 1.0 );
+            }`,
+          depthTest: true,
+          depthWrite: false,
+          transparent: false,
+          fog: false,
+        });
+
+        const material1b = new THREE.RawShaderMaterial({
+          uniforms: {
+            map: { value: tempMap },
+            scale: { value: null },
+            screenPosition: { value: null },
+          },
+          vertexShader: `
+            precision highp float;
+            uniform vec3 screenPosition;
+            uniform vec2 scale;
+            attribute vec3 position;
+            attribute vec2 uv;
+            varying vec2 vUV;
+            void main() {
+              vUV = uv;
+              gl_Position = vec4( position.xy * scale + screenPosition.xy, screenPosition.z, 1.0 );
+            }`,
+          fragmentShader: `
+            precision highp float;
+            uniform sampler2D map;
+            varying vec2 vUV;
+            void main() {
+              gl_FragColor = texture2D( map, vUV );
+            }`,
+          depthTest: false,
+          depthWrite: false,
+          transparent: false,
+          fog: false,
+        });
+
+        const mesh1 = new THREE.Mesh(geometry, material1a);
+        const elements = [];
+        const shader = LensflareElement.Shader;
+
+        const material2 = new THREE.RawShaderMaterial({
+          name: shader.name,
+          uniforms: {
+            map: { value: null },
+            occlusionMap: { value: occlusionMap },
+            color: { value: new THREE.Color(0xffffff) },
+            scale: { value: new THREE.Vector2() },
+            screenPosition: { value: new THREE.Vector3() },
+          },
+          vertexShader: shader.vertexShader,
+          fragmentShader: shader.fragmentShader,
+          blending: THREE.AdditiveBlending,
+          transparent: true,
+          depthWrite: false,
+          fog: false,
+        });
+
+        const mesh2 = new THREE.Mesh(geometry, material2);
+
+        this.addElement = function (element) {
+          elements.push(element);
+        };
+
+        const scale = new THREE.Vector2();
+        const screenPositionPixels = new THREE.Vector2();
+        const validArea = new THREE.Box2();
+        const viewport = new THREE.Vector4();
+
+        this.onBeforeRender = function (renderer, scene, camera) {
+          renderer.getCurrentViewport(viewport);
+
+          const renderTarget = renderer.getRenderTarget();
+          const type = renderTarget !== null ? renderTarget.texture.type : THREE.UnsignedByteType;
+
+          if (currentType !== type) {
+            tempMap.dispose();
+            occlusionMap.dispose();
+            tempMap.type = occlusionMap.type = type;
+            currentType = type;
+          }
+
+          const invAspect = viewport.w / viewport.z;
+          const halfViewportWidth = viewport.z / 2.0;
+          const halfViewportHeight = viewport.w / 2.0;
+
+          let size = 16 / viewport.w;
+          scale.set(size * invAspect, size);
+
+          validArea.min.set(viewport.x - 100, viewport.y - 100);
+          validArea.max.set(viewport.x + (viewport.z + 100), viewport.y + (viewport.w + 100));
+
+          // red-reddington mod - override view position for occlusion test
+          if (this._screenPositionOverridden === true) {
+            positionScreen.copy(this._overriddenScreenPosition);
+            const invProj = camera.projectionMatrix.clone().invert();
+            positionView.copy(positionScreen).applyMatrix4(invProj);
+          } else {
+            positionView.setFromMatrixPosition(this.matrixWorld);
+            positionView.applyMatrix4(camera.matrixWorldInverse);
+          }
+
+          if (positionView.z > 0) return; // lensflare is behind the camera
+
+          // red-reddington mod - allow Skybox to override screen-space sun position
+          if (this._screenPositionOverridden === true) {
+            positionScreen.set(
+              this._overriddenScreenPosition.x,
+              this._overriddenScreenPosition.y,
+              this._overriddenScreenPosition.z
+            );
+          } else {
+            positionScreen.copy(positionView).applyMatrix4(camera.projectionMatrix);
+          }
+
+          screenPositionPixels.x = viewport.x + positionScreen.x * halfViewportWidth + halfViewportWidth - 8;
+          screenPositionPixels.y = viewport.y + positionScreen.y * halfViewportHeight + halfViewportHeight - 8;
+
+          if (validArea.containsPoint(screenPositionPixels)) {
+            renderer.copyFramebufferToTexture(tempMap, screenPositionPixels);
+
+            let uniforms = material1a.uniforms;
+            uniforms["scale"].value = scale;
+            uniforms["screenPosition"].value = positionScreen;
+
+            renderer.renderBufferDirect(camera, null, geometry, material1a, mesh1, null);
+            renderer.copyFramebufferToTexture(occlusionMap, screenPositionPixels);
+
+            uniforms = material1b.uniforms;
+            uniforms["scale"].value = scale;
+            uniforms["screenPosition"].value = positionScreen;
+
+            renderer.renderBufferDirect(camera, null, geometry, material1b, mesh1, null);
+
+            const vecX = -positionScreen.x * 2;
+            const vecY = -positionScreen.y * 2;
+
+            for (let i = 0, l = elements.length; i < l; i++) {
+              const element = elements[i];
+              const uniforms = material2.uniforms;
+
+              uniforms["color"].value.copy(element.color);
+              uniforms["map"].value = element.texture;
+              uniforms["screenPosition"].value.x = positionScreen.x + vecX * element.distance;
+              uniforms["screenPosition"].value.y = positionScreen.y + vecY * element.distance;
+
+              size = element.size / viewport.w;
+              const invAspect = viewport.w / viewport.z;
+
+              uniforms["scale"].value.set(size * invAspect, size);
+              material2.uniformsNeedUpdate = true;
+
+              renderer.renderBufferDirect(camera, null, geometry, material2, mesh2, null);
+            }
+          }
+        };
+
+        this.dispose = function () {
+          material1a.dispose();
+          material1b.dispose();
+          material2.dispose();
+          tempMap.dispose();
+          occlusionMap.dispose();
+          for (let i = 0, l = elements.length; i < l; i++) {
+            elements[i].texture.dispose();
+          }
+        };
+      }
+    }
+
+    Lensflare.Geometry = (function () {
+      const geometry = new THREE.BufferGeometry();
+      const float32Array = new Float32Array([
+        -1, -1, 0, 0, 0, 1, -1, 0, 1, 0, 1, 1, 0, 1, 1, -1, 1, 0, 0, 1,
+      ]);
+      const interleavedBuffer = new THREE.InterleavedBuffer(float32Array, 5);
+      geometry.setIndex([0, 1, 2, 0, 2, 3]);
+      geometry.setAttribute("position", new THREE.InterleavedBufferAttribute(interleavedBuffer, 3, 0, false));
+      geometry.setAttribute("uv", new THREE.InterleavedBufferAttribute(interleavedBuffer, 2, 3, false));
+      return geometry;
+    })();
+
+    class LensflareElement {
+      constructor(texture, size = 1, distance = 0, color = new THREE.Color(0xffffff)) {
+        this.texture = texture;
+        this.size = size;
+        this.distance = distance;
+        this.color = color;
+      }
+    }
+
+    LensflareElement.Shader = {
+      name: "LensflareElementShader",
+      uniforms: {
+        map: { value: null },
+        occlusionMap: { value: null },
+        color: { value: null },
+        scale: { value: null },
+        screenPosition: { value: null },
+      },
+      vertexShader: `
+        precision highp float;
+        uniform vec3 screenPosition;
+        uniform vec2 scale;
+        uniform sampler2D occlusionMap;
+        attribute vec3 position;
+        attribute vec2 uv;
+        varying vec2 vUV;
+        varying float vVisibility;
+        void main() {
+          vUV = uv;
+          vec2 pos = position.xy;
+          vec4 visibility = texture2D( occlusionMap, vec2( 0.1, 0.1 ) );
+          visibility += texture2D( occlusionMap, vec2( 0.5, 0.1 ) );
+          visibility += texture2D( occlusionMap, vec2( 0.9, 0.1 ) );
+          visibility += texture2D( occlusionMap, vec2( 0.9, 0.5 ) );
+          visibility += texture2D( occlusionMap, vec2( 0.9, 0.9 ) );
+          visibility += texture2D( occlusionMap, vec2( 0.5, 0.9 ) );
+          visibility += texture2D( occlusionMap, vec2( 0.1, 0.9 ) );
+          visibility += texture2D( occlusionMap, vec2( 0.1, 0.5 ) );
+          visibility += texture2D( occlusionMap, vec2( 0.5, 0.5 ) );
+          vVisibility =        visibility.r / 9.0;
+          vVisibility *= 1.0 - visibility.g / 9.0;
+          vVisibility *=       visibility.b / 9.0;
+          gl_Position = vec4( ( pos * scale + screenPosition.xy ).xy, screenPosition.z, 1.0 );
+        }`,
+      fragmentShader: `
+        precision highp float;
+        uniform sampler2D map;
+        uniform vec3 color;
+        varying vec2 vUV;
+        varying float vVisibility;
+        void main() {
+          vec4 texture = texture2D( map, vUV );
+          texture.a *= vVisibility;
+          gl_FragColor = texture;
+          gl_FragColor.rgb *= color;
+        }`,
+    };
+
+    // ============================================================================
+    // SHADER DEFINITIONS - red-reddington
+    // ============================================================================
+    
+    const SkyShader = {
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        varying vec3 vDirection;
+
+        void main() {
+          vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+          vWorldPosition = worldPosition.xyz;
+          vDirection = normalize(worldPosition.xyz);
+
+          vec4 pos = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          gl_Position = pos.xyww;
+        }
+      `,
+      fragmentShader: `
+        precision mediump float;
+        varying vec3 vWorldPosition;
+        varying vec3 vDirection;
+
+        uniform float uSunAzimuth;
+        uniform float uSunElevation;
+        uniform vec3 uSunColor;
+        uniform vec3 uSkyColorLow;
+        uniform vec3 uSkyColorHigh;
+        uniform float uSunSize;
+
+        void main() {
+          vec3 direction = normalize(vWorldPosition);
+
+          vec3 skyColor = mix(uSkyColorLow, uSkyColorHigh, clamp(direction.y * 0.5 + 0.5, 0.0, 1.0));
+
+          float azimuth = radians(uSunAzimuth);
+          float elevation = radians(uSunElevation);
+          vec3 sunDirection = normalize(vec3(
+            cos(elevation) * sin(azimuth),
+            sin(elevation),
+            cos(elevation) * cos(azimuth)
+          ));
+
+          float sunIntensity = pow(max(dot(direction, sunDirection), 0.0), 1000.0 / uSunSize);
+          vec3 sunColor = uSunColor * sunIntensity;
+
+          gl_FragColor = vec4(skyColor + sunColor, 1.0);
+        }
+      `
+    };
+
+    const CloudsShader = {
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vWorldPosition;
+
+        void main() {
+            vUv = uv;
+            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+            vWorldPosition = worldPosition.xyz;
+
+            vec4 pos = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            gl_Position = pos.xyww;
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uCloudColor;
+        uniform vec3 cameraPos;
+
+        varying vec2 vUv;
+        varying vec3 vWorldPosition;
+
+        vec3 permute(vec3 x) {
+            return mod(((x*34.0)+1.0)*x, 289.0);
+        }
+
+        float snoise(vec2 v){
+            const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+            vec2 i  = floor(v + dot(v, C.yy) );
+            vec2 x0 = v - i + dot(i, C.xx);
+            vec2 i1;
+            i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+            vec4 x12 = x0.xyxy + C.xxzz;
+            x12.xy -= i1;
+            i = mod(i, 289.0);
+            vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+            vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+            m = m*m ;
+            m = m*m ;
+            vec3 x = 2.0 * fract(p * C.www) - 1.0;
+            vec3 h = abs(x) - 0.5;
+            vec3 ox = floor(x + 0.5);
+            vec3 a0 = x - ox;
+            m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+            vec3 g;
+            g.x  = a0.x  * x0.x  + h.x  * x0.y;
+            g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+            return 130.0 * dot(m, g);
+        }
+
+        void main() {
+            vec2 cloudUV = vUv * 6.0 + vec2(
+              cameraPos.x / 1000.0 + uTime / 100.0,
+              cameraPos.z / 1000.0
+            );
+
+            float n = snoise(cloudUV * 3.0 + uTime / 50.0) * 0.6
+                    + snoise(cloudUV * 6.0 + uTime / 40.0) * 0.3
+                    + snoise(cloudUV * 12.0 + uTime / 30.0) * 0.1;
+
+            float cloudDensity = smoothstep(0.1, 0.9, 0.5 * n + 0.5);
+            float horizonFade = smoothstep(0.0, 0.3, 1.0 - abs(vUv.y - 0.5) * 2.0);
+            float edgeFade = (1.0 - pow(abs(vUv.x - 0.5) * 2.0, 2.0)) *
+                            (1.0 - pow(abs(vUv.y - 0.5) * 2.0, 2.0));
+
+            float finalOpacity = cloudDensity * horizonFade * edgeFade * 0.7;
+            vec3 finalColor = uCloudColor;
+
+            gl_FragColor = vec4(finalColor, finalOpacity);
+
+            if (finalOpacity < 0.01) discard;
+        }
+      `
+    };
+
+    const StarsShader = {
+      vertexShader: `
+        attribute float size;
+        attribute vec3 color;
+        attribute float phase;
+        attribute float freq;
+        varying vec3 vColor;
+        varying float vDepth;
+        uniform float time;
+
+        void main() {
+          vColor = color;
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vDepth = mvPosition.z;
+
+          float twinkle = sin(time * freq + phase) * 0.2 + 0.8;
+          gl_PointSize = size * twinkle;
+
+          vec4 pos = projectionMatrix * mvPosition;
+          pos.z = pos.w * 0.999999;
+          gl_Position = pos;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vDepth;
+
+        void main() {
+          vec2 center = gl_PointCoord - vec2(0.5);
+          float dist = length(center) * 2.0;
+
+          float core = (1.0 - smoothstep(0.0, 0.2, dist)) * 0.8;
+          float glow = (1.0 - smoothstep(0.2, 0.5, dist)) * 0.1;
+
+          float brightness = core + glow;
+
+          vec3 finalColor = mix(vec3(1.0), vColor, 0.8) * 0.6;
+
+          float reflectionFactor = smoothstep(0.0, -1000.0, vDepth) * 0.5;
+
+          gl_FragColor = vec4(finalColor, brightness * reflectionFactor);
+        }
+      `
+    };
+
+    // ============================================================================
+    // TEXTURE LOADER - red-reddington
+    // ============================================================================
+
+    function createLensflareTextures() {
+      const textureFlare0 = createFlareTexture(0);
+      const textureFlare3 = createFlareTexture(3);
+      return { textureFlare0, textureFlare3 };
+    }
+
+    function createFlareTexture(type) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      
+      if (type === 0) {
+        // Main sun flare - bright center with soft falloff
+        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.1, 'rgba(255, 250, 240, 0.9)');
+        gradient.addColorStop(0.25, 'rgba(255, 229, 176, 0.6)');
+        gradient.addColorStop(0.5, 'rgba(255, 229, 176, 0.2)');
+        gradient.addColorStop(1, 'rgba(255, 229, 176, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 256, 256);
+      } else {
+        // Secondary flares - softer, more diffuse
+        const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+        gradient.addColorStop(0, 'rgba(255, 229, 176, 0.6)');
+        gradient.addColorStop(0.3, 'rgba(255, 229, 176, 0.3)');
+        gradient.addColorStop(0.6, 'rgba(255, 229, 176, 0.1)');
+        gradient.addColorStop(1, 'rgba(255, 229, 176, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 256, 256);
+      }
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      return texture;
+    }
+
+    // ============================================================================
+    // COMPONENT CLASSES - red-reddington
+    // ============================================================================
+
+    class Skybox extends THREE.Mesh {
+      constructor(assets) {
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const material = new THREE.ShaderMaterial({
+          vertexShader: SkyShader.vertexShader,
+          fragmentShader: SkyShader.fragmentShader,
+          uniforms: {
+            uSunAzimuth: { value: 216 },
+            uSunElevation: { value: 24.68698059628387 },
+            uSunColor: { value: new THREE.Color(0xffe5b0) },
+            uSkyColorLow: { value: new THREE.Color(0x6fa2ef) },
+            uSkyColorHigh: { value: new THREE.Color(0x2053ff) },
+            uSunSize: { value: 1 }
+          },
+          side: THREE.BackSide,
+          depthWrite: false,
+          fog: false
+        });
+
+        super(geometry, material);
+        
+        this.SKYBOX_SCALE = 100000; 
+        this.distance = 0.5;
+        this.sunElevation = 24.68698059628387;
+        this.sunAzimuth = 216;
+        this.targetElevation = this.sunElevation;
+        this.targetAzimuth = this.sunAzimuth;
+        this.lerpSpeed = 0.01;
+        this._initialPositionSet = false;
+        this._timeOfDay = null;
+        
+        this._sunPosition = new THREE.Vector3();
+        this._sunDirection = new THREE.Vector3();
+        this._lensflareScreenPos = new THREE.Vector3();
+        this._tempProjectedDir = new THREE.Vector3();
+        
+        // DirectionalLight for shadows
+        this.sun = new THREE.DirectionalLight(0xffe5b0, 1);
+        this.sun.castShadow = true;
+        this.sun.shadow.mapSize.set(2048, 2048);
+        this.sun.shadow.intensity = 1;
+        this.sun.shadow.radius = 2;
+        this.sun.shadow.normalBias = 0.02;
+        this.sun.shadow.bias = 0.000002;
+        this.sun.shadow.autoUpdate = true;
+        
+        const frustumSize = 50;
+        this.sun.shadow.camera.left = -frustumSize;
+        this.sun.shadow.camera.right = frustumSize;
+        this.sun.shadow.camera.top = frustumSize;
+        this.sun.shadow.camera.bottom = -frustumSize;
+        this.sun.shadow.camera.near = 0.5;
+        this.sun.shadow.camera.far = 1000;
+        this.sun.shadow.camera.zoom = 0.5;
+        this.sun.shadow.camera.updateProjectionMatrix();
+        
+        // sun is NOT added to skybox - it will be added to scene separately
+        
+        this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        this.add(this.ambientLight);
+        
+        // Lensflare setup
+        this.textureFlare0 = assets.textureFlare0;
+        this.textureFlare3 = assets.textureFlare3;
+        
+        this.lensflare = new Lensflare();
+        this.addLensflare();
+        this.add(this.lensflare);
+        
+        this.onTimeOfDayChanged = null;
+        
+        this.updateSunPosition(true);
+        
+        this.scale.setScalar(this.SKYBOX_SCALE); 
+      }
+      
+      addLensflare() {
+        const color = new THREE.Color(0xffe5b0);
+        this.lensflare.addElement(new LensflareElement(this.textureFlare0, 300, 0, color));
+        this.lensflare.addElement(new LensflareElement(this.textureFlare3, 60, 0.6, color));
+        this.lensflare.addElement(new LensflareElement(this.textureFlare3, 70, 0.7, color));
+        this.lensflare.addElement(new LensflareElement(this.textureFlare3, 120, 0.9, color));
+        this.lensflare.addElement(new LensflareElement(this.textureFlare3, 70, 1, color));
+      }
+
+      update(currentTime, elapsedTime, playerPosition, camera) {
+        if (!(currentTime instanceof Date) || isNaN(currentTime)) {
+          console.error("Invalid time");
+          return;
+        }
+
+        const SUNRISE = 6;
+        const SUNSET = 21;
+        const DARKNESS_START = 20.42;
+        const DARKNESS_END = 6.58;
+        const maxElevation = 42;
+        
+        const whiteColor = new THREE.Color(0xffffff);
+        const orangeColor = new THREE.Color(0xff4500);
+        const yellowColor = new THREE.Color(0xffd700);
+        const redColor = new THREE.Color(0xff6347);
+        const darkRedColor = new THREE.Color(0xd32f2f);
+        const skyBlueColor = new THREE.Color(0x87ceeb);
+        const darkSkyColor = new THREE.Color(0x0d1321);
+        const nightSkyColor = new THREE.Color(0x1c2331);
+        const moonColor = new THREE.Color(0xe6e8fa);
+
+        const hours = currentTime.getHours();
+        const minutes = currentTime.getMinutes();
+        const timeInHours = hours + minutes / 60;
+
+        const isInDarkTransition =
+          (timeInHours >= DARKNESS_START && timeInHours <= SUNSET) ||
+          (timeInHours >= SUNRISE && timeInHours <= DARKNESS_END);
+
+        const isDaytime = timeInHours >= SUNRISE && timeInHours <= SUNSET;
+        const wasNighttime = this._timeOfDay === "Nighttime";
+
+        let normalizedTime;
+        if (isDaytime) {
+          normalizedTime = (timeInHours - SUNRISE) / (SUNSET - SUNRISE);
+        } else {
+          const nightHour = timeInHours >= SUNSET ? timeInHours : timeInHours + 24;
+          normalizedTime = (nightHour - SUNSET) / (24 - SUNSET + SUNRISE);
+        }
+
+        let sunElevation = Math.cos(Math.PI * (normalizedTime - 0.5)) * maxElevation - 5;
+        const sunAzimuth = 180 + 180 * normalizedTime;
+
+        let _timeOfDay = "Nighttime";
+        if (isDaytime) {
+          if (normalizedTime <= 0.25) _timeOfDay = "Sunrise";
+          else if (normalizedTime <= 0.75) _timeOfDay = "Midday";
+          else _timeOfDay = "Sunset";
+        }
+
+        const isNowNighttime = _timeOfDay === "Nighttime";
+        let isInstantTransition = wasNighttime !== isNowNighttime;
+        if (!this._initialPositionSet) {
+          this._initialPositionSet = true;
+          isInstantTransition = true;
+        }
+
+        if (isDaytime) {
+          const normalizedElevation = Math.min(sunElevation / maxElevation, 1);
+          const t = Math.pow(1 - normalizedElevation, 3);
+
+          this.material.uniforms.uSunColor.value.lerpColors(whiteColor, orangeColor, t);
+
+          let horizonColor = skyBlueColor.clone();
+          if (_timeOfDay === "Sunrise") {
+            horizonColor = yellowColor.clone().lerp(redColor, normalizedTime / 0.25);
+          } else if (_timeOfDay === "Sunset") {
+            horizonColor = redColor.clone().lerp(darkRedColor, (normalizedTime - 0.75) / 0.25);
+          }
+
+          this.material.uniforms.uSkyColorLow.value.copy(horizonColor);
+          this.material.uniforms.uSkyColorHigh.value.lerpColors(skyBlueColor, darkSkyColor, t);
+
+          if (isInDarkTransition) {
+            this.sun.intensity = 0.1;
+          } else {
+            this.sun.intensity = Math.min(40, Math.pow(normalizedElevation, 1.2) * 4);
+          }
+
+          this.lensflare.visible = true;
+        } else {
+          sunElevation *= 0.5;
+          this.material.uniforms.uSunColor.value.copy(moonColor).multiplyScalar(1.8);
+          this.material.uniforms.uSkyColorLow.value.copy(darkSkyColor);
+          this.material.uniforms.uSkyColorHigh.value.copy(nightSkyColor);
+          this.sun.intensity = 0.5;
+          this.lensflare.visible = false;
+        }
+
+        this.targetElevation = sunElevation;
+        this.targetAzimuth = sunAzimuth;
+        this.updateSunPosition(isInstantTransition);
+
+        if (_timeOfDay !== this._timeOfDay) {
+          if (this.onTimeOfDayChanged) {
+            this.onTimeOfDayChanged(_timeOfDay, elapsedTime);
+          }
+          this._timeOfDay = _timeOfDay;
+        }
+
+        // Shadow camera positioning
+        if (playerPosition) {
+          const shadowCenter = playerPosition.clone();
+          const sunDir = this._sunDirection.clone();
+          const shadowDistance = 300;
+          
+          // Set the LIGHT position (not shadow.camera.position)
+          this.sun.position.set(
+            shadowCenter.x + sunDir.x * shadowDistance,
+            shadowCenter.y + sunDir.y * shadowDistance,
+            shadowCenter.z + sunDir.z * shadowDistance
+          );
+          
+          this.sun.target.position.copy(shadowCenter);
+          this.sun.target.updateMatrixWorld();
+        }
+        
+        // red-reddington mod - PROJECTED SUN SCREEN POSITION FOR LENSFLARE
+        if (playerPosition && camera) {
+          const dir = this._sunDirection;
+          
+          this._tempProjectedDir
+            .copy(camera.position)
+            .addScaledVector(dir, 1000)
+            .project(camera);
+          
+          this._lensflareScreenPos.copy(this._tempProjectedDir);
+          
+          this.lensflare._screenPositionOverridden = true;
+          this.lensflare._overriddenScreenPosition = this._lensflareScreenPos;
+        }
+      }
+
+      updateSunPosition(instant = false) {
+        if (instant) {
+          this.sunElevation = this.targetElevation;
+          this.sunAzimuth = this.targetAzimuth;
+        } else {
+          this.sunElevation += (this.targetElevation - this.sunElevation) * this.lerpSpeed;
+          this.sunAzimuth += (this.targetAzimuth - this.sunAzimuth) * this.lerpSpeed;
+        }
+
+        const transformAzimuth = (oldAzimuth) => {
+          return ((270 - oldAzimuth) % 360) - 180;
+        };
+        
+        const el = THREE.MathUtils.degToRad(this.sunElevation);
+        const az = THREE.MathUtils.degToRad(transformAzimuth(this.sunAzimuth));
+        
+        this._sunPosition.set(
+          this.distance * Math.cos(el) * Math.sin(az),
+          this.distance * Math.sin(el),
+          this.distance * Math.cos(el) * Math.cos(az)
+        );
+        
+        // Lensflare follows visual sun position (in skybox local space)
+        this.lensflare.position.copy(this._sunPosition);
+        
+        this._sunDirection.copy(this._sunPosition).normalize();
+        
+        this.material.uniforms.uSunAzimuth.value = transformAzimuth(this.sunAzimuth);
+        this.material.uniforms.uSunElevation.value = this.sunElevation;
+      }
+      
+      sunDirection() {
+        return this._sunDirection;
+      }
+      
+      timeOfDay() {
+        return this._timeOfDay;
+      }
+    }
+
+    class Clouds extends THREE.Mesh {
+      constructor() {
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        const material = new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          depthTest: true,
+          blending: THREE.AdditiveBlending,
+          side: THREE.FrontSide,
+          uniforms: {
+            uTime: { value: 0.0 },
+            uCloudColor: { value: new THREE.Color(1.0, 1.0, 1.0) },
+            cameraPos: { value: new THREE.Vector3() }
+          },
+          vertexShader: CloudsShader.vertexShader,
+          fragmentShader: CloudsShader.fragmentShader
+        });
+
+        super(geometry, material);
+        this.frustumCulled = false;
+        this.renderOrder = -1;
+        
+        this.rotation.x = Math.PI / 2;
+        const CLOUDS_Y = 400;
+        this.position.set(0, CLOUDS_Y, 0);
+        const CLOUDS_SCALE = 15000;
+        this.scale.setScalar(CLOUDS_SCALE);
+        
+        this.cloudAnimTime = 0;
+        this.baseCloudColor = new THREE.Color(1.0, 1.0, 1.0);
+      }
+
+      update(delta, cameraPosition) {
+        this.cloudAnimTime += 0.02;
+        this.material.uniforms.uTime.value = this.cloudAnimTime;
+        this.material.uniforms.cameraPos.value.copy(cameraPosition);
+      }
+      
+      setCloudColor(color) {
+        this.material.uniforms.uCloudColor.value.copy(color);
+        this.baseCloudColor.copy(color);
+      }
+      
+      setVisible(visible) {
+        this.visible = visible;
+      }
+    }
+
+    class Stars extends THREE.Points {
+      constructor(count = 5000) {
+        const halfCount = Math.floor(count / 2);
+        const geometry = new THREE.BufferGeometry();
+
+        const topPositions = Stars.generateTopHemispherePositions(halfCount);
+        const colors = Stars.generateColors(halfCount);
+        const sizes = Stars.generateSizes(halfCount);
+        const phases = Stars.generatePhases(halfCount);
+        const freqs = Stars.generateFrequencies(halfCount);
+
+        const positions = Stars.mirrorPositions(topPositions);
+        const mirroredColors = Stars.mirrorAttribute(colors);
+        const mirroredSizes = Stars.mirrorAttribute(sizes);
+        const mirroredPhases = Stars.mirrorAttribute(phases);
+        const mirroredFreqs = Stars.mirrorAttribute(freqs);
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(mirroredColors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(mirroredSizes, 1));
+        geometry.setAttribute('phase', new THREE.BufferAttribute(mirroredPhases, 1));
+        geometry.setAttribute('freq', new THREE.BufferAttribute(mirroredFreqs, 1));
+
+        const material = new THREE.ShaderMaterial({
+          uniforms: { time: { value: 0 } },
+          vertexShader: StarsShader.vertexShader,
+          fragmentShader: StarsShader.fragmentShader,
+          transparent: true,
+          depthWrite: false,
+          depthTest: true,
+          blending: THREE.AdditiveBlending
+        });
+
+        super(geometry, material);
+
+        this.renderOrder = -1;
+        this.frustumCulled = false;
+        this.matrixAutoUpdate = false;
+        const SKYBOX_SCALE = 100000;
+        this.scale.setScalar(SKYBOX_SCALE);
+        this.updateMatrix();
+      }
+
+      static generateTopHemispherePositions(count) {
+        const positions = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          const u = Math.random();
+          const v = Math.random() * 0.5 + 0.5;
+          const theta = 2 * Math.PI * u;
+          const phi = Math.acos(2 * v - 1);
+          const x = Math.sin(phi) * Math.cos(theta);
+          const y = Math.cos(phi);
+          const z = Math.sin(phi) * Math.sin(theta);
+          positions.set([x, y, z], i * 3);
+        }
+        return positions;
+      }
+
+      static mirrorPositions(topPositions) {
+        const count = topPositions.length / 3;
+        const mirrored = new Float32Array(topPositions.length * 2);
+        mirrored.set(topPositions, 0);
+
+        for (let i = 0; i < count; i++) {
+          const x = topPositions[i * 3 + 0];
+          const y = topPositions[i * 3 + 1];
+          const z = topPositions[i * 3 + 2];
+          mirrored.set([x, -y, z], (i + count) * 3);
+        }
+
+        return mirrored;
+      }
+
+      static mirrorAttribute(attr) {
+        const mirrored = new Float32Array(attr.length * 2);
+        mirrored.set(attr, 0);
+        mirrored.set(attr, attr.length);
+        return mirrored;
+      }
+
+      static generateColors(count) {
+        const colors = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          const variation = Math.random();
+          const color =
+            variation < 0.15
+              ? [0.8, 0.85, 1.0]
+              : variation < 0.3
+              ? [1.0, 0.95, 0.8]
+              : [1.0, 1.0, 1.0];
+          colors.set(color, i * 3);
+        }
+        return colors;
+      }
+
+      static generateSizes(count) {
+        const sizes = new Float32Array(count);
+        for (let i = 0; i < count; i++) {
+          const variation = Math.random();
+          sizes[i] =
+            variation < 0.01
+              ? 40 + Math.random() * 20
+              : variation < 0.05
+              ? 25 + Math.random() * 15
+              : variation < 0.2
+              ? 15 + Math.random() * 10
+              : 5 + Math.random() * 5;
+        }
+        return sizes;
+      }
+
+      static generatePhases(count) {
+        const phases = new Float32Array(count);
+        for (let i = 0; i < count; i++) phases[i] = Math.random() * Math.PI * 2;
+        return phases;
+      }
+
+      static generateFrequencies(count) {
+        const freqs = new Float32Array(count);
+        for (let i = 0; i < count; i++) freqs[i] = 1.0 + Math.random() * 2.0;
+        return freqs;
+      }
+
+      update(elapsedTime) {
+        this.material.uniforms.time.value = elapsedTime;
+      }
+      
+      setVisible(visible) {
+        this.visible = visible;
+      }
+    }
+
+    // ============================================================================
+    // SCENE SETUP - red-reddington
+    // ============================================================================
+
+    const renderer = new THREE.WebGLRenderer({
+      alpha: false,
+      antialias: true,
+      precision: "highp",
+      powerPreference: 'high-performance'
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.sortObjects = true;
+    renderer.debug.checkShaderErrors = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = true;
+    document.getElementById('container').appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+
+    const camera = new THREE.PerspectiveCamera(
+      90,
+      window.innerWidth / window.innerHeight, 
+      0.1, 
+      6000
+    );
+    camera.position.set(15, 5, 15);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = false;
+	controls.maxPolarAngle = Math.PI / 2;
+    controls.minDistance = 1;
+    controls.maxDistance = 5000;
+
+    // Ground with XZ fog
+    const GROUND_SIZE = 2000;
+    const groundGeometry = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
+    const groundMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8B6F47,
+      side: THREE.FrontSide,
+      transparent: false,
+      depthWrite: true,
+      fog: false
+    });
+    
+    groundMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.uPlayerPos = { value: new THREE.Vector3() };
+      shader.uniforms.uFogNear = { value: 100.0 };
+      shader.uniforms.uFogFar = { value: 110.0 };
+      
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <common>',
+        `#include <common>
+        varying vec3 vWorldPos;`
+      );
+      
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldPos = worldPos.xyz;`
+      );
+      
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <common>',
+        `#include <common>
+        uniform vec3 uPlayerPos;
+        uniform float uFogNear;
+        uniform float uFogFar;
+        varying vec3 vWorldPos;`
+      );
+      
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `
+        float dist = length(vWorldPos.xz - uPlayerPos.xz);
+        float fogFactor = smoothstep(uFogNear, uFogFar, dist);
+        gl_FragColor.a = mix(1.0, 0.0, fogFactor);
+        
+        if (gl_FragColor.a < 0.01) discard;
+        
+        #include <dithering_fragment>`
+      );
+      
+      groundMaterial.userData.shader = shader;
+    };
+
+    const groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+    groundPlane.rotation.x = -Math.PI / 2;
+    groundPlane.position.y = 0;
+    groundPlane.receiveShadow = true;
+    scene.add(groundPlane);
+    
+    window.groundMaterial = groundMaterial;
+    
+    // World axes helper
+    const axesHelper = new THREE.AxesHelper(100);
+    axesHelper.position.y = 0;
+    axesHelper.visible = false;
+    scene.add(axesHelper);
+
+    // Player
+    const PLAYER_RADIUS = 0.4;
+    const PLAYER_HEIGHT = 1.76;
+    const player = new THREE.Mesh(
+      new THREE.CylinderGeometry(PLAYER_RADIUS, PLAYER_RADIUS, PLAYER_HEIGHT),
+      new THREE.MeshStandardMaterial({ color: 0xff3333, fog: false })
+    );
+    player.position.set(0, PLAYER_HEIGHT / 2, 0);
+	player.rotation.y = Math.PI; 
+    player.castShadow = true;
+    player.receiveShadow = true;
+    scene.add(player);
+    
+    // Player axes helper
+    const playerAxes = new THREE.AxesHelper(2);
+    playerAxes.visible = true;
+    player.add(playerAxes);
+
+    // Create lensflare textures
+    const lensflareTextures = createLensflareTextures();
+
+    // Add skybox
+    const skybox = new Skybox(lensflareTextures);
+    scene.add(skybox);
+    scene.add(skybox.sun);
+    scene.add(skybox.sun.target);
+    
+    // Shadow camera helper
+    const shadowCameraHelper = new THREE.CameraHelper(skybox.sun.shadow.camera);
+    shadowCameraHelper.frustumCulled = false;
+    shadowCameraHelper.visible = false;
+    scene.add(shadowCameraHelper);
+
+    // Clouds
+    const clouds = new Clouds();
+    scene.add(clouds);
+
+    // Stars
+    const stars = new Stars();
+    scene.add(stars);
+
+    // Time of day change listener
+    skybox.onTimeOfDayChanged = (newTimeOfDay, elapsedTime) => {
+      if (newTimeOfDay === "Nighttime") {
+        clouds.setCloudColor(new THREE.Color(0.1, 0.1, 0.2));
+        stars.setVisible(true);
+      } else if (newTimeOfDay === "Sunrise") {
+        clouds.setCloudColor(new THREE.Color(0.8, 0.4, 0.4));
+        stars.setVisible(false);
+      } else if (newTimeOfDay === "Sunset") {
+        clouds.setCloudColor(new THREE.Color(0.8, 0.3, 0.3));
+        stars.setVisible(false);
+      } else {
+        clouds.setCloudColor(new THREE.Color(1.0, 1.0, 1.0));
+        stars.setVisible(false);
+      }
+      
+      document.getElementById('timeOfDayDisplay').textContent = newTimeOfDay;
+    };
+
+    // ============================================================================
+    // PLAYER CONTROLS - red-reddington
+    // ============================================================================
+
+    const keys = {};
+    window.addEventListener('keydown', (e) => (keys[e.code] = true));
+    window.addEventListener('keyup', (e) => (keys[e.code] = false));
+
+    const moveVec = new THREE.Vector3();
+    const forwardVec = new THREE.Vector3();
+    const rightVec = new THREE.Vector3();
+
+    function updatePlayer(dt) {
+      const speed = 10;
+      const rotateSpeed = 2.0;
+      
+      // Q/E rotation
+      if (keys['KeyQ']) player.rotation.y += rotateSpeed * dt;
+      if (keys['KeyE']) player.rotation.y -= rotateSpeed * dt;
+      
+      moveVec.set(0, 0, 0);
+      
+      // Get player's forward and right vectors (player-relative, not camera)
+      forwardVec.set(0, 0, 1).applyQuaternion(player.quaternion);
+      rightVec.set(-1, 0, 0).applyQuaternion(player.quaternion);
+      
+      if (keys['KeyW'] || keys['ArrowUp']) moveVec.add(forwardVec);
+      if (keys['KeyS'] || keys['ArrowDown']) moveVec.sub(forwardVec);
+      if (keys['KeyD'] || keys['ArrowRight']) moveVec.add(rightVec);
+      if (keys['KeyA'] || keys['ArrowLeft']) moveVec.sub(rightVec);
+
+      if (moveVec.lengthSq() > 0) {
+        moveVec.normalize().multiplyScalar(speed * dt);
+        player.position.add(moveVec);
+      }
+    }
+
+    // ============================================================================
+    // TIME CONTROLS - red-reddington
+    // ============================================================================
+
+    let gameTime = new Date();
+    gameTime.setHours(4, 0, 0, 0);
+    
+    let timescale = 1200;
+
+    const hourSlider = document.getElementById('hourSlider');
+    const hourInput = document.getElementById('hourInput');
+    const minuteSlider = document.getElementById('minuteSlider');
+    const minuteInput = document.getElementById('minuteInput');
+    const timescaleSlider = document.getElementById('timescaleSlider');
+    const timescaleValue = document.getElementById('timescaleValue');
+    const timeDisplay = document.getElementById('timeDisplay');
+
+    function updateTimeDisplay() {
+      const hours = gameTime.getHours();
+      const minutes = gameTime.getMinutes();
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const displayHours = hours % 12 || 12;
+      timeDisplay.textContent = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+    }
+
+    function syncControlsToTime() {
+      hourSlider.value = gameTime.getHours();
+      hourInput.value = gameTime.getHours();
+      minuteSlider.value = gameTime.getMinutes();
+      minuteInput.value = gameTime.getMinutes();
+      updateTimeDisplay();
+    }
+
+    hourSlider.addEventListener('input', (e) => {
+      const hours = parseInt(e.target.value);
+      hourInput.value = hours;
+      gameTime.setHours(hours);
+      updateTimeDisplay();
+    });
+
+    hourInput.addEventListener('input', (e) => {
+      let hours = parseInt(e.target.value) || 0;
+      hours = Math.max(0, Math.min(23, hours));
+      hourSlider.value = hours;
+      gameTime.setHours(hours);
+      updateTimeDisplay();
+    });
+
+    minuteSlider.addEventListener('input', (e) => {
+      const minutes = parseInt(e.target.value);
+      minuteInput.value = minutes;
+      gameTime.setMinutes(minutes);
+      updateTimeDisplay();
+    });
+
+    minuteInput.addEventListener('input', (e) => {
+      let minutes = parseInt(e.target.value) || 0;
+      minutes = Math.max(0, Math.min(59, minutes));
+      minuteSlider.value = minutes;
+      gameTime.setMinutes(minutes);
+      updateTimeDisplay();
+    });
+
+    timescaleSlider.addEventListener('input', (e) => {
+      timescale = parseInt(e.target.value);
+      timescaleValue.textContent = timescale === 0 ? '0x (Paused)' : `${timescale}x`;
+    });
+
+    // Helper toggles
+    document.getElementById('shadowHelperToggle').addEventListener('change', (e) => {
+      shadowCameraHelper.visible = e.target.checked;
+    });
+
+    document.getElementById('axesHelperToggle').addEventListener('change', (e) => {
+      axesHelper.visible = e.target.checked;
+    });
+
+    document.getElementById('playerAxesToggle').addEventListener('change', (e) => {
+      playerAxes.visible = e.target.checked;
+    });
+
+    updateTimeDisplay();
+
+    // ============================================================================
+    // RESIZE - red-reddington
+    // ============================================================================
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio, 1.5);
+      renderer.setPixelRatio(dpr);
+      renderer.setSize(window.innerWidth, window.innerHeight, true);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ============================================================================
+    // ANIMATION LOOP - red-reddington
+    // ============================================================================
+
+    let lastTime = 0;
+    let elapsedTime = 0;
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = performance.now() / 1000;
+      const dt = t - lastTime;
+      lastTime = t;
+      elapsedTime += dt;
+
+      if (timescale > 0) {
+        const gameMinutesPerSecond = timescale / 60;
+        const gameMillisecondsThisFrame = gameMinutesPerSecond * dt * 60 * 1000;
+        gameTime = new Date(gameTime.getTime() + gameMillisecondsThisFrame);
+        syncControlsToTime();
+      }
+
+      updatePlayer(dt);
+      controls.target.lerp(player.position, 0.05);
+
+      if (window.groundMaterial && window.groundMaterial.userData.shader) {
+        window.groundMaterial.userData.shader.uniforms.uPlayerPos.value.copy(player.position);
+      }
+
+      skybox.update(gameTime, elapsedTime, player.position, camera);
+      clouds.update(dt, camera.position);
+      stars.update(elapsedTime);
+      
+      // Update shadow camera helper
+      shadowCameraHelper.update();
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+    
+    ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+  </script>
+</body>
+</html>

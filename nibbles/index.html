@@ -1,0 +1,307 @@
+<!-- https://codepen.io/the-red-reddington/full/pvNJrOy -->
+<!DOCTYPE html>
+<html>
+<head><script type="importmap">{ "imports": { "nipplejs": "https://cdn.jsdelivr.net/npm/nipplejs@1.0.1/+esm" } }</script></head>
+<body style="margin:0;background:#000;display:flex;align-items:center;justify-content:center;height:100dvh;overflow:hidden;font-family:monospace;color:#fff;">
+<canvas id="c" width="800" height="520" style="image-rendering:pixelated;background:#0a0a1f;border:4px solid #555; width:min(100dvw,100dvh*800/520);height:auto;"></canvas>
+<div id="joy" style="position:fixed;inset:0;z-index:10;touch-action:none;"></div>
+<p id="hint" style="color:#888;font-family:monospace;font-size:12px;margin:0 auto;width:100%; position:absolute;bottom:2px;text-align:center;mix-blend-mode:difference;z-index:20;pointer-events:none;">←→ A/D = move • ↑ W = up • ↓ S = down • SPACE = restart • ESC = pause</p>
+<script type="module">
+import nipplejs from 'nipplejs';
+
+const W=800, H=520, GS=10, COLS=80, ROWS=50, GRID=COLS*ROWS;
+const ctx=c.getContext('2d');
+const walls = new Uint8Array(GRID);
+const idx = (x,y)=>x+y*COLS;
+
+const hasMouse = matchMedia('(pointer:fine)').matches;
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+const isTouchOnly = isTouchDevice && !hasMouse;
+
+const keys={};
+let inputDir = null, restartPressed = false;
+let paused = false;
+onkeydown = e => { keys[e.code]=1; if (e.code === 'Space') restartPressed = true; };
+onkeyup = e=>keys[e.code]=0;
+
+addEventListener('keydown', e => {
+    if (e.code === 'Escape' && alive && lives > 0) {
+        paused = !paused;
+        if (!paused) last = performance.now(); // prevent acc spike on resume
+    }
+});
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && alive && lives > 0) paused = true;
+    else if (!document.hidden) last = performance.now();
+});
+addEventListener('blur', () => { if (alive && lives > 0) paused = true; });
+addEventListener('focus', () => { last = performance.now(); });
+
+let level=1, score=0, lives=5, target=1, speed=12, frame=0, alive=1;
+let nextDir=[1,0];
+let foodX=0, foodY=0;
+
+const CAP = GRID;
+const sx = new Int16Array(CAP);
+const sy = new Int16Array(CAP);
+
+let head=0; let len=3;
+
+function snakeHas(x, y){
+    for(let i=0; i<len; i++){
+        const j=(head-i+CAP)%CAP;
+        if(sx[j]===x && sy[j]===y) return 1;
+    }
+    return 0;
+}
+
+function clearWalls(){ walls.fill(0); }
+
+function setWall(x, y){ walls[idx(x, y)]=1; }
+
+function line(x1, y1, x2, y2){
+    for(let x=Math.min(x1,x2); x<=Math.max(x1,x2); x++)
+		for(let y=Math.min(y1,y2); y<=Math.max(y1,y2); y++)
+			setWall(x,y);
+}
+
+function initLevel(lvl){
+    level=lvl; frame=0; target=1; speed=Math.max(3,13-lvl);
+
+    clearWalls();
+
+    for(let x=0;x<COLS;x++){ setWall(x,2); setWall(x,ROWS-1); }
+    for(let y=2;y<ROWS;y++){ setWall(0,y); setWall(COLS-1,y); }
+
+	switch (lvl) {
+	  case 1: break;
+	  case 2: line(20,25,60,25); break;
+	  case 3: line(20,10,20,40); line(60,10,60,40);  break;
+	  case 4: line(20,4,20,30); line(60,23,60,49); line(2,38,40,38); line(41,15,79,15); break;
+	  case 5: line(21,13,21,39); line(59,13,59,39); line(23,11,57,11); line(23,41,57,41); break;
+	  case 6: for (let y=4; y<=49; y++) if (y<23 || y>30) [10,20,30,40,50,60,70].forEach(x=>setWall(x,y)); break;
+	}
+
+    let sx0=50, sy0=30, dx=1, dy=0;
+
+    if(lvl===4){sx0=60; sy0=7; dx=-1; dy=0;}
+    else if(lvl===5){sx0=50; sy0=20; dx=-1; dy=0;}
+    else if(lvl>=6){sx0=65; sy0=7; dx=0; dy=1;}
+
+    head=0; len=3;
+
+    sx[0]=sx0; sy[0]=sy0;
+    sx[1]=sx0-dx; sy[1]=sy0-dy;
+    sx[2]=sx0-dx*2; sy[2]=sy0-dy*2;
+
+    nextDir=[dx,dy];
+
+    spawnFood();
+}
+
+function spawnFood(){
+    do{
+        foodX=(Math.random()*(COLS-4)|0)+2;
+        foodY=(Math.random()*(ROWS-6)|0)+3;
+    } while( walls[idx(foodX,foodY)] || snakeHas(foodX,foodY) );
+}
+
+function readInput(){
+    if (inputDir) {
+        const [ix, iy] = inputDir;
+        const dx = nextDir[0], dy = nextDir[1];
+
+        if (!(ix === -dx && iy === -dy)) {
+            nextDir = inputDir;
+        }
+
+        inputDir = null;
+    }
+
+    const dx = nextDir[0], dy = nextDir[1]; // ← moved here
+
+    if((keys.ArrowLeft || keys.KeyA) && dx!==1) nextDir=[-1,0];
+    if((keys.ArrowRight || keys.KeyD) && dx!==-1) nextDir=[1,0];
+    if((keys.ArrowUp || keys.KeyW) && dy!==1) nextDir=[0,-1];
+    if((keys.ArrowDown || keys.KeyS) && dy!==-1) nextDir=[0,1];
+}
+
+function update(){    
+    if(!alive){
+        if(restartPressed){
+            restartPressed = false;
+            restart();
+        }
+        return;
+    }
+    frame++;
+    readInput();
+    if(frame%speed!==0) return;
+
+    const hx=sx[head];
+    const hy=sy[head];
+
+    const nx=hx+nextDir[0];
+    const ny=hy+nextDir[1];
+
+    if( walls[idx(nx,ny)] || snakeHas(nx,ny) ){
+        alive=0;
+        lives--;
+        score=Math.max(0,score-10);
+        return;
+    }
+
+    head=(head+1)%CAP;
+    sx[head]=nx;
+    sy[head]=ny;
+
+    if(len<CAP) len++;
+
+    if(nx===foodX && ny===foodY){
+        score+=target;
+        target++;
+
+        if(target===10){ initLevel(level+1); return; }
+
+        spawnFood();
+
+        if(speed>2) speed--;
+    } else {
+        if(len<CAP) len--; // tail implicitly drops by not increasing len
+    }
+}
+
+function draw(){
+    ctx.fillStyle='#0a0a1f';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle='#777';
+    for(let i=0; i<GRID; i++){
+        if(walls[i]){
+            const x=i%COLS;
+            const y=i/COLS|0;
+            ctx.fillRect(x*GS, y*GS, GS, GS);
+        }
+    }
+
+    ctx.fillStyle='#ff0';
+    for(let i=0;i<len;i++){
+        const j=(head-i+CAP)%CAP;
+        ctx.fillRect(sx[j]*GS+1, sy[j]*GS+1, GS-2, GS-2);
+    }
+
+    ctx.fillStyle='#f0f'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='bold 12px monospace';
+    ctx.fillText(target, foodX*GS+GS/2, foodY*GS+GS/2);
+
+    ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.font='16px monospace';
+    ctx.fillText(`LEVEL ${level}   SCORE ${score}   LIVES ${lives}`, 20, 10);
+
+    if(!alive||lives<=0){
+        ctx.fillStyle='rgba(0,0,0,0.9)';
+        ctx.fillRect(130,170,540,170);
+
+        ctx.fillStyle='#f00'; ctx.textAlign='center'; ctx.font='bold 42px monospace';
+        ctx.fillText(lives<=0 ? 'GAME OVER' : 'CRASHED!', W/2, 235);
+
+        ctx.fillStyle='#ff0'; ctx.font='20px monospace';
+        ctx.fillText('SPACE or TAP to restart', W/2, 290);
+        ctx.textAlign='left';
+    } else if(paused){
+        ctx.fillStyle='rgba(0,0,0,0.9)';
+        ctx.fillRect(130,170,540,170);
+
+        ctx.fillStyle='#fff'; ctx.textAlign='center'; ctx.font='bold 42px monospace';
+        ctx.fillText('PAUSED', W/2, 235);
+
+        ctx.font='20px monospace';
+        ctx.fillText('TAP or ESC to resume', W/2, 290);
+        ctx.textAlign='left';
+    }
+}
+
+let acc=0, last=performance.now();
+function loop(t){
+    requestAnimationFrame(loop);
+    acc=Math.min(acc+t-last,100);
+    last=t;
+
+    if (!paused) {
+        while(acc>=16.67){ update(); acc-=16.67; }
+    } else {
+        acc = 0; // don't accumulate ticks while paused
+    }
+    draw();
+}
+
+function restart(){
+    if(lives <= 0){ score=0; lives=5; level=1;}
+    alive=1;
+    initLevel(level);
+}
+
+const joyEl = document.getElementById('joy');
+if (isTouchOnly) {
+    document.getElementById('hint').innerHTML = 'touch &amp; drag anywhere to steer';
+
+    const joy = nipplejs.create({
+        zone: joyEl,
+        mode: 'dynamic',
+		follow: true,
+		color: {
+			front: 'linear-gradient(135deg, #818cf8, #38bdf8)',
+			back: 'rgba(99, 102, 241, 0.12)',
+		},
+        size: 80,
+        threshold: 0.1, // require modest stick deflection before firing direction
+        fadeTime: 150,
+    });
+
+    const clearDirs = () => {
+        keys.ArrowLeft = keys.ArrowRight = keys.ArrowUp = keys.ArrowDown = 0;
+    };
+
+    // dir:<direction> events fire when the stick crosses into a cardinal sector.
+    // Map them to arrow-key flags so readInput() picks them up unchanged.
+	joy.on('move', (evt) => {
+		const data = evt.data;
+		if (!data || !data.vector) return;
+		const { x, y } = data.vector;
+		if (Math.abs(x) > Math.abs(y)) {
+			if (x < -0.3) inputDir = [-1, 0];
+			else if (x > 0.3) inputDir = [1, 0];
+		} else {
+			if (y < -0.3) inputDir = [0, 1];
+			else if (y > 0.3) inputDir = [0, -1];
+		}
+	});
+
+	joy.on('end', () => { clearDirs(); inputDir = null; });
+
+    // Tap detection on the same zone for restart/unpause.
+    // A "tap" = pointerdown→pointerup within 300ms and <10px movement.
+    let downX = 0, downY = 0, downT = 0, isTap = false;
+    joyEl.addEventListener('pointerdown', e => {
+        downX = e.clientX; downY = e.clientY; downT = performance.now(); isTap = true;
+    });
+    joyEl.addEventListener('pointermove', e => {
+        if (!isTap) return;
+        const dx = e.clientX - downX, dy = e.clientY - downY;
+        if (dx*dx + dy*dy > 100) isTap = false; // 10px movement disqualifies
+    });
+    joyEl.addEventListener('pointerup', () => {
+        if (!isTap) return;
+        if (performance.now() - downT > 300) return;
+        if (paused) { paused = false; last = performance.now(); } 
+		else if (!alive) { restartPressed = true; }
+    });
+
+    ['touchstart', 'touchend'].forEach(ev => addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom
+} else {
+    joyEl.style.display = 'none';
+}
+
+initLevel(1);
+loop(performance.now());
+</script>
+</body>
+</html>

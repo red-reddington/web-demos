@@ -1,0 +1,2320 @@
+<!-- https://codepen.io/the-red-reddington/full/RNadXzz -->
+<!-- https://discourse.threejs.org/t/snow-brawl-full-featured-holiday-snowball-shooter-in-pure-three-js/88678/2 -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Snow Brawl</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+      .lil-gui.root {
+        --width: 170px;
+      }
+      .lil-gui.autoPlace {
+        right: 0;
+      }
+      html,
+      body {
+        height: 100dvh;
+        width: 100dvw;
+        margin: 0;
+        background: #111;
+        overflow: hidden;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-user-callout: none;
+      }
+      #container {
+        width: 100%;
+        height: 100%;
+        cursor: none;
+      }
+      #info {
+        position: absolute;
+        z-index: 10;
+        color: #e0e0e0;
+        font-family: monospace;
+        font-size: 12px;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 7px 8px;
+        border-radius: 6px;
+        line-height: 1.5;
+        width: 160px;
+      }
+      #info h1 {
+        line-height: normal;
+        font-weight: normal;
+        font-size: 135%;
+        letter-spacing: -1px;
+        margin: 0 0 5px 0;
+      }
+      #info strong {
+        color: #7fdbca;
+      }
+      #info .stat {
+        color: #f9a86f;
+      }
+      #info .health {
+        color: #ff6b6b;
+      }
+      #info .hits {
+        color: #4ecdc4;
+      }
+      #crosshair {
+        position: fixed;
+        pointer-events: none;
+        z-index: 9999;
+        transform: translate(-50%, -50%);
+      }
+      #crosshair .ring {
+        width: 30px;
+        height: 30px;
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        border-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        transition: all 0.1s;
+      }
+      #crosshair .dot {
+        width: 4px;
+        height: 4px;
+        background: white;
+        border-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+      #crosshair.throwing .ring {
+        border-color: #4ecdc4;
+        transform: translate(-50%, -50%) scale(0.8);
+      }
+      #hit-flash {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 100;
+        opacity: 0;
+        transition: opacity 0.1s;
+      }
+      #hit-flash.damage {
+        background: radial-gradient(
+          circle,
+          transparent 30%,
+          rgba(255, 0, 0, 0.4) 100%
+        );
+        opacity: 1;
+      }
+      #hit-flash.score {
+        background: radial-gradient(
+          circle,
+          rgba(78, 205, 196, 0.3) 0%,
+          transparent 50%
+        );
+        opacity: 1;
+      }
+      #keyMappings,
+      #touchControls {
+        display: none;
+      } /* controlled by JS */
+
+      /**************************************************************************
+      * MOBILE CONTROLS
+      **************************************************************************/
+
+      #mobileControls {
+        font-family: Monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        pointer-events: auto;
+        --unit: 8px;
+        --glass-bg: rgba(0, 0, 0, 0.35);
+        --glass-border: rgba(255, 255, 255, 0.2);
+        --solid-border: rgba(255, 255, 255, 1);
+      }
+
+      /* Joystick container sizing */
+      #mobileControls #joystick-left,
+      #mobileControls #joystick-right {
+        width: calc(14 * var(--unit)) !important;
+        height: calc(14 * var(--unit)) !important;
+        position: fixed;
+        z-index: 1000;
+      }
+
+      #mobileControls #joystick-left {
+        bottom: calc(3 * var(--unit));
+        left: calc(0.5 * var(--unit));
+      }
+
+      #mobileControls #joystick-right {
+        bottom: calc(3 * var(--unit));
+        right: calc(0.5 * var(--unit));
+      }
+
+      /* Joystick outer ring (.back) */
+      #mobileControls #joystick-left #nipple_0_0 .back,
+      #mobileControls #joystick-right #nipple_1_1 .back {
+        width: calc(14 * var(--unit)) !important;
+        height: calc(14 * var(--unit)) !important;
+        margin-left: calc(-7 * var(--unit)) !important;
+        margin-top: calc(-7 * var(--unit)) !important;
+        background: var(--glass-bg) !important;
+        border: 1px solid var(--solid-border) !important;
+        opacity: 1 !important;
+      }
+
+      /* Joystick inner thumb (.front) */
+      #mobileControls #joystick-left #nipple_0_0 .front,
+      #mobileControls #joystick-right #nipple_1_1 .front {
+        width: calc(5 * var(--unit)) !important;
+        height: calc(5 * var(--unit)) !important;
+        margin-left: calc(-2.5 * var(--unit)) !important;
+        margin-top: calc(-2.5 * var(--unit)) !important;
+        background: rgba(255, 255, 255, 1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+        opacity: 1 !important;
+        text-align: center;
+        align-content: center;
+        color: black;
+        font-size: calc(1.8 * var(--unit));
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        overflow: hidden;
+      }
+
+      #mobileControls #joystick-left #nipple_0_0 .front::before {
+        content: "MOVE";
+      }
+      #mobileControls #joystick-right #nipple_1_1 .front::before {
+        content: "LOOK";
+      }
+
+      /* Touch buttons */
+      #mobileControls .touch-button {
+        position: fixed;
+        width: calc(6 * var(--unit));
+        height: calc(6 * var(--unit));
+        border-radius: 50%;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        color: rgba(255, 255, 255, 0.9);
+        font-size: calc(1.5 * var(--unit));
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        line-height: 1.1;
+        overflow: hidden;
+        white-space: pre-wrap;
+        -webkit-user-select: none;
+        user-select: none;
+        touch-action: none;
+        z-index: 1001;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      #mobileControls .touch-button:active,
+      #mobileControls .touch-button.active {
+        background: rgba(255, 255, 255, 0.25);
+        transform: scale(0.95);
+      }
+
+      #mobileControls .touch-button.toggled {
+        background: rgba(80, 200, 120, 0.4);
+        border-color: rgba(80, 200, 120, 0.5);
+      }
+
+      /* Button positions */
+      #mobileControls #btn-shootButton {
+        bottom: calc(11 * var(--unit));
+        right: calc(15 * var(--unit));
+      }
+
+      #mobileControls #btn-jump {
+        bottom: calc(2 * var(--unit));
+        right: calc(15 * var(--unit));
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+          "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.18.0/dist/lil-gui.esm.min.js",
+          "nipplejs": "https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/+esm"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="info">
+      <h1>⛄ Snow Brawl</h1>
+      Health: <span class="health" id="hp">100</span> · Hits:
+      <span class="hits" id="hits">0</span>
+      <div id="keyMappings">
+        · <strong>WASD</strong> Move <br />· <strong>QE</strong> Rotate <br />·
+        <strong>SPACE</strong> Jump <br />· <strong>SHIFT</strong> Sprint
+        <br />· <strong>Scroll</strong> Zoom<br />· <strong>CLICK</strong> Throw
+      </div>
+      <div id="touchControls">
+        · <strong>L Pad</strong> Move <br />· <strong>R Pad</strong> Rotate
+        <br />· <strong>Pinch</strong> Zoom<br />· <strong>Tap</strong> Throw
+      </div>
+    </div>
+    <div id="sa"></div>
+    <div id="crosshair">
+      <div class="ring"></div>
+      <div class="dot"></div>
+    </div>
+    <div id="hit-flash"></div>
+    <div id="container"></div>
+    <div id="mobileControls"></div>
+    <script type="module">
+      import * as THREE from "three";
+      import { Reflector } from "three/addons/objects/Reflector.js";
+      import GUI from "lil-gui";
+      import nipplejs from "nipplejs";
+
+      // ============================================================================
+      // NIPPLEJS PATCH
+      // Prevents default touch behavior on joystick elements to avoid conflicts
+      // ============================================================================
+      if (nipplejs?.utils?.prepareEvent) {
+        const originalPrepare = nipplejs.utils.prepareEvent;
+        nipplejs.utils.prepareEvent = function (evt) {
+          if (
+            evt.target.classList.contains("front") ||
+            evt.target.classList.contains("back")
+          ) {
+            evt.preventDefault();
+          }
+          return originalPrepare.call(this, evt);
+        };
+      }
+
+      // ============================================================================
+      // CONFIGURATION
+      // All tuneable game parameters in one place for easy balancing
+      // ============================================================================
+      const WALL_AREA_SIZE = 150;
+      const NUM_WALLS = 50;
+      const WALL_WIDTH_MIN = 6;
+      const WALL_WIDTH_MAX = 20;
+      const WALL_HEIGHT_SHORT = 1.2;
+      const WALL_HEIGHT_TALL = 3.5;
+      const WALL_DEPTH_MIN = 0.8;
+      const WALL_DEPTH_MAX = 1.2;
+
+      const SNOWBALL_SPEED = 55;
+      const SNOWBALL_GRAVITY = -5;
+      const SNOWBALL_RADIUS = 0.25;
+      const SNOWBALL_DAMAGE = 20;
+      const SNOWBALL_RESPAWN_TIME = 0.5;
+      const AI_SNOWBALL_RESPAWN_TIME = 1.0;
+      const THROW_COOLDOWN = 0.5;
+      const AI_THROW_COOLDOWN = 2.0;
+      const AI_THROW_RANGE = 25;
+
+      const SNOWMAN_RADIUS = 0.8;
+      const SNOWMAN_HALF_HEIGHT = 1.25;
+
+      const GRAVITY = -25;
+      const MOVE_SPEED = 6;
+      const SPRINT_SPEED = 10;
+      const JUMP_SPEED = 9;
+      const TURN_SPEED = 2.5;
+      const TOUCH_SPRINT_THRESHOLD = 0.85;
+
+      // Camera configuration
+      const BASE_OFFSET = new THREE.Vector3(0, 6.5, -12);
+
+      // Camera pitch limits for touch controls (in radians)
+      const CAMERA_PITCH_MIN = -0.6; // Look down limit (~35 degrees)
+      const CAMERA_PITCH_MAX = 0.4; // Look up limit (~23 degrees)
+      const CAMERA_PITCH_SPEED = 1.2; // Radians per second at full joystick deflection
+
+      const CONFIG = {
+        TOUCH: false,
+        SUN_INTENSITY: 2.5,
+        AMBIENT_INTENSITY: 1.2,
+        HEMISPHERE_INTENSITY: 0.6,
+        EXPOSURE: 1.4,
+        MIN_ZOOM_MULTIPLIER: 0.3,
+        MAX_ZOOM_MULTIPLIER: 6.5,
+        ZOOM_PER_SCROLL_TICK: 0.001,
+      };
+
+      // ============================================================================
+      // DEVICE DETECTION
+      // Determines input mode based on available hardware
+      // ============================================================================
+      const hasMouse = matchMedia("(pointer:fine)").matches;
+      const hasKeyboard = !!navigator.keyboard;
+      const isTouchDevice =
+        "ontouchstart" in window ||
+        navigator.maxTouchPoints > 0 ||
+        navigator.msMaxTouchPoints > 0;
+      const isTouchOnly = isTouchDevice && !hasMouse && !hasKeyboard;
+
+      CONFIG.TOUCH = isTouchOnly;
+      let cameraMode = isTouchOnly ? "touch" : "thirdperson";
+
+      // Camera pitch state for touch controls
+      let cameraPitch = 0;
+
+      const centerX = () => window.innerWidth / 2;
+
+      // ============================================================================
+      // RENDERER SETUP
+      // ============================================================================
+      const container = document.getElementById("container");
+      const crosshair = document.getElementById("crosshair");
+      const hitFlash = document.getElementById("hit-flash");
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0xc8e8ff, 0.008);
+
+      const camera = new THREE.PerspectiveCamera(
+        55,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        2000
+      );
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        precision: "highp",
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = CONFIG.EXPOSURE;
+      container.appendChild(renderer.domElement);
+
+      // ============================================================================
+      // INPUT STATE
+      // Centralized input tracking for both keyboard and touch
+      // ============================================================================
+      let mouseX = window.innerWidth / 2;
+      let mouseY = window.innerHeight / 2;
+      let userRequestedZoom = 1.0;
+      const keys = {};
+
+      // Joystick state
+      let leftJoystick = null;
+      let rightJoystick = null;
+      const joystickMove = { x: 0, y: 0 };
+      const joystickLook = { x: 0, y: 0 };
+
+      // Pinch zoom state
+      let isPinching = false;
+      let initialPinchDistance = null;
+      let pinchZoomStart = null;
+
+      // ============================================================================
+      // EVENT LISTENERS
+      // ============================================================================
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio, isTouchOnly ? 1 : 1.5);
+        renderer.setPixelRatio(dpr);
+        renderer.setSize(window.innerWidth, window.innerHeight, true);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        mouseX = centerX();
+        crosshair.style.left = mouseX + "px";
+      }
+      window.addEventListener("resize", resize);
+
+      container.addEventListener("mousemove", (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        crosshair.style.left = mouseX + "px";
+        crosshair.style.top = mouseY + "px";
+      });
+
+      renderer.domElement.addEventListener("contextmenu", (e) =>
+        e.preventDefault()
+      );
+
+      window.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          userRequestedZoom += e.deltaY * CONFIG.ZOOM_PER_SCROLL_TICK;
+          userRequestedZoom = THREE.MathUtils.clamp(
+            userRequestedZoom,
+            CONFIG.MIN_ZOOM_MULTIPLIER,
+            CONFIG.MAX_ZOOM_MULTIPLIER
+          );
+        },
+        { passive: false }
+      );
+
+      window.addEventListener("keydown", (e) => {
+        keys[e.code] = true;
+        if (e.code === "Space") e.preventDefault();
+      });
+      window.addEventListener("keyup", (e) => (keys[e.code] = false));
+
+      // ============================================================================
+      // SKY DOME
+      // Simple gradient sky using a shader material
+      // ============================================================================
+      const skyMat = new THREE.ShaderMaterial({
+        uniforms: {
+          topColor: { value: new THREE.Color(0x4a6fa5) },
+          bottomColor: { value: new THREE.Color(0xe8f4fc) },
+        },
+        vertexShader: `
+          varying vec3 vPos;
+          void main() {
+            vPos = (modelMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }`,
+        fragmentShader: `
+          uniform vec3 topColor, bottomColor;
+          varying vec3 vPos;
+          void main() {
+            float h = normalize(vPos).y;
+            gl_FragColor = vec4(mix(bottomColor, topColor, pow(max(h, 0.0), 0.4)), 1.0);
+          }`,
+        side: THREE.BackSide,
+        depthWrite: false,
+      });
+      scene.add(new THREE.Mesh(new THREE.SphereGeometry(500, 32, 16), skyMat));
+
+      // ============================================================================
+      // LIGHTING
+      // ============================================================================
+      scene.add(new THREE.AmbientLight(0xc8e8ff, CONFIG.AMBIENT_INTENSITY));
+
+      const sun = new THREE.DirectionalLight(0xffffff, CONFIG.SUN_INTENSITY);
+      sun.position.set(50, 80, 40);
+      sun.castShadow = true;
+      sun.shadow.mapSize.width = 4096;
+      sun.shadow.mapSize.height = 4096;
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = 300;
+      sun.shadow.bias = -0.0001;
+      sun.shadow.normalBias = 0.03;
+      scene.add(sun);
+
+      sun.target = new THREE.Object3D();
+      scene.add(sun.target);
+
+      scene.add(
+        new THREE.HemisphereLight(
+          0x87ceeb,
+          0x4a6a8a,
+          CONFIG.HEMISPHERE_INTENSITY
+        )
+      );
+
+      // ============================================================================
+      // SHADOW SYSTEM
+      // Optimized shadow frustum that follows the player
+      // ============================================================================
+      const SHADOW_CONFIG = {
+        FRUSTUM_SIZE_DEFAULT: 30,
+        FORWARD_OFFSET: 10,
+        SHADOW_UPDATE_INTERVAL: 0.1,
+        MOVEMENT_THRESHOLD_SQ: 1,
+      };
+
+      // Pre-allocated vectors to avoid GC pressure in the update loop
+      const shadowCenter = new THREE.Vector3();
+      const _lastPlayerPosition = new THREE.Vector3();
+      const _targetPosition = new THREE.Vector3();
+      const playerForwardDir = new THREE.Vector3();
+      let shadowUpdateTimer = 0;
+
+      // Initialize shadow frustum
+      sun.shadow.camera.left = -SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+      sun.shadow.camera.right = SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+      sun.shadow.camera.top = SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+      sun.shadow.camera.bottom = -SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+      sun.shadow.camera.zoom = 1;
+
+      //const shadowHelper = new THREE.CameraHelper(sun.shadow.camera);
+      //scene.add(shadowHelper);
+
+      function updateShadowFrustum() {
+        const frustumSize = SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+        if (frustumSize !== sun.shadow.camera.left) {
+          sun.shadow.camera.left = -frustumSize;
+          sun.shadow.camera.right = frustumSize;
+          sun.shadow.camera.top = frustumSize;
+          sun.shadow.camera.bottom = -frustumSize;
+          sun.shadow.camera.zoom = 1;
+          sun.shadow.camera.updateProjectionMatrix();
+        }
+      }
+
+      function updateSunShadow(dt) {
+        if (!player) return;
+        const playerPosition = player.position;
+
+        // Initialize on first run
+        if (_lastPlayerPosition.lengthSq() === 0) {
+          _lastPlayerPosition.copy(playerPosition);
+          shadowCenter.copy(playerPosition);
+        }
+
+        // Only update shadow center when player moves significantly
+        if (
+          _lastPlayerPosition.distanceToSquared(playerPosition) >=
+          SHADOW_CONFIG.MOVEMENT_THRESHOLD_SQ
+        ) {
+          const isMovingForward = player.userData.forwardInput > 0;
+
+          if (isMovingForward) {
+            player.getWorldDirection(playerForwardDir);
+            playerForwardDir.y = 0;
+            playerForwardDir.normalize();
+            _targetPosition
+              .copy(playerForwardDir)
+              .multiplyScalar(SHADOW_CONFIG.FORWARD_OFFSET)
+              .add(playerPosition);
+          } else {
+            _targetPosition.copy(playerPosition);
+          }
+
+          shadowCenter.lerp(_targetPosition, 0.05);
+          _lastPlayerPosition.copy(playerPosition);
+        }
+
+        // Throttle expensive shadow map updates
+        shadowUpdateTimer += dt;
+        if (shadowUpdateTimer >= SHADOW_CONFIG.SHADOW_UPDATE_INTERVAL) {
+          sun.shadow.camera.position.set(
+            shadowCenter.x,
+            sun.position.y,
+            shadowCenter.z
+          );
+          sun.target.position.copy(shadowCenter);
+          sun.target.updateMatrixWorld();
+          sun.shadow.camera.updateMatrixWorld();
+          shadowUpdateTimer = 0;
+        }
+      }
+
+      // ============================================================================
+      // GROUND
+      // Reflective ice surface with semi-transparent overlay
+      // ============================================================================
+      const iceReflector = new Reflector(new THREE.CircleGeometry(200, 64), {
+        clipBias: 0.003,
+        textureWidth: innerWidth * 0.5,
+        textureHeight: innerHeight * 0.5,
+        color: 0x889999,
+      });
+      iceReflector.rotation.x = -Math.PI / 2;
+      iceReflector.position.y = -0.01;
+      scene.add(iceReflector);
+
+      const iceGround = new THREE.Mesh(
+        new THREE.CircleGeometry(200, 64),
+        new THREE.MeshPhysicalMaterial({
+          color: 0xd8f0ff,
+          roughness: 0.1,
+          transmission: 0.3,
+          transparent: true,
+          opacity: 0.85,
+        })
+      );
+      iceGround.rotation.x = -Math.PI / 2;
+      iceGround.position.y = 0.01;
+      iceGround.receiveShadow = true;
+      scene.add(iceGround);
+
+      // ============================================================================
+      // ICE WALLS
+      // Procedurally placed obstacles with collision boxes
+      // ============================================================================
+      const iceBlockMat = new THREE.MeshPhysicalMaterial({
+        color: 0xc0e8ff,
+        roughness: 0.05,
+        transmission: 0.6,
+        transparent: true,
+        opacity: 0.9,
+        ior: 1.31,
+        clearcoat: 1,
+      });
+
+      const walls = [];
+      for (let i = 0; i < NUM_WALLS; i++) {
+        for (let attempts = 0; attempts < 20; attempts++) {
+          const isTall = Math.random() < 0.4;
+          const height = isTall ? WALL_HEIGHT_TALL : WALL_HEIGHT_SHORT;
+          const width =
+            WALL_WIDTH_MIN + Math.random() * (WALL_WIDTH_MAX - WALL_WIDTH_MIN);
+          const depth =
+            WALL_DEPTH_MIN + Math.random() * (WALL_DEPTH_MAX - WALL_DEPTH_MIN);
+
+          const w = new THREE.Mesh(
+            new THREE.BoxGeometry(width, height, depth),
+            iceBlockMat
+          );
+          w.position.set(
+            Math.random() * WALL_AREA_SIZE - WALL_AREA_SIZE / 2,
+            height / 2,
+            Math.random() * WALL_AREA_SIZE - WALL_AREA_SIZE / 2
+          );
+          w.rotation.y = Math.random() * Math.PI;
+
+          const aabb = new THREE.Box3().setFromObject(w);
+
+          if (!walls.some((o) => aabb.intersectsBox(o.userData.aabb))) {
+            w.userData = { isTall, height, aabb };
+            w.castShadow = w.receiveShadow = true;
+            scene.add(w);
+            walls.push(w);
+            break;
+          }
+        }
+      }
+
+      // ============================================================================
+      // SNOW PARTICLES
+      // Falling snow effect using a point cloud
+      // ============================================================================
+      function makeCircleTexture() {
+        const size = 64;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+
+        const gradient = ctx.createRadialGradient(
+          size / 2,
+          size / 2,
+          0,
+          size / 2,
+          size / 2,
+          size / 2
+        );
+        gradient.addColorStop(0, "rgba(255,255,255,1)");
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+
+        return new THREE.CanvasTexture(canvas);
+      }
+
+      const snowCount = 2000;
+      const snowPos = new Float32Array(snowCount * 3);
+      for (let i = 0; i < snowCount; i++) {
+        snowPos[i * 3] = (Math.random() - 0.5) * 200;
+        snowPos[i * 3 + 1] = Math.random() * 100;
+        snowPos[i * 3 + 2] = (Math.random() - 0.5) * 200;
+      }
+      const snowGeo = new THREE.BufferGeometry();
+      snowGeo.setAttribute("position", new THREE.BufferAttribute(snowPos, 3));
+
+      const snowTexture = makeCircleTexture();
+
+      const snow = new THREE.Points(
+        snowGeo,
+        new THREE.PointsMaterial({
+          map: snowTexture,
+          color: 0xffffff,
+          size: 0.3,
+          transparent: true,
+          opacity: 0.8,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending, // soft glow
+        })
+      );
+      scene.add(snow);
+
+      function updateSnow(dt) {
+        const p = snow.geometry.attributes.position.array;
+        const time = performance.now() * 0.0005;
+        for (let i = 0; i < snowCount; i++) {
+          const i3 = i * 3;
+          p[i3 + 1] -= (2 + (i % 10) * 0.2) * dt;
+          // Gentle horizontal drift using sin/cos
+          p[i3] += Math.sin(time + i) * 0.003;
+          p[i3 + 2] += Math.cos(time + i * 0.7) * 0.003;
+          // Reset when below ground
+          if (p[i3 + 1] < 0) {
+            p[i3] = (Math.random() - 0.5) * 200;
+            p[i3 + 1] = 80 + Math.random() * 20;
+            p[i3 + 2] = (Math.random() - 0.5) * 200;
+          }
+        }
+        snow.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // ============================================================================
+      // SHARED GEOMETRIES & MATERIALS
+      // Pre-created and reused to minimize draw calls and memory allocation
+      // ============================================================================
+      const snowMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.8,
+      });
+      const stickMat = new THREE.MeshStandardMaterial({ color: 0x3d2817 });
+      const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+      const noseMat = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+      const scarfMat = new THREE.MeshStandardMaterial({
+        color: 0xcc2222,
+        roughness: 0.6,
+      });
+
+      // Shared geometries for snowman parts
+      const bodyBottomGeo = new THREE.SphereGeometry(0.8, 16, 12);
+      const bodyMiddleGeo = new THREE.SphereGeometry(0.6, 16, 12);
+      const headGeo = new THREE.SphereGeometry(0.45, 16, 12);
+      const eyeGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.03, 8);
+      const noseGeo = new THREE.CylinderGeometry(0.02, 0.07, 0.3, 8);
+      const buttonGeo = new THREE.SphereGeometry(0.055, 8, 6);
+      const brimGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.07, 16);
+      const hatTopGeo = new THREE.CylinderGeometry(0.33, 0.36, 0.45, 16);
+      const bicepGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.55, 8);
+      const forearmGeo = new THREE.CylinderGeometry(0.03, 0.025, 0.4, 8);
+
+      // Finger geometry - origin at base for proper rotation
+      const fingerGeo = new THREE.CylinderGeometry(0.012, 0.02, 0.52, 4);
+      fingerGeo.translate(0, 0.26, 0); // Move origin to base
+
+      // Snowball geometry (shared across all snowballs)
+      const snowballGeo = new THREE.SphereGeometry(SNOWBALL_RADIUS, 8, 6);
+      const snowballMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.9,
+      });
+
+      // ============================================================================
+      // OBJECT POOLS
+      // Pre-allocated objects to avoid runtime garbage collection
+      // ============================================================================
+
+      /**
+       * Generic object pool for efficient reuse of Three.js objects
+       * @param {Function} factory - Creates a new object when pool is empty
+       * @param {Function} reset - Resets an object for reuse
+       * @param {number} initialSize - Number of objects to pre-allocate
+       */
+      class ObjectPool {
+        constructor(factory, reset, initialSize = 10) {
+          this.factory = factory;
+          this.reset = reset;
+          this.pool = [];
+          this.active = [];
+
+          // Pre-populate pool
+          for (let i = 0; i < initialSize; i++) {
+            this.pool.push(this.factory());
+          }
+        }
+
+        acquire() {
+          const obj = this.pool.length > 0 ? this.pool.pop() : this.factory();
+          this.active.push(obj);
+          return obj;
+        }
+
+        release(obj) {
+          const idx = this.active.indexOf(obj);
+          if (idx !== -1) {
+            this.active.splice(idx, 1);
+            this.reset(obj);
+            this.pool.push(obj);
+          }
+        }
+
+        releaseAll() {
+          while (this.active.length > 0) {
+            this.release(this.active[0]);
+          }
+        }
+      }
+
+      // Snowball pool
+      const snowballPool = new ObjectPool(
+        () => {
+          const mesh = new THREE.Mesh(snowballGeo, snowballMat);
+          mesh.castShadow = true;
+          mesh.userData = { vel: new THREE.Vector3(), owner: null, life: 0 };
+          return mesh;
+        },
+        (mesh) => {
+          mesh.visible = false;
+          scene.remove(mesh);
+          mesh.userData.vel.set(0, 0, 0);
+          mesh.userData.owner = null;
+          mesh.userData.life = 0;
+        },
+        20 // Pre-allocate 20 snowballs
+      );
+
+      // Impact particle pool
+      const impactParticleGeo = new THREE.SphereGeometry(0.06, 4, 4);
+      const impactParticlePool = new ObjectPool(
+        () => {
+          const mesh = new THREE.Mesh(impactParticleGeo, snowballMat);
+          mesh.userData = { vel: new THREE.Vector3(), life: 0 };
+          return mesh;
+        },
+        (mesh) => {
+          mesh.visible = false;
+          scene.remove(mesh);
+          mesh.userData.vel.set(0, 0, 0);
+          mesh.userData.life = 0;
+        },
+        100 // Pre-allocate 100 impact particles
+      );
+
+      // Hit star pool
+      const hitStarGeo = new THREE.OctahedronGeometry(0.12, 0);
+      const hitStarMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+      const hitStarPool = new ObjectPool(
+        () => {
+          const mesh = new THREE.Mesh(hitStarGeo, hitStarMat);
+          mesh.userData = { vel: new THREE.Vector3(), life: 0, spin: 0 };
+          return mesh;
+        },
+        (mesh) => {
+          mesh.visible = false;
+          scene.remove(mesh);
+          mesh.userData.vel.set(0, 0, 0);
+          mesh.userData.life = 0;
+          mesh.scale.setScalar(1);
+        },
+        50 // Pre-allocate 50 hit stars
+      );
+
+      // ============================================================================
+      // SNOWMAN CREATION
+      // Factory function that creates a complete snowman with articulated arms
+      // ============================================================================
+      function createSnowman(hatColor, isPlayer) {
+        const root = new THREE.Group();
+
+        // Body spheres
+        const bottom = new THREE.Mesh(bodyBottomGeo, snowMat);
+        bottom.position.y = 0.8;
+        bottom.castShadow = bottom.receiveShadow = true;
+        root.add(bottom);
+
+        const middle = new THREE.Mesh(bodyMiddleGeo, snowMat);
+        middle.position.y = 1.9;
+        middle.castShadow = middle.receiveShadow = true;
+        root.add(middle);
+
+        const head = new THREE.Mesh(headGeo, snowMat);
+        head.position.y = 2.7;
+        head.castShadow = head.receiveShadow = true;
+        root.add(head);
+
+        // Eyes
+        [-0.15, 0.15].forEach((x) => {
+          const e = new THREE.Mesh(eyeGeo, eyeMat);
+          e.position.set(x, 2.78, 0.4);
+          e.rotation.x = Math.PI / 2;
+          root.add(e);
+        });
+
+        // Nose (carrot)
+        const nose = new THREE.Mesh(noseGeo, noseMat);
+        nose.position.set(0, 2.65, 0.5);
+        nose.rotation.x = Math.PI / 2;
+        root.add(nose);
+
+        // Buttons
+        [0, 0.2, 0.4].forEach((o) => {
+          const b = new THREE.Mesh(buttonGeo, eyeMat);
+          b.position.set(0, 1.55 + o, 0.55);
+          root.add(b);
+        });
+
+        // Hat
+        const hatMat = new THREE.MeshStandardMaterial({
+          color: hatColor,
+          roughness: 0.3,
+        });
+        const brim = new THREE.Mesh(brimGeo, hatMat);
+        brim.position.y = 3.1;
+        brim.castShadow = true;
+        root.add(brim);
+
+        const hatTop = new THREE.Mesh(hatTopGeo, hatMat);
+        hatTop.position.y = 3.35;
+        hatTop.castShadow = true;
+        root.add(hatTop);
+
+        // ========================================================================
+        // ARM HIERARCHY
+        // The arm is built as a kinematic chain:
+        // armPivot -> bicep + forearmPivot -> forearm + handGroup -> fingers + snowball
+        // This allows natural throwing animation by rotating pivots
+        // ========================================================================
+        const leftArmPivot = new THREE.Group();
+        leftArmPivot.position.set(0.6, 1.9, 0);
+        root.add(leftArmPivot);
+
+        const leftBicep = new THREE.Mesh(bicepGeo, stickMat);
+        leftBicep.position.set(0.28, 0, 0);
+        leftBicep.rotation.z = -Math.PI / 2;
+        leftBicep.castShadow = true;
+        leftArmPivot.add(leftBicep);
+
+        const leftForearmPivot = new THREE.Group();
+        leftForearmPivot.position.set(0.55, 0, 0);
+        leftArmPivot.add(leftForearmPivot);
+
+        const leftForearm = new THREE.Mesh(forearmGeo, stickMat);
+        leftForearm.position.set(0.12, 0.12, 0);
+        leftForearm.rotation.z = -Math.PI / 4;
+        leftForearm.castShadow = true;
+        leftForearmPivot.add(leftForearm);
+
+        const leftHandGroup = new THREE.Group();
+        leftHandGroup.position.set(0.28, 0.28, 0);
+        leftForearmPivot.add(leftHandGroup);
+
+        // ========================================================================
+        // FINGER ARRANGEMENT
+        // Fingers are positioned around the OUTSIDE of the snowball to create
+        // a cupping/holding effect. They're arranged in a semicircle on the
+        // front-facing side so they're visible to the camera.
+        // ========================================================================
+        const FINGER_COUNT = 3;
+        const SNOWBALL_HOLD_RADIUS = 0.0; //SNOWBALL_RADIUS + 0.02; // Slightly outside snowball
+
+        for (let i = 0; i < FINGER_COUNT; i++) {
+          const f = new THREE.Mesh(fingerGeo, stickMat);
+          f.castShadow = true;
+
+          // Distribute fingers around the snowball
+          const spreadAngle = (i / (FINGER_COUNT - 1) - 0.5) * Math.PI * 1.25;
+
+          // Position finger at the edge of the snowball
+          const fingerX = Math.sin(spreadAngle) * SNOWBALL_HOLD_RADIUS - 0.02;
+          const fingerZ = -Math.cos(spreadAngle) * SNOWBALL_HOLD_RADIUS;
+
+          f.position.set(fingerX, -0.02, fingerZ);
+
+          // Rotate fingers to point inward/upward, cupping the ball
+          // The finger curls toward the center of the snowball
+          f.rotation.order = "YXZ";
+          f.rotation.y = -spreadAngle; // Face toward center
+          f.rotation.x = -Math.PI / 6; // Curl upward slightly
+          f.rotation.z = Math.PI / 8; // Slight inward tilt
+
+          leftHandGroup.add(f);
+        }
+
+        /**
+         * Creates a mirrored copy of an arm hierarchy
+         * Handles position/rotation mirroring for all nested objects
+         */
+        function mirrorArm(srcArmPivot) {
+          const dstArmPivot = srcArmPivot.clone(true);
+
+          dstArmPivot.traverse((obj) => {
+            if (obj.isMesh) {
+              obj.material = obj.material.clone();
+              obj.castShadow = true;
+              obj.receiveShadow = true;
+            }
+            if (obj.position) obj.position.x *= -1;
+            if (obj.rotation) {
+              obj.rotation.y *= -1;
+              obj.rotation.z *= -1;
+            }
+          });
+
+          dstArmPivot.position.x = -srcArmPivot.position.x;
+          return dstArmPivot;
+        }
+
+        const rightArmPivot = mirrorArm(leftArmPivot);
+        root.add(rightArmPivot);
+
+        // Find right hand group and forearm pivot in cloned hierarchy
+        let rightHandGroup, rightForearmPivot;
+        rightArmPivot.traverse((obj) => {
+          if (obj.type === "Group" && obj.children.length >= FINGER_COUNT) {
+            rightHandGroup = obj;
+          }
+          if (
+            obj.type === "Group" &&
+            obj !== rightArmPivot &&
+            obj.children.length === 2
+          ) {
+            rightForearmPivot = obj;
+          }
+        });
+
+        // Hand-held snowballs
+        const leftHandBall = new THREE.Mesh(snowballGeo, snowMat.clone());
+        leftHandBall.position.set(0, 0.36, 0);
+        leftHandBall.castShadow = true;
+        leftHandGroup.add(leftHandBall);
+
+        const rightHandBall = leftHandBall.clone();
+        rightHandBall.material = leftHandBall.material.clone();
+        rightHandBall.position.set(0, 0.36, 0);
+        rightHandGroup.add(rightHandBall);
+
+        root.userData = {
+          leftArmPivot,
+          rightArmPivot,
+          leftForearmPivot,
+          rightForearmPivot,
+          heldSnowballs: { left: leftHandBall, right: rightHandBall },
+          isPlayer,
+          throwAnim: 0,
+          isAnimating: false,
+          throwCooldown: 0,
+          throwHand: "left",
+          forwardInput: 0,
+        };
+
+        return root;
+      }
+
+      // ============================================================================
+      // HIT EFFECTS
+      // Visual feedback for damage and scoring
+      // ============================================================================
+      function showDamageEffect() {
+        hitFlash.classList.add("damage");
+        setTimeout(() => hitFlash.classList.remove("damage"), 150);
+
+        // Camera shake
+        const orig = camera.position.clone();
+        let t = 0;
+        (function shake() {
+          if ((t += 16) < 200) {
+            camera.position.x = orig.x + (Math.random() - 0.5) * 0.15;
+            camera.position.y = orig.y + (Math.random() - 0.5) * 0.15;
+            requestAnimationFrame(shake);
+          }
+        })();
+      }
+
+      function showScoreEffect(pos) {
+        hitFlash.classList.add("score");
+        setTimeout(() => hitFlash.classList.remove("score"), 100);
+
+        // Spawn hit stars from pool
+        for (let i = 0; i < 10; i++) {
+          const s = hitStarPool.acquire();
+          s.position.copy(pos);
+          s.userData.vel.set(
+            (Math.random() - 0.5) * 10,
+            Math.random() * 8 + 3,
+            (Math.random() - 0.5) * 10
+          );
+          s.userData.life = 0.7;
+          s.userData.spin = Math.random() * 12;
+          s.visible = true;
+          s.scale.setScalar(1);
+          scene.add(s);
+        }
+      }
+
+      // Pre-allocated vector for hit star updates
+      const _starVelScaled = new THREE.Vector3();
+
+      function updateHitStars(dt) {
+        for (let i = hitStarPool.active.length - 1; i >= 0; i--) {
+          const s = hitStarPool.active[i];
+          s.userData.vel.y -= 20 * dt;
+          _starVelScaled.copy(s.userData.vel).multiplyScalar(dt);
+          s.position.add(_starVelScaled);
+          s.rotation.x += s.userData.spin * dt;
+          s.rotation.y += s.userData.spin * dt;
+          s.userData.life -= dt;
+          s.scale.setScalar(Math.max(0, s.userData.life * 2));
+
+          if (s.userData.life <= 0) {
+            hitStarPool.release(s);
+          }
+        }
+      }
+
+      // ============================================================================
+      // THROWING ANIMATION
+      // Keyframe-based arm animation for throwing snowballs
+      // ============================================================================
+      function startThrow(sm, hand = "left") {
+        if (!sm.userData.isAnimating) {
+          sm.userData.isAnimating = true;
+          sm.userData.throwAnim = 0;
+          sm.userData.heldSnowballs[hand].visible = true;
+        }
+      }
+
+      function updateThrowAnims(dt) {
+        const snowmen = [player, ...aiSnowmen];
+        for (let si = 0; si < snowmen.length; si++) {
+          const sm = snowmen[si];
+
+          // Decrease throw cooldown
+          if (sm.userData.throwCooldown > 0) {
+            sm.userData.throwCooldown -= dt;
+            if (sm.userData.throwCooldown < 0) sm.userData.throwCooldown = 0;
+
+            const handToRespawn = sm.userData.throwHand;
+            if (
+              !sm.userData.heldSnowballs[handToRespawn].visible &&
+              sm.userData.throwCooldown <= 0
+            ) {
+              sm.userData.heldSnowballs[handToRespawn].visible = true;
+            }
+          }
+
+          if (!sm.userData.isAnimating) continue;
+
+          const hand = sm.userData.throwHand;
+          const ball = sm.userData.heldSnowballs[hand];
+          const arm =
+            hand === "left"
+              ? sm.userData.leftArmPivot
+              : sm.userData.rightArmPivot;
+          const fore =
+            hand === "left"
+              ? sm.userData.leftForearmPivot
+              : sm.userData.rightForearmPivot;
+          const a = sm.userData.throwAnim;
+
+          // Animation phases: wind-up -> release -> follow-through -> reset
+          if (a < 0.15) {
+            const t = a / 0.15;
+            arm.rotation.x = -t * 1.2;
+            fore.rotation.x = -t * 0.9;
+          } else if (a < 0.35) {
+            const t = (a - 0.15) / 0.2;
+            arm.rotation.x = -1.2 + t * 2.0;
+            fore.rotation.x = -0.9 + t * 1.4;
+            if (t > 0.3 && ball.visible) ball.visible = false;
+          } else if (a < 0.7) {
+            const t = (a - 0.35) / 0.35;
+            arm.rotation.x = 0.8 - t * 0.8;
+            fore.rotation.x = 0.5 - t * 0.5;
+          } else {
+            arm.rotation.set(0, 0, 0);
+            fore.rotation.set(0, 0, 0);
+            sm.userData.isAnimating = false;
+            sm.userData.throwAnim = 0;
+
+            // Respawn both snowballs if cooldown finished
+            if (sm.userData.throwCooldown <= 0) {
+              sm.userData.heldSnowballs.left.visible = true;
+              sm.userData.heldSnowballs.right.visible = true;
+            }
+          }
+
+          sm.userData.throwAnim += dt * 2;
+        }
+      }
+
+      // ============================================================================
+      // SNOWBALL SYSTEM
+      // Projectile creation, physics, and collision detection
+      // ============================================================================
+
+      // Pre-allocated vectors for snowball updates
+      const _snowballVelScaled = new THREE.Vector3();
+
+      function createSnowball(pos, vel, owner) {
+        const b = snowballPool.acquire();
+        b.position.copy(pos);
+        b.userData.vel.copy(vel);
+        b.userData.owner = owner;
+        b.userData.life = 5;
+        b.visible = true;
+        scene.add(b);
+      }
+
+      function spawnImpact(pos) {
+        for (let i = 0; i < 12; i++) {
+          const p = impactParticlePool.acquire();
+          p.position.copy(pos);
+          p.userData.vel.set(
+            (Math.random() - 0.5) * 6,
+            Math.random() * 4 + 1,
+            (Math.random() - 0.5) * 6
+          );
+          p.userData.life = 0.4;
+          p.visible = true;
+          scene.add(p);
+        }
+      }
+
+      function updateSnowballs(dt) {
+        for (let i = snowballPool.active.length - 1; i >= 0; i--) {
+          const b = snowballPool.active[i];
+          const d = b.userData;
+
+          // Apply gravity and move
+          d.vel.y += SNOWBALL_GRAVITY * dt;
+          _snowballVelScaled.copy(d.vel).multiplyScalar(dt);
+          b.position.add(_snowballVelScaled);
+          d.life -= dt;
+
+          // Ground/wall collision
+          let hit = b.position.y < SNOWBALL_RADIUS;
+          if (!hit) {
+            for (let wi = 0; wi < walls.length; wi++) {
+              const box = walls[wi].userData.aabb;
+              if (
+                b.position.x >= box.min.x - SNOWBALL_RADIUS &&
+                b.position.x <= box.max.x + SNOWBALL_RADIUS &&
+                b.position.y >= box.min.y - SNOWBALL_RADIUS &&
+                b.position.y <= box.max.y + SNOWBALL_RADIUS &&
+                b.position.z >= box.min.z - SNOWBALL_RADIUS &&
+                b.position.z <= box.max.z + SNOWBALL_RADIUS
+              ) {
+                hit = true;
+                break;
+              }
+            }
+          }
+
+          if (hit || d.life <= 0) {
+            spawnImpact(b.position);
+            snowballPool.release(b);
+            continue;
+          }
+
+          // Hit player
+          if (
+            d.owner !== "player" &&
+            b.position.distanceTo(player.position) <
+              SNOWMAN_RADIUS + SNOWBALL_RADIUS + 0.8
+          ) {
+            playerHealth -= SNOWBALL_DAMAGE;
+            updateHP();
+            spawnImpact(b.position);
+            showDamageEffect();
+            snowballPool.release(b);
+            if (playerHealth <= 0) respawnPlayer();
+            continue;
+          }
+
+          // Hit AI
+          if (d.owner === "player") {
+            for (let ai of aiSnowmen) {
+              if (
+                b.position.distanceTo(ai.position) <
+                SNOWMAN_RADIUS + SNOWBALL_RADIUS + 0.8
+              ) {
+                ai.userData.health -= SNOWBALL_DAMAGE;
+                playerHits++;
+                updateHits();
+                spawnImpact(b.position);
+                showScoreEffect(b.position.clone());
+                snowballPool.release(b);
+                if (ai.userData.health <= 0) respawnAI(ai);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      // Pre-allocated vector for impact particle updates
+      const _particleVelScaled = new THREE.Vector3();
+
+      function updateImpactParticles(dt) {
+        for (let i = impactParticlePool.active.length - 1; i >= 0; i--) {
+          const p = impactParticlePool.active[i];
+          p.userData.vel.y -= 20 * dt;
+          _particleVelScaled.copy(p.userData.vel).multiplyScalar(dt);
+          p.position.add(_particleVelScaled);
+          p.userData.life -= dt;
+
+          if (p.userData.life <= 0 || p.position.y < 0) {
+            impactParticlePool.release(p);
+          }
+        }
+      }
+
+      // ============================================================================
+      // COLLISION HELPERS
+      // Cylinder-AABB and surface detection for character physics
+      // ============================================================================
+
+      /**
+       * Cylinder (vertical) vs AABB collision
+       * Returns normalized push-out vector in XZ plane, or null if no collision
+       * pos = cylinder center
+       * r   = cylinder radius
+       * hh  = half-height of cylinder
+       * box = THREE.Box3
+       */
+      function cylVsAABB(pos, r, hh, box) {
+        // Check vertical overlap first
+        const cylMinY = pos.y - hh;
+        const cylMaxY = pos.y + hh;
+        if (cylMaxY < box.min.y || cylMinY > box.max.y) return null;
+
+        // Closest point on box to cylinder center in XZ plane
+        const cx = Math.max(box.min.x, Math.min(pos.x, box.max.x));
+        const cz = Math.max(box.min.z, Math.min(pos.z, box.max.z));
+
+        let dx = pos.x - cx;
+        let dz = pos.z - cz;
+        let d2 = dx * dx + dz * dz;
+
+        // No collision if outside radius
+        if (d2 >= r * r) return null;
+
+        // Cylinder center inside box or very close to corner
+        if (d2 < 1e-6) {
+          // Determine minimum penetration direction
+          const left = pos.x - box.min.x;
+          const right = box.max.x - pos.x;
+          const front = pos.z - box.min.z;
+          const back = box.max.z - pos.z;
+          const min = Math.min(left, right, front, back);
+
+          if (min === left) return new THREE.Vector3(-1, 0, 0);
+          if (min === right) return new THREE.Vector3(1, 0, 0);
+          if (min === front) return new THREE.Vector3(0, 0, -1);
+          return new THREE.Vector3(0, 0, 1);
+        }
+
+        // Return normalized push-out vector
+        const d = Math.sqrt(d2);
+        return new THREE.Vector3(dx / d, 0, dz / d);
+      }
+
+      /**
+       * Gets the surface height at a position (for standing on low walls)
+       */
+      function getSurface(pos, r) {
+        let h = 0; // floor at 0
+        for (const w of walls) {
+          if (w.userData.isTall) continue;
+          const box = w.userData.aabb;
+          const top = box.max.y;
+          const cx = Math.max(box.min.x, Math.min(pos.x, box.max.x));
+          const cz = Math.max(box.min.z, Math.min(pos.z, box.max.z));
+          if ((pos.x - cx) ** 2 + (pos.z - cz) ** 2 <= r * r && top > h)
+            h = top;
+        }
+        return h;
+      }
+
+      /**
+       * Checks if position is over a surface at given height
+       */
+      function isOver(pos, r, sy) {
+        // Ground plane at y=0
+        if (sy <= 0.01 || Math.abs(sy - 0) < 0.05) return true;
+        for (const w of walls) {
+          if (w.userData.isTall || Math.abs(w.userData.aabb.max.y - sy) > 0.1)
+            continue;
+          const box = w.userData.aabb;
+          const cx = Math.max(box.min.x, Math.min(pos.x, box.max.x));
+          const cz = Math.max(box.min.z, Math.min(pos.z, box.max.z));
+          if ((pos.x - cx) ** 2 + (pos.z - cz) ** 2 <= r * r) return true;
+        }
+        return false;
+      }
+
+      /**
+       * Resolves collision between two snowmen by pushing them apart
+       */
+      function resolveCol(a, b, as, bs) {
+        const dx = a.position.x - b.position.x;
+        const dz = a.position.z - b.position.z;
+        const d2 = dx * dx + dz * dz;
+        const min = SNOWMAN_RADIUS * 2;
+        if (d2 >= min * min || d2 < 1e-6) return; // skip tiny distances
+        const d = Math.sqrt(d2);
+        const nx = dx / d;
+        const nz = dz / d;
+        const ov = min - d;
+        a.position.x += nx * ov * as;
+        a.position.z += nz * ov * as;
+        b.position.x -= nx * ov * bs;
+        b.position.z -= nz * ov * bs;
+      }
+
+      /**
+       * Finds a spawn position not colliding with walls
+       */
+      function getFreePosition() {
+        for (let attempts = 0; attempts < 50; attempts++) {
+          const pos = new THREE.Vector3(
+            Math.random() * 60 - 30,
+            0,
+            Math.random() * 60 - 30
+          );
+          let free = true;
+          for (const w of walls) {
+            if (
+              cylVsAABB(
+                pos,
+                SNOWMAN_RADIUS,
+                SNOWMAN_HALF_HEIGHT,
+                w.userData.aabb
+              )
+            ) {
+              free = false;
+              break;
+            }
+          }
+          if (free) return pos;
+        }
+        return new THREE.Vector3(0, 0, 0);
+      }
+
+      // ============================================================================
+      // PLAYER
+      // ============================================================================
+      const player = createSnowman(0xcc0000, true);
+      scene.add(player);
+
+      let playerHealth = 100;
+      let playerHits = 0;
+      let throwCD = 0;
+      let velocityY = 0;
+      let onGround = true;
+      let lastGroundY = 0;
+      let playerLastHand = "left";
+
+      const updateHP = () =>
+        (document.getElementById("hp").textContent = Math.max(0, playerHealth));
+      const updateHits = () =>
+        (document.getElementById("hits").textContent = playerHits);
+
+      function respawnPlayer() {
+        player.position.copy(getFreePosition());
+        playerHealth = 100;
+        velocityY = 0;
+        onGround = true;
+        updateHP();
+      }
+
+      // Pre-calculated ground square radius -- for player position clamping
+      const maxRadius = 200 - SNOWMAN_RADIUS;
+      const maxRadiusSq = maxRadius ** 2;
+
+      // Pre-allocated objects
+      const moveVec = new THREE.Vector3();
+      const fwdVec = new THREE.Vector3();
+      const rightVec = new THREE.Vector3();
+      const ray = new THREE.Raycaster();
+      const ndc = new THREE.Vector2();
+
+      function shoot() {
+        if (throwCD <= 0) {
+          player.userData.throwHand = playerLastHand;
+          startThrow(player, playerLastHand);
+          playerLastHand = playerLastHand === "left" ? "right" : "left";
+
+          setTimeout(() => {
+            ndc.set(
+              (mouseX / innerWidth) * 2 - 1,
+              -(mouseY / innerHeight) * 2 + 1
+            );
+
+            ray.setFromCamera(ndc, camera);
+            const hits = ray.intersectObjects([iceGround, ...walls], false);
+
+            const target =
+              hits.length > 0
+                ? hits[0].point
+                : ray.ray.origin
+                    .clone()
+                    .add(ray.ray.direction.clone().multiplyScalar(50));
+
+            const spawn = player.position.clone();
+            spawn.y += 2.3;
+            const fwd = new THREE.Vector3(0, 0, 1).applyEuler(player.rotation);
+            spawn.add(fwd.multiplyScalar(0.8));
+
+            const handOffset = playerLastHand === "left" ? -0.5 : 0.5;
+            spawn.add(
+              new THREE.Vector3(handOffset, 0, 0).applyEuler(player.rotation)
+            );
+
+            const dir = target.clone().sub(spawn).normalize();
+            createSnowball(spawn, dir.multiplyScalar(SNOWBALL_SPEED), "player");
+            player.userData.throwCooldown = SNOWBALL_RESPAWN_TIME;
+          }, 70);
+
+          throwCD = THROW_COOLDOWN;
+          crosshair.classList.add("throwing");
+          setTimeout(() => crosshair.classList.remove("throwing"), 200);
+        }
+      }
+
+      container.addEventListener("mousedown", (e) => {
+        if (e.button === 0) shoot();
+      });
+
+      function updatePlayer(dt) {
+        // --- Cooldowns ---
+        if (throwCD > 0) throwCD -= dt;
+
+        const DEADZONE = 0.05;
+
+        // ================= ROTATION =================
+        if (cameraMode === "touch") {
+          // Horizontal rotation
+          if (Math.abs(joystickLook.x) > DEADZONE) {
+            player.rotation.y -= joystickLook.x * TURN_SPEED * dt;
+          }
+          // Camera pitch
+          if (Math.abs(joystickLook.y) > DEADZONE) {
+            cameraPitch -= joystickLook.y * CAMERA_PITCH_SPEED * dt;
+            cameraPitch = THREE.MathUtils.clamp(
+              cameraPitch,
+              CAMERA_PITCH_MIN,
+              CAMERA_PITCH_MAX
+            );
+          }
+
+          // Crosshair positioning
+          if (
+            Math.abs(joystickLook.x) <= DEADZONE &&
+            Math.abs(joystickLook.y) <= DEADZONE
+          ) {
+            if (tapCrosshairX !== null && tapCrosshairY !== null) {
+              mouseX = tapCrosshairX;
+              mouseY = tapCrosshairY;
+            } else {
+              mouseX = centerX();
+              mouseY = window.innerHeight / 2;
+            }
+          }
+          crosshair.style.left = mouseX + "px";
+          crosshair.style.top = mouseY + "px";
+        } else {
+          // Keyboard rotation
+          if (keys.KeyQ) player.rotation.y += TURN_SPEED * dt;
+          if (keys.KeyE) player.rotation.y -= TURN_SPEED * dt;
+        }
+
+        // ================= MOVEMENT =================
+        moveVec.set(0, 0, 0);
+        fwdVec.set(0, 0, 1).applyEuler(player.rotation);
+        rightVec.set(-1, 0, 0).applyEuler(player.rotation);
+
+        if (cameraMode === "touch") {
+          if (Math.abs(joystickMove.y) > DEADZONE)
+            moveVec.addScaledVector(fwdVec, joystickMove.y);
+          if (Math.abs(joystickMove.x) > DEADZONE)
+            moveVec.addScaledVector(rightVec, joystickMove.x);
+        } else {
+          if (keys.KeyW || keys.ArrowUp) moveVec.add(fwdVec);
+          if (keys.KeyS || keys.ArrowDown) moveVec.sub(fwdVec);
+          if (keys.KeyD || keys.ArrowRight) moveVec.add(rightVec);
+          if (keys.KeyA || keys.ArrowLeft) moveVec.sub(rightVec);
+        }
+
+        // Track forward input for shadows
+        player.userData.forwardInput = moveVec.dot(fwdVec);
+
+        // Apply movement with wall sliding
+        if (moveVec.lengthSq() > 0) {
+          const spd =
+            keys.ShiftLeft || keys.ShiftRight ? SPRINT_SPEED : MOVE_SPEED;
+          moveVec
+            .normalize()
+            .multiplyScalar(Math.min(spd * dt, SNOWMAN_RADIUS * 0.8));
+
+          const next = player.position.clone().add(moveVec);
+          let blockedHoriz = false;
+
+          for (const w of walls) {
+            const n = cylVsAABB(
+              next,
+              SNOWMAN_RADIUS,
+              SNOWMAN_HALF_HEIGHT,
+              w.userData.aabb
+            );
+            if (!n) continue;
+
+            if (w.userData.isTall) {
+              moveVec.set(0, 0, 0);
+              blockedHoriz = true;
+              break;
+            } else {
+              // Only block if player is below wall top minus a small margin
+              const margin = 0.05;
+              if (player.position.y < w.userData.aabb.max.y - margin) {
+                const dot = moveVec.dot(n);
+                if (dot < 0) {
+                  moveVec.sub(n.clone().multiplyScalar(dot * 1.05)); // slide along wall
+                  blockedHoriz = true;
+                }
+              }
+            }
+          }
+          player.position.add(moveVec);
+
+          // Clamp inside playable circle
+          const distSq = player.position.x ** 2 + player.position.z ** 2;
+          if (distSq > maxRadiusSq) {
+            const angle = Math.atan2(player.position.z, player.position.x);
+            player.position.x = Math.cos(angle) * maxRadius;
+            player.position.z = Math.sin(angle) * maxRadius;
+          }
+
+          // --- Jump if blocked or onGround ---
+          if ((onGround || blockedHoriz) && keys.Space) {
+            velocityY = JUMP_SPEED;
+            onGround = false;
+          }
+        }
+
+        // --- Fall off edges ---
+        if (
+          onGround &&
+          lastGroundY > 0.01 &&
+          !isOver(player.position, SNOWMAN_RADIUS, lastGroundY)
+        ) {
+          onGround = false;
+          velocityY = 0;
+        }
+
+        // --- Gravity ---
+        if (!onGround) {
+          velocityY += GRAVITY * dt;
+          player.position.y += velocityY * dt;
+        }
+
+        // --- Land on surfaces (floor or short walls) ---
+        const surf = getSurface(player.position, SNOWMAN_RADIUS);
+        if (velocityY <= 0 && player.position.y <= surf + 0.05) {
+          player.position.y = surf;
+          velocityY = 0;
+          onGround = true;
+          lastGroundY = surf;
+        }
+
+        // --- Collision with AI (multi-pass) ---
+        const passes = 2;
+        for (let p = 0; p < passes; p++) {
+          for (const ai of aiSnowmen) resolveCol(player, ai, 0.3, 0.7);
+        }
+      }
+
+      // ============================================================================
+      // CAMERA
+      // Third-person camera that follows the player with zoom and pitch support
+      // ============================================================================
+
+      // Pre-allocated vectors for camera updates
+      const _zoomedOffset = new THREE.Vector3();
+      const _desiredPosition = new THREE.Vector3();
+      const _lookTarget = new THREE.Vector3();
+      const _yAxis = new THREE.Vector3(0, 1, 0);
+
+      function updateCamera() {
+        _zoomedOffset.copy(BASE_OFFSET).multiplyScalar(userRequestedZoom);
+
+        // Apply player yaw rotation to offset
+        _zoomedOffset.applyAxisAngle(_yAxis, player.rotation.y);
+
+        // ========================================================================
+        // CAMERA PITCH APPLICATION
+        // In touch mode, apply additional pitch rotation to the camera offset
+        // This rotates the camera up/down around the player based on joystick input
+        // ========================================================================
+        if (cameraMode === "touch" && Math.abs(cameraPitch) > 0.001) {
+          // Calculate the right vector for pitch rotation axis
+          const rightAxis = new THREE.Vector3(
+            -_zoomedOffset.z,
+            0,
+            _zoomedOffset.x
+          ).normalize();
+          _zoomedOffset.applyAxisAngle(rightAxis, cameraPitch);
+        }
+
+        _desiredPosition.copy(player.position).add(_zoomedOffset);
+        _desiredPosition.y += 2;
+        camera.position.lerp(_desiredPosition, 0.1);
+
+        _lookTarget.copy(player.position);
+        _lookTarget.y += 1.5;
+        camera.lookAt(_lookTarget);
+      }
+
+      // ============================================================================
+      // AI SNOWMEN
+      // Enemy characters with simple chase and throw behavior
+      // ============================================================================
+      const aiSnowmen = [];
+      for (let i = 0; i < 5; i++) {
+        const ai = createSnowman(0x222222, false);
+        ai.position.set(Math.random() * 40 - 20, 0, Math.random() * 40 - 20);
+        ai.userData.vy = 0;
+        ai.userData.onGround = true;
+        ai.userData.jumpCD = 0;
+        ai.userData.lastGroundY = 0;
+        ai.userData.throwCD = Math.random() * AI_THROW_COOLDOWN;
+        ai.userData.health = 100;
+        ai.userData.lastHand = "left";
+        scene.add(ai);
+        aiSnowmen.push(ai);
+      }
+
+      function respawnAI(ai) {
+        ai.position.copy(getFreePosition());
+        ai.userData.health = 100;
+        ai.userData.vy = 0;
+        ai.userData.onGround = true;
+      }
+
+      // Pre-allocated vectors for AI updates
+      const _toPlayer = new THREE.Vector3();
+      const _aiMove = new THREE.Vector3();
+      const _aiNext = new THREE.Vector3();
+      const _aiSpawn = new THREE.Vector3();
+      const _aiFwd = new THREE.Vector3();
+      const _aiHandOffset = new THREE.Vector3();
+
+      function updateAI(dt) {
+        const moveDelta = new THREE.Vector3();
+        const nextPos = new THREE.Vector3();
+
+        for (const ai of aiSnowmen) {
+          // Cooldowns
+          if (ai.userData.jumpCD > 0) ai.userData.jumpCD -= dt;
+          if (ai.userData.throwCD > 0) ai.userData.throwCD -= dt;
+
+          // Vector to player
+          _toPlayer.subVectors(player.position, ai.position);
+          const dist = _toPlayer.length();
+          if (dist > 80) continue;
+
+          // Face player
+          ai.rotation.y = Math.atan2(_toPlayer.x, _toPlayer.z);
+
+          // Throw snowball
+          if (
+            dist < AI_THROW_RANGE &&
+            ai.userData.throwCD <= 0 &&
+            ai.userData.onGround
+          ) {
+            ai.userData.throwHand = ai.userData.lastHand;
+            startThrow(ai, ai.userData.throwHand);
+            ai.userData.lastHand =
+              ai.userData.lastHand === "left" ? "right" : "left";
+
+            const throwHand = ai.userData.throwHand;
+            const throwAI = ai;
+
+            setTimeout(() => {
+              if (throwAI.userData.health > 0) {
+                _toPlayer.subVectors(player.position, throwAI.position);
+                _toPlayer.y += 1;
+                _toPlayer.normalize();
+
+                _aiSpawn
+                  .copy(throwAI.position)
+                  .add(new THREE.Vector3(0, 2.3, 0));
+                _aiFwd.set(0, 0, 1).applyAxisAngle(_yAxis, throwAI.rotation.y);
+                _aiSpawn.add(_aiFwd.multiplyScalar(0.8));
+
+                const handOffset = throwHand === "left" ? -0.5 : 0.5;
+                _aiHandOffset
+                  .set(handOffset, 0, 0)
+                  .applyAxisAngle(_yAxis, throwAI.rotation.y);
+                _aiSpawn.add(_aiHandOffset);
+
+                createSnowball(
+                  _aiSpawn.clone(),
+                  _toPlayer.clone().multiplyScalar(SNOWBALL_SPEED * 0.7),
+                  throwAI
+                );
+                throwAI.userData.throwCooldown = AI_SNOWBALL_RESPAWN_TIME;
+              }
+            }, 70);
+
+            ai.userData.throwCD = AI_THROW_COOLDOWN + Math.random() * 0.5;
+          }
+
+          // ----- Movement -----
+          _toPlayer.y = 0;
+          _toPlayer.normalize();
+          moveDelta.copy(_toPlayer).multiplyScalar(MOVE_SPEED * 0.5 * dt);
+          if (dist < 8) moveDelta.multiplyScalar(0.3);
+
+          nextPos.copy(ai.position).add(moveDelta);
+
+          // Wall sliding using robust cylVsAABB
+          for (const w of walls) {
+            const n = cylVsAABB(
+              nextPos,
+              SNOWMAN_RADIUS,
+              SNOWMAN_HALF_HEIGHT,
+              w.userData.aabb
+            );
+            if (!n) continue;
+
+            // Ignore push for low walls if AI is on top
+            if (
+              !w.userData.isTall &&
+              ai.position.y >= w.userData.aabb.max.y - 0.1
+            )
+              continue;
+
+            const dot = moveDelta.dot(n);
+            if (dot < 0) moveDelta.sub(n.clone().multiplyScalar(dot * 1.05)); // slight overcorrect
+          }
+
+          ai.position.add(moveDelta);
+
+          // Jump over blocked obstacles
+          const blocked = moveDelta.length() < 0.001 && ai.userData.onGround;
+          if (blocked && ai.userData.jumpCD <= 0) {
+            ai.userData.vy = JUMP_SPEED;
+            ai.userData.onGround = false;
+            ai.userData.jumpCD = 0.5;
+          }
+
+          // Gravity & falling
+          if (!ai.userData.onGround) ai.userData.vy += GRAVITY * dt;
+          ai.position.y += ai.userData.vy * dt;
+
+          // Surface detection
+          const surf = getSurface(ai.position, SNOWMAN_RADIUS);
+          if (ai.userData.vy <= 0 && ai.position.y <= surf + 0.05) {
+            ai.position.y = surf;
+            ai.userData.vy = 0;
+            ai.userData.onGround = true;
+            ai.userData.lastGroundY = surf;
+          }
+
+          // Falling off edges
+          if (
+            ai.userData.onGround &&
+            ai.userData.lastGroundY > 0.01 &&
+            !isOver(ai.position, SNOWMAN_RADIUS, ai.userData.lastGroundY)
+          ) {
+            ai.userData.onGround = false;
+            ai.userData.vy = 0;
+          }
+        }
+
+        // ----- Multi-pass collision resolution -----
+        const passes = 2;
+        for (let p = 0; p < passes; p++) {
+          for (const ai of aiSnowmen) resolveCol(player, ai, 0.3, 0.7);
+          for (let i = 0; i < aiSnowmen.length; i++) {
+            for (let j = i + 1; j < aiSnowmen.length; j++) {
+              resolveCol(aiSnowmen[i], aiSnowmen[j], 0.5, 0.5);
+            }
+          }
+        }
+      }
+
+      // ============================================================================
+      // GUI
+      // ============================================================================
+      const gui = new GUI({ title: "Options" });
+
+      // hide toggle option for touch-only devices (makes no sense to disable)
+      if (!isTouchOnly) {
+        gui
+          .add(CONFIG, "TOUCH")
+          .name("Touch Controls")
+          .onChange((enabled) => {
+            cameraMode = enabled ? "touch" : "thirdperson";
+            cameraPitch = 0; // Reset pitch when switching modes
+            ensureMobileControls();
+          });
+      }
+
+      const shadowSettings = { quality: "high" };
+      gui
+        .add(shadowSettings, "quality", ["none", "low", "medium", "high"])
+        .name("Shadow Quality")
+        .onChange(updateShadowQuality);
+
+      gui.close();
+
+      function updateShadowQuality(quality) {
+        let newSize;
+        switch (quality) {
+          case "none":
+            sun.castShadow = false;
+            renderer.shadowMap.enabled = false;
+            renderer.shadowMap.needsUpdate = true;
+            return;
+          case "low":
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFShadowMap;
+            sun.castShadow = true;
+            newSize = 1024;
+            break;
+          case "medium":
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            sun.castShadow = true;
+            newSize = 2048;
+            break;
+          case "high":
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            sun.castShadow = true;
+            newSize = 4096;
+            break;
+        }
+
+        if (sun.shadow.mapSize.width !== newSize) {
+          sun.shadow.map?.dispose();
+          sun.shadow.map = null;
+          sun.shadow.mapSize.width = newSize;
+          sun.shadow.mapSize.height = newSize;
+          sun.shadow.needsUpdate = true;
+          renderer.shadowMap.needsUpdate = true;
+        }
+      }
+
+      // ============================================================================
+      // TOUCH CONTROLS
+      // Mobile joysticks and buttons using nipplejs
+      // ============================================================================
+      const mobileControls = document.getElementById("mobileControls");
+      const keyMappings = document.getElementById("keyMappings");
+      const touchControls = document.getElementById("touchControls");
+
+      let tapCrosshairX = null;
+      let tapCrosshairY = null;
+
+      function initJoysticks() {
+        const leftZone = document.createElement("div");
+        leftZone.id = "joystick-left";
+        mobileControls.append(leftZone);
+
+        const rightZone = document.createElement("div");
+        rightZone.id = "joystick-right";
+        mobileControls.append(rightZone);
+
+        const unitValue = parseFloat(
+          getComputedStyle(mobileControls).getPropertyValue("--unit")
+        );
+
+        // Left joystick (movement)
+        leftJoystick = nipplejs.create({
+          zone: leftZone,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          restJoystick: true,
+          color: "blue",
+          size: unitValue * 10,
+        });
+
+        leftJoystick.on("move", (evt, data) => {
+          if (isPinching) return;
+          joystickMove.x = data.vector.x;
+          joystickMove.y = data.vector.y;
+
+          keys.ShiftLeft = false;
+          keys.ShiftRight = false;
+          if (data.force > TOUCH_SPRINT_THRESHOLD) {
+            keys.ShiftLeft = true;
+          }
+        });
+
+        leftJoystick.on("end", () => {
+          joystickMove.x = 0;
+          joystickMove.y = 0;
+          keys.ShiftLeft = false;
+          keys.ShiftRight = false;
+        });
+
+        // Right joystick (look/aim)
+        rightJoystick = nipplejs.create({
+          zone: rightZone,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          restJoystick: true,
+          color: "red",
+          size: unitValue * 10,
+        });
+
+        rightJoystick.on("move", (evt, data) => {
+          if (isPinching) return;
+          joystickLook.x = data.vector.x;
+          joystickLook.y = data.vector.y;
+        });
+
+        rightJoystick.on("end", () => {
+          joystickLook.x = 0;
+          joystickLook.y = 0;
+        });
+
+        // Touch buttons
+        createTouchButton(
+          "shootButton",
+          "SHOOT",
+          null,
+          () => shoot(),
+          () => {}
+        );
+        createTouchButton(
+          "jump",
+          "JUMP",
+          null,
+          () => {
+            if (onGround) {
+              velocityY = JUMP_SPEED;
+              onGround = false;
+            }
+          },
+          () => {}
+        );
+
+        // Pinch-to-zoom
+        container.addEventListener(
+          "touchstart",
+          (e) => {
+            if (e.touches.length === 2) {
+              isPinching = true;
+              const dx = e.touches[0].clientX - e.touches[1].clientX;
+              const dy = e.touches[0].clientY - e.touches[1].clientY;
+              initialPinchDistance = Math.hypot(dx, dy);
+              pinchZoomStart = userRequestedZoom;
+              joystickMove.x = joystickMove.y = 0;
+              joystickLook.x = joystickLook.y = 0;
+            }
+          },
+          { passive: true }
+        );
+
+        container.addEventListener(
+          "touchmove",
+          (e) => {
+            if (e.touches.length === 2 && isPinching) {
+              e.preventDefault(); // stop browser zoom/scroll
+
+              const dx = e.touches[0].clientX - e.touches[1].clientX;
+              const dy = e.touches[0].clientY - e.touches[1].clientY;
+              const currentDistance = Math.hypot(dx, dy);
+              if (!initialPinchDistance) return;
+
+              const ratio = currentDistance / initialPinchDistance;
+              userRequestedZoom = THREE.MathUtils.clamp(
+                pinchZoomStart / ratio,
+                CONFIG.MIN_ZOOM_MULTIPLIER,
+                CONFIG.MAX_ZOOM_MULTIPLIER
+              );
+            }
+          },
+          { passive: false }
+        );
+
+        container.addEventListener(
+          "touchend",
+          (e) => {
+            if (!isPinching && e.changedTouches.length === 1) {
+              const touch = e.changedTouches[0];
+              // Set tap target
+              tapCrosshairX = touch.clientX;
+              tapCrosshairY = touch.clientY;
+
+              // Update mouseX/mouseY immediately for shooting
+              mouseX = tapCrosshairX;
+              mouseY = tapCrosshairY;
+              shoot();
+            }
+
+            // Reset pinch state if less than 2 touches
+            if (e.touches.length < 2) {
+              isPinching = false;
+              initialPinchDistance = null;
+              pinchZoomStart = null;
+            }
+          },
+          { passive: false }
+        );
+
+        container.addEventListener(
+          "touchcancel",
+          () => {
+            isPinching = false;
+            initialPinchDistance = null;
+            pinchZoomStart = null;
+          },
+          { passive: true }
+        );
+      }
+
+      function ensureMobileControls() {
+        if (!mobileControls) return;
+
+        if (cameraMode === "touch") {
+          keyMappings.style.display = "none";
+          touchControls.style.display = "block";
+          mobileControls.style.display = "block";
+          mobileControls.style.pointerEvents = "auto";
+          if (!leftJoystick && !rightJoystick) {
+            initJoysticks();
+          }
+        } else {
+          keyMappings.style.display = "block";
+          touchControls.style.display = "none";
+          mobileControls.style.display = "none";
+          mobileControls.style.pointerEvents = "none";
+        }
+      }
+
+      function createTouchButton(
+        id,
+        label,
+        onTap = null,
+        onPress = null,
+        onRelease = null,
+        getToggleState = null
+      ) {
+        const button = document.createElement("div");
+        button.id = `btn-${id}`;
+        button.textContent = label;
+        button.className = "touch-button";
+
+        function updateAppearance(isToggled) {
+          button.classList.toggle("toggled", isToggled);
+        }
+
+        if (onTap) {
+          button.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onTap();
+            updateAppearance(getToggleState?.() ?? false);
+          });
+        }
+
+        if (onPress && onRelease) {
+          button.addEventListener(
+            "touchstart",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.add("active");
+              onPress();
+            },
+            { passive: false }
+          );
+
+          button.addEventListener(
+            "touchend",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.remove("active");
+              updateAppearance(getToggleState?.() ?? false);
+              onRelease();
+            },
+            { passive: false }
+          );
+
+          button.addEventListener(
+            "touchcancel",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              updateAppearance(getToggleState?.() ?? false);
+              onRelease();
+            },
+            { passive: false }
+          );
+        } else if (onTap) {
+          button.addEventListener(
+            "touchstart",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.add("active");
+            },
+            { passive: false }
+          );
+
+          button.addEventListener(
+            "touchend",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.remove("active");
+              onTap();
+              updateAppearance(getToggleState?.() ?? false);
+            },
+            { passive: false }
+          );
+
+          button.addEventListener(
+            "touchcancel",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.remove("active");
+              updateAppearance(getToggleState?.() ?? false);
+            },
+            { passive: false }
+          );
+        }
+
+        updateAppearance(getToggleState?.() ?? false);
+        mobileControls.append(button);
+        button.updateAppearance = () =>
+          updateAppearance(getToggleState?.() ?? false);
+        return button;
+      }
+
+      ensureMobileControls();
+
+      // ============================================================================
+      // RENDER LOOP
+      // ============================================================================
+      let lastT = 0;
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const t = performance.now() / 1000;
+        const dt = Math.min(t - lastT, 0.1); // Cap delta to prevent physics explosions
+        lastT = t;
+
+        // Update all systems
+        updateSnow(dt);
+        updatePlayer(dt);
+        updateAI(dt);
+        updateThrowAnims(dt);
+        updateSnowballs(dt);
+        updateImpactParticles(dt);
+        updateHitStars(dt);
+        updateCamera();
+        updateSunShadow(dt);
+        updateShadowFrustum();
+
+        renderer.render(scene, camera);
+      }
+
+      animate();
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+    </script>
+  </body>
+</html>

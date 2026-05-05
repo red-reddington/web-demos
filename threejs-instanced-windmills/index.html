@@ -1,0 +1,671 @@
+<!-- https://codepen.io/the-red-reddington/full/MYeMeLK -->
+<!-- https://discourse.threejs.org/t/high-performance-instanced-windmills/89933 -->
+<!-- Inspired by https://codepen.io/prisoner849/pen/NPWmmBx -- Thank You! -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>High-Performance Instanced Windmills</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/",
+          "stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@4.0.2/+esm"
+        }
+      }
+    </script>
+
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: #000;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      #performanceStats {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 150;
+      }
+      #statsCustom {
+        position: fixed;
+        top: 0;
+        left: 270px;
+        font: 10px monospace;
+        background: rgba(0, 0, 0, 1);
+        color: #0ff;
+        padding: 0px 5px;
+        display: block !important;
+        white-space: pre;
+        width: fit-content !important;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="performanceStats"></div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+      import StatsGL from "stats-gl";
+
+      const CONFIG = {
+        PIXEL_RATIO_MAX: 2.0,
+        SHADOW_SIZE: 4096, // try 8192, 4096, 2048, or even 1024 based on the performance of your rig
+        SHADOW_FRUSTUM: 350,
+        SUN_POS: { x: 100, y: 160, z: 100 },
+        SUN_INTENSITY: 1.0,
+        background: 0x88aaff,
+        groundColor: 0x5a8050,
+        poleColor: 0xeeeeee,
+        bladeColor: 0x334455,
+        hubColor: 0xeeeeee,
+        bladeAngle: 0.2,
+        bladeCount: 3,
+        bladeLength: 7.2,
+        bladeThickness: 0.025,
+        hubRadius: 0.5,
+        hubHeight: 0.8,
+        poleRadiusTop: 0.18,
+        poleRadiusBottom: 0.22,
+        poleHeight: 6,
+        hubY: 6.3,
+        poleY: 3,
+        rotationSpeed: 1.8,
+        wobbleAmplitude: 0.04,
+        twistAmount: 0.7,
+        fov: 50,
+        camStart: [128, 35, 262],
+        minDistance: 4,
+        maxDistance: 700,
+        WINDMILL_COUNT: 1000,
+        GRID_SPACING: 15,
+        WORLD_SIZE: 500,
+        STATS_INTERVAL: 250,
+        DISTANCE_UPDATE: 200, // optimized distance-based rendering
+      };
+
+      // ------------------------------------------------------------------
+      // RENDERER
+      // ------------------------------------------------------------------
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        precision: "mediump",
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(
+        Math.min(devicePixelRatio, CONFIG.PIXEL_RATIO_MAX),
+      );
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.physicallyCorrectLights = true;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      renderer.shadowMap.autoUpdate = false; // updated manually in loop
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(CONFIG.background);
+
+      // Sky
+      const skyGeo = new THREE.SphereGeometry(500, 32, 16);
+      const skyMat = new THREE.ShaderMaterial({
+        uniforms: {
+          topColor: { value: new THREE.Color(0x6baed6) },
+          bottomColor: { value: new THREE.Color(0xddeeff) },
+        },
+        vertexShader: `
+            varying vec3 vWorldPosition;
+            void main() {
+              vec4 worldPos = modelMatrix * vec4(position, 1.0);
+              vWorldPosition = worldPos.xyz;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+        fragmentShader: `
+            uniform vec3 topColor;
+            uniform vec3 bottomColor;
+            varying vec3 vWorldPosition;
+            void main() {
+              float h = normalize(vWorldPosition).y;
+              gl_FragColor = vec4(mix(bottomColor, topColor, pow(max(h, 0.0), 0.6)), 1.0);
+            }
+          `,
+        side: THREE.BackSide,
+        depthWrite: false,
+      });
+      scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+      const camera = new THREE.PerspectiveCamera(
+        CONFIG.fov,
+        innerWidth / innerHeight,
+        0.1,
+        2000,
+      );
+      camera.position.set(...CONFIG.camStart);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
+      controls.minDistance = CONFIG.minDistance;
+      controls.maxDistance = CONFIG.maxDistance;
+      controls.maxPolarAngle = Math.PI / 2 - 0.05;
+
+      // ------------------------------------------------------------------
+      // STATS
+      // ------------------------------------------------------------------
+
+      const stats = new StatsGL({ trackGPU: true, trackHz: true });
+      document.getElementById("performanceStats").appendChild(stats.dom);
+      stats.init(renderer);
+
+      const statsCustom = document.createElement("div");
+      statsCustom.id = "statsCustom";
+      document.getElementById("performanceStats").appendChild(statsCustom);
+
+      let lastStatsUpdate = 0;
+      let last = { c: -1, t: -1, g: -1, x: -1 };
+
+      function formatNumber(n) {
+        if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+        if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+        return n.toString();
+      }
+
+      function updateStatsCustom(now) {
+        if (now - lastStatsUpdate < CONFIG.STATS_INTERVAL) return;
+        lastStatsUpdate = now;
+
+        const r = renderer.info.render;
+        const m = renderer.info.memory;
+
+        if (
+          r.calls === last.c &&
+          r.triangles === last.t &&
+          m.geometries === last.g &&
+          m.textures === last.x
+        )
+          return;
+
+        last = { c: r.calls, t: r.triangles, g: m.geometries, x: m.textures };
+
+        statsCustom.textContent = `DC: ${formatNumber(r.calls)}
+TRI: ${formatNumber(r.triangles)}
+GEO: ${formatNumber(m.geometries)}
+TEX: ${formatNumber(m.textures)}`;
+      }
+
+      // ------------------------------------------------------------------
+      // LIGHTING
+      // ------------------------------------------------------------------
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+
+      const sun = new THREE.DirectionalLight(0xfff5e0, CONFIG.SUN_INTENSITY);
+      sun.position.set(CONFIG.SUN_POS.x, CONFIG.SUN_POS.y, CONFIG.SUN_POS.z);
+      sun.castShadow = true;
+      sun.shadow.mapSize.setScalar(CONFIG.SHADOW_SIZE);
+
+      const sf = CONFIG.SHADOW_FRUSTUM;
+      sun.shadow.camera.left = -sf;
+      sun.shadow.camera.right = sf;
+      sun.shadow.camera.top = sf;
+      sun.shadow.camera.bottom = -sf;
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = 450;
+
+      sun.shadow.bias = 0.0002;
+      sun.shadow.normalBias = 0.3;
+      sun.shadow.radius = 2;
+
+      scene.add(sun);
+
+      /* Note: useful to perfectly configure shadow box to encompass all corners of the scene 
+      const dirLightHelper = new THREE.CameraHelper(sun.shadow.camera);
+      dirLightHelper.frustumCulled = false;
+      scene.add(dirLightHelper);
+      */
+
+      // ------------------------------------------------------------------
+      // GROUND
+      // ------------------------------------------------------------------
+
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(CONFIG.WORLD_SIZE, CONFIG.WORLD_SIZE),
+        new THREE.MeshStandardMaterial({
+          color: CONFIG.groundColor,
+          roughness: 0.9,
+        }),
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // ------------------------------------------------------------------
+      // GEOMETRIES
+      // ------------------------------------------------------------------
+
+      // Pole + hub + flush back cap merged
+      const poleHubGeo = mergeGeometries([
+        // Pole
+        new THREE.CylinderGeometry(
+          CONFIG.poleRadiusTop,
+          CONFIG.poleRadiusBottom,
+          CONFIG.poleHeight,
+          6,
+          1,
+        ),
+        // Hub + flush back cap
+        (() => {
+          // Hub profile along Y axis
+          const hubPoints = new THREE.Path()
+            .moveTo(CONFIG.hubRadius, -CONFIG.hubHeight / 2) // front outer edge
+            .lineTo(CONFIG.hubRadius, -CONFIG.hubHeight / 2) // ensure start
+            .absarc(0, 1, CONFIG.hubRadius, 0, Math.PI * 0.5)
+            .getPoints(12);
+
+          // Add back cap points at -hubHeight/2
+          hubPoints.push(new THREE.Vector2(0, -CONFIG.hubHeight / 2)); // back center
+          hubPoints.push(
+            new THREE.Vector2(CONFIG.hubRadius, -CONFIG.hubHeight / 2),
+          ); // back outer edge
+
+          const lathe = new THREE.LatheGeometry(hubPoints, 24);
+          lathe.rotateX(Math.PI / 2);
+          lathe.translate(0, CONFIG.poleY, 0); // center on pole Y
+
+          return lathe;
+        })(),
+      ]);
+
+      const poleHubMat = new THREE.MeshStandardMaterial({
+        color: CONFIG.poleColor,
+        roughness: 0.5,
+      });
+
+      // Blade geometry
+      const bladeShape = new THREE.Shape()
+        .moveTo(0, CONFIG.hubRadius)
+        .splineThru([
+          new THREE.Vector2(0, CONFIG.bladeLength),
+          new THREE.Vector2(0.1, CONFIG.bladeLength),
+          new THREE.Vector2(0.5, CONFIG.hubRadius + 1),
+          new THREE.Vector2(0.1, CONFIG.hubRadius),
+        ]);
+
+      function createBladeGeometryFromShape(shape) {
+        const depth = CONFIG.bladeThickness;
+        const geo = new THREE.ShapeGeometry(shape, 6); // reduced segments
+        const pos = geo.attributes.position.array;
+        const index = geo.index.array;
+        const vertexCount = pos.length / 3;
+
+        const positions = [];
+        const indices = [];
+        const uvs = [];
+
+        for (let i = 0; i < vertexCount; i++) {
+          const x = pos[i * 3];
+          const y = pos[i * 3 + 1];
+          uvs.push(
+            x / CONFIG.bladeLength,
+            (y - CONFIG.hubRadius) / CONFIG.bladeLength,
+          );
+        }
+        for (let i = 0; i < vertexCount; i++) {
+          const x = pos[i * 3];
+          const y = pos[i * 3 + 1];
+          uvs.push(
+            x / CONFIG.bladeLength,
+            (y - CONFIG.hubRadius) / CONFIG.bladeLength,
+          );
+        }
+        for (let i = 0; i < vertexCount; i++)
+          positions.push(pos[i * 3], pos[i * 3 + 1], depth);
+        for (let i = 0; i < vertexCount; i++)
+          positions.push(pos[i * 3], pos[i * 3 + 1], -depth);
+
+        for (let i = 0; i < index.length; i += 3)
+          indices.push(index[i], index[i + 1], index[i + 2]);
+        for (let i = 0; i < index.length; i += 3)
+          indices.push(
+            index[i + 2] + vertexCount,
+            index[i + 1] + vertexCount,
+            index[i] + vertexCount,
+          );
+
+        const edge = shape.extractPoints(6).shape;
+        for (let i = 0; i < edge.length; i++) {
+          const next = (i + 1) % edge.length;
+          const a = i,
+            b = next,
+            c = i + vertexCount,
+            d = next + vertexCount;
+          indices.push(a, b, c);
+          indices.push(b, d, c);
+        }
+
+        const geoFinal = new THREE.BufferGeometry();
+        geoFinal.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+        geoFinal.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(positions, 3),
+        );
+        geoFinal.setIndex(indices);
+        geoFinal.computeVertexNormals();
+        return geoFinal;
+      }
+
+      const bladeGeo = createBladeGeometryFromShape(bladeShape);
+      bladeGeo.translate(0, 0, -CONFIG.bladeThickness);
+      bladeGeo.rotateZ(-Math.PI / 2);
+      bladeGeo.rotateX(CONFIG.bladeAngle);
+      bladeGeo.rotateX(Math.PI / 2);
+
+      const vertexCount = bladeGeo.attributes.position.count;
+      const twistCos = new Float32Array(vertexCount);
+      const twistSin = new Float32Array(vertexCount);
+
+      for (let i = 0; i < vertexCount; i++) {
+        const y = bladeGeo.attributes.position.getX(i);
+        const normY = y / CONFIG.bladeLength;
+        const twist = normY * CONFIG.twistAmount;
+        twistCos[i] = Math.cos(twist);
+        twistSin[i] = Math.sin(twist);
+      }
+
+      bladeGeo.setAttribute("twistCos", new THREE.BufferAttribute(twistCos, 1));
+      bladeGeo.setAttribute("twistSin", new THREE.BufferAttribute(twistSin, 1));
+
+      // ------------------------------------------------------------------
+      // MATERIALS
+      // ------------------------------------------------------------------
+
+      const bladeMat = new THREE.MeshStandardMaterial({
+        color: CONFIG.bladeColor,
+        metalness: 0.15,
+        roughness: 0.65,
+      });
+
+      const uTime = { value: 0 };
+
+      bladeMat.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = uTime;
+
+        shader.vertexShader =
+          `
+          attribute float iCos;
+          attribute float iSin;
+          attribute float iWobble;
+          attribute float twistCos;
+          attribute float twistSin;
+          varying vec2 vBladeUv;
+          ` + shader.vertexShader;
+
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <uv_vertex>",
+          `
+          #include <uv_vertex>
+          vBladeUv = uv;
+          `,
+        );
+
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `
+          #include <begin_vertex>
+
+          // blade twist
+          transformed.yz = mat2(twistCos, -twistSin, twistSin, twistCos) * transformed.yz;
+
+          // rotation from instanced attributes
+          transformed.xy = mat2(iCos, -iSin, iSin, iCos) * transformed.xy;
+
+          // wobble
+          transformed.z += iWobble * ${CONFIG.wobbleAmplitude.toFixed(3)};
+          `,
+        );
+      };
+
+      // leave blade shader modifications intact (twist + wobble)
+
+      const dummy = new THREE.Object3D();
+
+      // ------------------------------------------------------------------
+      // INSTANCED MESHES
+      // ------------------------------------------------------------------
+
+      const TOTAL_BLADES = CONFIG.WINDMILL_COUNT * CONFIG.bladeCount;
+
+      const poleHubInst = new THREE.InstancedMesh(
+        poleHubGeo,
+        poleHubMat,
+        CONFIG.WINDMILL_COUNT,
+      );
+      const bladesInst = new THREE.InstancedMesh(
+        bladeGeo,
+        bladeMat,
+        TOTAL_BLADES,
+      );
+
+      // --- ENABLE SHADOWS ---
+      poleHubInst.castShadow = true;
+      poleHubInst.receiveShadow = true;
+
+      bladesInst.castShadow = true;
+      bladesInst.receiveShadow = true;
+
+      // ---------------------- Custom depth material for instanced blades ----------------------
+      const customDepthMaterial = new THREE.MeshDepthMaterial({
+        depthPacking: THREE.RGBADepthPacking,
+      });
+
+      customDepthMaterial.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = uTime;
+
+        // Inject instanced attributes
+        shader.vertexShader =
+          `
+          attribute float iCos;
+          attribute float iSin;
+          attribute float iWobble;
+          attribute float twistCos;
+          attribute float twistSin;
+          ` + shader.vertexShader;
+
+        // Apply same transformations as in the blade material
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `
+          #include <begin_vertex>
+
+          // twist along blade length
+          transformed.yz = mat2(twistCos, -twistSin, twistSin, twistCos) * transformed.yz;
+
+          // rotation around hub center
+          transformed.xy = mat2(iCos, -iSin, iSin, iCos) * transformed.xy;
+
+          // wobble
+          transformed.z += iWobble * ${CONFIG.wobbleAmplitude.toFixed(3)};
+          `,
+        );
+      };
+
+      // Assign to blades instanced mesh
+      bladesInst.customDepthMaterial = customDepthMaterial;
+
+      // -------------------- add instanced animation attributes --------------------
+      const iCos = new Float32Array(TOTAL_BLADES);
+      const iSin = new Float32Array(TOTAL_BLADES);
+      const iWobble = new Float32Array(TOTAL_BLADES);
+
+      bladesInst.geometry.setAttribute(
+        "iCos",
+        new THREE.InstancedBufferAttribute(iCos, 1),
+      );
+      bladesInst.geometry.setAttribute(
+        "iSin",
+        new THREE.InstancedBufferAttribute(iSin, 1),
+      );
+      bladesInst.geometry.setAttribute(
+        "iWobble",
+        new THREE.InstancedBufferAttribute(iWobble, 1),
+      );
+
+      scene.add(poleHubInst, bladesInst);
+
+      // ------------------------------------------------------------------
+      // WINDMILL PLACEMENT
+      // ------------------------------------------------------------------
+
+      const bladeData = [];
+      let bladeIndex = 0;
+
+      const gridSize = Math.ceil(Math.sqrt(CONFIG.WINDMILL_COUNT));
+      let count = 0;
+
+      for (let i = 0; i < gridSize; i++) {
+        for (let j = 0; j < gridSize; j++) {
+          if (count >= CONFIG.WINDMILL_COUNT) break;
+
+          const x = (i - gridSize / 2) * CONFIG.GRID_SPACING;
+          const z = (j - gridSize / 2) * CONFIG.GRID_SPACING;
+
+          // Pole + hub merged
+          dummy.position.set(x, CONFIG.poleY + CONFIG.hubRadius / 2, z);
+          dummy.rotation.set(0, 0, 0);
+          dummy.updateMatrix();
+          poleHubInst.setMatrixAt(count, dummy.matrix);
+
+          // Blades
+          const speed = 0.5 + Math.random() * 2.0;
+          const wobbleAmp = 0.02 + Math.random() * 0.08;
+          const baseRot = Math.random() * Math.PI * 2;
+
+          for (let b = 0; b < CONFIG.bladeCount; b++) {
+            dummy.position.set(x, CONFIG.hubY, z + CONFIG.hubHeight);
+            dummy.rotation.set(
+              0,
+              0,
+              baseRot + (b / CONFIG.bladeCount) * Math.PI * 2,
+            );
+            dummy.updateMatrix();
+            bladesInst.setMatrixAt(bladeIndex, dummy.matrix);
+
+            bladeData.push({
+              x,
+              z,
+              baseRot,
+              bladeOffset: (b / CONFIG.bladeCount) * Math.PI * 2,
+              speed,
+              wobbleAmp,
+              offset: 0,
+            });
+
+            bladeIndex++;
+          }
+
+          count++;
+        }
+      }
+
+      // ------------------------------------------------------------------
+      // TRIG TABLE
+      // ------------------------------------------------------------------
+
+      const TABLE_SIZE = 2048;
+      const sinTable = new Float32Array(TABLE_SIZE);
+      const cosTable = new Float32Array(TABLE_SIZE);
+      for (let i = 0; i < TABLE_SIZE; i++) {
+        const a = (i / TABLE_SIZE) * Math.PI * 2;
+        sinTable[i] = Math.sin(a);
+        cosTable[i] = Math.cos(a);
+      }
+
+      function lookupTrig(angle) {
+        let a = angle % (Math.PI * 2);
+        if (a < 0) a += Math.PI * 2;
+        const idx = ((a / (Math.PI * 2)) * TABLE_SIZE) | 0;
+        return [cosTable[idx], sinTable[idx]];
+      }
+
+      // ------------------------------------------------------------------
+      // ANIMATION
+      // ------------------------------------------------------------------
+
+      let shadowFrame = 0;
+      let isSymRunning = true;
+      let prevTime = 0;
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+        if (document.hidden) {
+          return;
+        }
+
+        const dt = Math.min((now - prevTime) / 1000, 0.1);
+        prevTime = now;
+        const t = now / 1000; // Elapsed time in seconds
+
+        if (isSymRunning) {
+          for (let i = 0; i < TOTAL_BLADES; i++) {
+            const data = bladeData[i];
+
+            const dx = camera.position.x - data.x;
+            const dz = camera.position.z - data.z;
+            const distSq = dx * dx + dz * dz;
+
+            const angle = t * data.speed + data.offset;
+            const [c, s] = lookupTrig(angle);
+            iCos[i] = c;
+            iSin[i] = s;
+
+            // Only apply wobble for nearby blades
+            if (distSq < CONFIG.DISTANCE_UPDATE * CONFIG.DISTANCE_UPDATE) {
+              const wobbleAngle = angle * 4.0;
+              const [_, ws] = lookupTrig(wobbleAngle);
+              iWobble[i] = ws * data.wobbleAmp;
+            } else {
+              iWobble[i] = 0; // skip wobble for far blades
+            }
+          }
+
+          bladesInst.geometry.attributes.iCos.needsUpdate = true;
+          bladesInst.geometry.attributes.iSin.needsUpdate = true;
+          bladesInst.geometry.attributes.iWobble.needsUpdate = true;
+          bladesInst.instanceMatrix.needsUpdate = true;
+
+          if ((shadowFrame++ & 3) === 0) renderer.shadowMap.needsUpdate = true;
+        }
+
+        renderer.render(scene, camera);
+        updateStatsCustom(now);
+        stats.update();
+      }
+
+      animate(0);
+
+      window.addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+      });
+
+      window.addEventListener("dblclick", () => {
+        isSymRunning = !isSymRunning;
+      });
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+    </script>
+  </body>
+</html>

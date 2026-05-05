@@ -1,0 +1,1639 @@
+<!-- https://codepen.io/the-red-reddington/full/EayLxYZ -->
+<!-- https://discourse.threejs.org/t/100k-procedural-rocks-brutally-optimized/89578 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>100K Procedural Rocks, Brutally Optimized</title>
+    <meta
+      name="description"
+      content="100K procedural rocks generated with SDF and marching cubes, rendered with 4-level LOD, frustum culling, and instancing at sub-ms frame times."
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: #000;
+        width: 100%;
+        height: 100%;
+      }
+      #performanceStats {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 10;
+      }
+      #statsCustom {
+        position: fixed;
+        top: 0;
+        left: 270px;
+        font: 10px monospace;
+        background: rgba(0, 0, 0, 1);
+        color: #0ff;
+        padding: 0px 5px;
+        display: block !important;
+        white-space: pre;
+        width: fit-content !important;
+      }
+
+      canvas {
+        display: block;
+      }
+      #gui {
+        position: absolute;
+        top: 60px;
+        left: 10px;
+        color: #fff;
+        font: 12px monospace;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        padding: 10px;
+        border-radius: 4px;
+        min-width: 240px;
+      }
+      #gui div {
+        margin: 4px 0;
+      }
+      #gui input[type="range"] {
+        width: 100px;
+        vertical-align: middle;
+      }
+      #gui hr {
+        border-color: #444;
+        margin: 8px 0;
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/",
+          "stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@3.8.0/+esm"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="performanceStats"></div>
+    <div id="gui"></div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import StatsGL from "stats-gl";
+
+      // ==========================================================
+      // CONFIGURATION
+      // ==========================================================
+      const CONFIG = {
+        TERRAIN_RADIUS: 400,
+
+        INSTANCE_COUNT: 100000,
+
+        NUM_ROCK_SHAPES: 8, // draw calls = NUM_ROCK_SHAPES × LOD_DISTANCES.length
+        MIN_SCALE: 0.45,
+        MAX_SCALE: 2.2,
+        MIN_SQUASH: 0.4,
+        MAX_SQUASH: 1.1,
+        MIN_NUM_CUTS: 14,
+        MAX_NUM_CUTS: 22,
+        MIN_CUT_RADIUS: 1.4,
+        MAX_CUT_RADIUS: 2.5,
+        MIN_CUT_RATIO: 0.6,
+        MAX_CUT_RATIO: 0.85,
+        MIN_CUT_K: 0.02,
+        MAX_CUT_K: 0.08,
+        MIN_SHAPE_SCALE_X: 0.75,
+        MAX_SHAPE_SCALE_X: 1.25,
+        MIN_SHAPE_SCALE_Y: 0.6,
+        MAX_SHAPE_SCALE_Y: 1.0,
+        MIN_SHAPE_SCALE_Z: 0.75,
+        MAX_SHAPE_SCALE_Z: 1.25,
+        MIN_WETNESS: 0.1,
+        MAX_WETNESS: 0.45,
+        MIN_ROUGHNESS: 0.4,
+        MAX_ROUGHNESS: 1.0,
+        MIN_COLOR_TINGE: -0.12,
+        MAX_COLOR_TINGE: 0.12,
+
+        WORLD_BOTTOM: 0, // all vertices and pixels below this are discarded
+        GROUND_SINKING: 0.45, // 0.0 = sit exactly on surface, 0.3 = sink 30% of height, 0.5 = half sunk, etc.
+
+        LOD_DISTANCES: [0, 30, 130, 165], //, 30, 60, 90, 120, 180],
+        LOD_RESOLUTIONS: [20, 14, 6, 1], //, 24, 16, 8, 4, 2],
+        LOD_SPHERE1_RESOLUTION: -1, // highest-res impostor -- works, but unused in demo
+        LOD_SPHERE0_RESOLUTION: 6, // mid-res impostor, LOD_RESOLUTIONS[2]
+        LOD_BOX_RESOLUTION: 1, // lowest-res impostor, LOD_RESOLUTIONS[3]
+
+        VIEW_DISTANCE: 400, // TERRAIN_RADIUS - don't render rocks that are beyond this distance
+        FRUSTUM_CULLING: true,
+
+        SHADOWMAP_SIZE: 2048,
+        SHADOW_FRUSTUM_SIZE: 50,
+      };
+
+      // ==========================================================
+      // RENDERER
+      // ==========================================================
+      const renderer = new THREE.WebGLRenderer({
+        alpha: false,
+        antialias: true,
+        precision: "highp",
+        powerPreference: "high-performance",
+        preserveDrawingBuffer: false, // this costs memory if true and can hurt performance
+        stencil: false,
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.9;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      renderer.shadowMap.autoUpdate = false; // true if lights move
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1a24);
+
+      const camera = new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        0.5,
+        20000,
+      );
+      camera.position.set(0, 15, 50);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
+      controls.dampingFactor = 0.05;
+      controls.maxDistance = 500;
+      controls.minDistance = 1;
+      controls.maxPolarAngle = Math.PI / 2;
+
+      const stats = new StatsGL({ trackGPU: true, trackHz: true });
+      const statsContainer = document.getElementById("performanceStats");
+      statsContainer.appendChild(stats.dom);
+      stats.init(renderer);
+
+      let statsCustom = document.createElement("div");
+      statsCustom.id = "statsCustom";
+      statsContainer.appendChild(statsCustom);
+
+      let lastStatsUpdate = 0;
+      let last = { c: -1, t: -1, g: -1, x: -1 };
+      const HUD_INTERVAL = 250;
+
+      function formatNumber(n) {
+        if (n >= 1_000_000) {
+          const millions = n / 1_000_000;
+          return millions < 10
+            ? millions.toFixed(1) + "M"
+            : Math.round(millions) + "M";
+        }
+        if (n >= 1_000) {
+          const thousands = n / 1_000;
+          return thousands < 10
+            ? thousands.toFixed(1) + "K"
+            : Math.round(thousands) + "K";
+        }
+        return n.toString();
+      }
+
+      function updateStatsCustom(now) {
+        if (now - lastStatsUpdate < HUD_INTERVAL) return;
+        lastStatsUpdate = now;
+
+        const r = renderer.info.render;
+        const m = renderer.info.memory;
+
+        if (
+          r.calls === last.c &&
+          r.triangles === last.t &&
+          m.geometries === last.g &&
+          m.textures === last.x
+        )
+          return;
+
+        last.c = r.calls;
+        last.t = r.triangles;
+        last.g = m.geometries;
+        last.x = m.textures;
+
+        statsCustom.textContent = `DC: ${formatNumber(
+          r.calls,
+        )}\nTRI: ${formatNumber(r.triangles)}\nGEO: ${formatNumber(
+          m.geometries,
+        )}\nTEX: ${formatNumber(m.textures)}`;
+      }
+
+      // Lighting
+      scene.add(new THREE.HemisphereLight(0x8899bb, 0x333322, 0.5));
+      const sun = new THREE.DirectionalLight(0xffeedd, 1.2);
+      sun.castShadow = true;
+      sun.position.set(50, 80, 50);
+      sun.shadow.mapSize.width = CONFIG.SHADOWMAP_SIZE;
+      sun.shadow.mapSize.height = CONFIG.SHADOWMAP_SIZE;
+      sun.shadow.radius = 1.5; // blur radius for PCF; avoids pixelated shadow edges
+      sun.shadow.camera.near = 0.5;
+      sun.shadow.camera.far = 150;
+
+      sun.shadow.camera.left = -CONFIG.SHADOW_FRUSTUM_SIZE;
+      sun.shadow.camera.right = CONFIG.SHADOW_FRUSTUM_SIZE;
+      sun.shadow.camera.top = CONFIG.SHADOW_FRUSTUM_SIZE;
+      sun.shadow.camera.bottom = -CONFIG.SHADOW_FRUSTUM_SIZE;
+
+      //sun.shadow.bias = -0.0003;
+      sun.shadow.normalBias = -0.03;
+
+      sun.shadow.camera.updateProjectionMatrix();
+
+      sun.shadow.needsUpdate = true;
+      renderer.shadowMap.needsUpdate = true;
+      scene.add(sun);
+      scene.add(sun.target);
+
+      //scene.add(new THREE.CameraHelper(sun.shadow.camera));
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.4)); // fill light
+
+      // Ground
+      const groundMesh = new THREE.PlaneGeometry(
+        CONFIG.TERRAIN_RADIUS * 2,
+        CONFIG.TERRAIN_RADIUS * 2,
+      );
+      const groundMaterial = new THREE.MeshStandardMaterial({
+        color: 0x7c554f,
+        roughness: 0.95,
+        fog: false,
+        side: THREE.FrontSide,
+      });
+      const ground = new THREE.Mesh(groundMesh, groundMaterial);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      ground.castShadow = false;
+      scene.add(ground);
+
+      // ==========================================================
+      // GUI
+      // ==========================================================
+      const gui = document.getElementById("gui");
+
+      let lastGUIVisible = -1;
+
+      function updateGUI() {
+        if (lodManager.totalVisible === lastGUIVisible) return;
+        lastGUIVisible = lodManager.totalVisible;
+        if (typeof gui === "undefined" || !gui) return;
+
+        gui.innerHTML = `
+    <div><strong style="font-size:14px">🪨 ${(CONFIG.INSTANCE_COUNT / 1000).toFixed(0)}K Rocks</strong></div>
+    <div>Visible: <strong>${lodManager.totalVisible.toLocaleString()}</strong> Skipped: ${(CONFIG.INSTANCE_COUNT - lodManager.totalVisible).toLocaleString()}</div>
+    <hr>
+    <div style="font-size:10px;line-height:1.4">
+      ${lodManager.lodCounts.map((c, i) => `LOD${i}: ${c.toLocaleString()}`).join("<br>")}
+    </div>
+  `;
+      }
+
+      // ==========================================================
+      // FRUSTUM CULLING SETUP
+      // ==========================================================
+      const frustum = new THREE.Frustum();
+      const projScreenMatrix = new THREE.Matrix4();
+
+      // ==========================================================
+      // SEEDED RNG
+      // ==========================================================
+      class SeededRNG {
+        constructor(seed) {
+          this.seed = seed;
+        }
+        next() {
+          this.seed = (this.seed * 1103515245 + 12345) & 0x7fffffff;
+          return this.seed / 0x7fffffff;
+        }
+        range(min, max) {
+          return min + this.next() * (max - min);
+        }
+
+        static _scratchVec = new THREE.Vector3();
+        vec3Norm(target = SeededRNG._scratchVec) {
+          const theta = this.next() * Math.PI * 2;
+          const phi = Math.acos(2 * this.next() - 1);
+          return target.set(
+            Math.sin(phi) * Math.cos(theta),
+            Math.sin(phi) * Math.sin(theta),
+            Math.cos(phi),
+          );
+        }
+      }
+
+      // ==========================================================
+      // SDF ROCK GENERATOR
+      // ==========================================================
+      function createRockSDF(seed) {
+        const rng = new SeededRNG(seed);
+
+        const numCuts = Math.floor(
+          rng.range(CONFIG.MIN_NUM_CUTS, CONFIG.MAX_NUM_CUTS),
+        );
+        const cuts = [];
+        for (let i = 0; i < numCuts; i++) {
+          const dir = rng.vec3Norm();
+          cuts.push({
+            dx: dir.x,
+            dy: dir.y,
+            dz: dir.z,
+            radius: rng.range(CONFIG.MIN_CUT_RADIUS, CONFIG.MAX_CUT_RADIUS),
+            ratio: rng.range(CONFIG.MIN_CUT_RATIO, CONFIG.MAX_CUT_RATIO),
+            k: rng.range(CONFIG.MIN_CUT_K, CONFIG.MAX_CUT_K),
+          });
+        }
+
+        const scale = new THREE.Vector3(
+          rng.range(CONFIG.MIN_SHAPE_SCALE_X, CONFIG.MAX_SHAPE_SCALE_X),
+          rng.range(CONFIG.MIN_SHAPE_SCALE_Y, CONFIG.MAX_SHAPE_SCALE_Y),
+          rng.range(CONFIG.MIN_SHAPE_SCALE_Z, CONFIG.MAX_SHAPE_SCALE_Z),
+        );
+
+        const sdf = (x, y, z) => {
+          const px = x / scale.x;
+          const py = y / scale.y;
+          const pz = z / scale.z;
+
+          let d = Math.sqrt(px * px + py * py + pz * pz) - 1.05;
+
+          for (const c of cuts) {
+            const spx = px + c.dx * c.radius;
+            const spy = py + c.dy * c.radius;
+            const spz = pz + c.dz * c.radius;
+
+            const sd =
+              Math.sqrt(spx * spx + spy * spy + spz * spz) - c.radius * c.ratio;
+
+            const h = Math.max(0, Math.min(1, 0.5 + (0.5 * (-sd - d)) / c.k));
+
+            d = d * (1 - h) + -sd * h + c.k * h * (1 - h);
+          }
+
+          // Clamp d to avoid tiny floating islands
+          if (d > 0.3) d = 0.3;
+
+          return d;
+        };
+
+        return { sdf, scale };
+      }
+
+      // ==========================================================
+      // MARCHING CUBES
+      // ==========================================================
+      const edgeTable = new Int32Array([
+        0x0, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905,
+        0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00, 0x190, 0x99, 0x393, 0x29a,
+        0x596, 0x49f, 0x795, 0x69c, 0x99c, 0x895, 0xb9f, 0xa96, 0xd9a, 0xc93,
+        0xf99, 0xe90, 0x230, 0x339, 0x33, 0x13a, 0x636, 0x73f, 0x435, 0x53c,
+        0xa3c, 0xb35, 0x83f, 0x936, 0xe3a, 0xf33, 0xc39, 0xd30, 0x3a0, 0x2a9,
+        0x1a3, 0xaa, 0x7a6, 0x6af, 0x5a5, 0x4ac, 0xbac, 0xaa5, 0x9af, 0x8a6,
+        0xfaa, 0xea3, 0xda9, 0xca0, 0x460, 0x569, 0x663, 0x76a, 0x66, 0x16f,
+        0x265, 0x36c, 0xc6c, 0xd65, 0xe6f, 0xf66, 0x86a, 0x963, 0xa69, 0xb60,
+        0x5f0, 0x4f9, 0x7f3, 0x6fa, 0x1f6, 0xff, 0x3f5, 0x2fc, 0xdfc, 0xcf5,
+        0xfff, 0xef6, 0x9fa, 0x8f3, 0xbf9, 0xaf0, 0x650, 0x759, 0x453, 0x55a,
+        0x256, 0x35f, 0x55, 0x15c, 0xe5c, 0xf55, 0xc5f, 0xd56, 0xa5a, 0xb53,
+        0x859, 0x950, 0x7c0, 0x6c9, 0x5c3, 0x4ca, 0x3c6, 0x2cf, 0x1c5, 0xcc,
+        0xfcc, 0xec5, 0xdcf, 0xcc6, 0xbca, 0xac3, 0x9c9, 0x8c0, 0x8c0, 0x9c9,
+        0xac3, 0xbca, 0xcc6, 0xdcf, 0xec5, 0xfcc, 0xcc, 0x1c5, 0x2cf, 0x3c6,
+        0x4ca, 0x5c3, 0x6c9, 0x7c0, 0x950, 0x859, 0xb53, 0xa5a, 0xd56, 0xc5f,
+        0xf55, 0xe5c, 0x15c, 0x55, 0x35f, 0x256, 0x55a, 0x453, 0x759, 0x650,
+        0xaf0, 0xbf9, 0x8f3, 0x9fa, 0xef6, 0xfff, 0xcf5, 0xdfc, 0x2fc, 0x3f5,
+        0xff, 0x1f6, 0x6fa, 0x7f3, 0x4f9, 0x5f0, 0xb60, 0xa69, 0x963, 0x86a,
+        0xf66, 0xe6f, 0xd65, 0xc6c, 0x36c, 0x265, 0x16f, 0x66, 0x76a, 0x663,
+        0x569, 0x460, 0xca0, 0xda9, 0xea3, 0xfaa, 0x8a6, 0x9af, 0xaa5, 0xbac,
+        0x4ac, 0x5a5, 0x6af, 0x7a6, 0xaa, 0x1a3, 0x2a9, 0x3a0, 0xd30, 0xc39,
+        0xf33, 0xe3a, 0x936, 0x83f, 0xb35, 0xa3c, 0x53c, 0x435, 0x73f, 0x636,
+        0x13a, 0x33, 0x339, 0x230, 0xe90, 0xf99, 0xc93, 0xd9a, 0xa96, 0xb9f,
+        0x895, 0x99c, 0x69c, 0x795, 0x49f, 0x596, 0x29a, 0x393, 0x99, 0x190,
+        0xf00, 0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c, 0x70c, 0x605,
+        0x50f, 0x406, 0x30a, 0x203, 0x109, 0x0,
+      ]);
+
+      const triTable = [
+        [-1],
+        [0, 8, 3, -1],
+        [0, 1, 9, -1],
+        [1, 8, 3, 9, 8, 1, -1],
+        [1, 2, 10, -1],
+        [0, 8, 3, 1, 2, 10, -1],
+        [9, 2, 10, 0, 2, 9, -1],
+        [2, 8, 3, 2, 10, 8, 10, 9, 8, -1],
+        [3, 11, 2, -1],
+        [0, 11, 2, 8, 11, 0, -1],
+        [1, 9, 0, 2, 3, 11, -1],
+        [1, 11, 2, 1, 9, 11, 9, 8, 11, -1],
+        [3, 10, 1, 11, 10, 3, -1],
+        [0, 10, 1, 0, 8, 10, 8, 11, 10, -1],
+        [3, 9, 0, 3, 11, 9, 11, 10, 9, -1],
+        [9, 8, 10, 10, 8, 11, -1],
+        [4, 7, 8, -1],
+        [4, 3, 0, 7, 3, 4, -1],
+        [0, 1, 9, 8, 4, 7, -1],
+        [4, 1, 9, 4, 7, 1, 7, 3, 1, -1],
+        [1, 2, 10, 8, 4, 7, -1],
+        [3, 4, 7, 3, 0, 4, 1, 2, 10, -1],
+        [9, 2, 10, 9, 0, 2, 8, 4, 7, -1],
+        [2, 10, 9, 2, 9, 7, 2, 7, 3, 7, 9, 4, -1],
+        [8, 4, 7, 3, 11, 2, -1],
+        [11, 4, 7, 11, 2, 4, 2, 0, 4, -1],
+        [9, 0, 1, 8, 4, 7, 2, 3, 11, -1],
+        [4, 7, 11, 9, 4, 11, 9, 11, 2, 9, 2, 1, -1],
+        [3, 10, 1, 3, 11, 10, 7, 8, 4, -1],
+        [1, 11, 10, 1, 4, 11, 1, 0, 4, 7, 11, 4, -1],
+        [4, 7, 8, 9, 0, 11, 9, 11, 10, 11, 0, 3, -1],
+        [4, 7, 11, 4, 11, 9, 9, 11, 10, -1],
+        [9, 5, 4, -1],
+        [9, 5, 4, 0, 8, 3, -1],
+        [0, 5, 4, 1, 5, 0, -1],
+        [8, 5, 4, 8, 3, 5, 3, 1, 5, -1],
+        [1, 2, 10, 9, 5, 4, -1],
+        [3, 0, 8, 1, 2, 10, 4, 9, 5, -1],
+        [5, 2, 10, 5, 4, 2, 4, 0, 2, -1],
+        [2, 10, 5, 3, 2, 5, 3, 5, 4, 3, 4, 8, -1],
+        [9, 5, 4, 2, 3, 11, -1],
+        [0, 11, 2, 0, 8, 11, 4, 9, 5, -1],
+        [0, 5, 4, 0, 1, 5, 2, 3, 11, -1],
+        [2, 1, 5, 2, 5, 8, 2, 8, 11, 4, 8, 5, -1],
+        [10, 3, 11, 10, 1, 3, 9, 5, 4, -1],
+        [4, 9, 5, 0, 8, 1, 8, 10, 1, 8, 11, 10, -1],
+        [5, 4, 0, 5, 0, 11, 5, 11, 10, 11, 0, 3, -1],
+        [5, 4, 8, 5, 8, 10, 10, 8, 11, -1],
+        [9, 7, 8, 5, 7, 9, -1],
+        [9, 3, 0, 9, 5, 3, 5, 7, 3, -1],
+        [0, 7, 8, 0, 1, 7, 1, 5, 7, -1],
+        [1, 5, 3, 3, 5, 7, -1],
+        [9, 7, 8, 9, 5, 7, 10, 1, 2, -1],
+        [10, 1, 2, 9, 5, 0, 5, 3, 0, 5, 7, 3, -1],
+        [8, 0, 2, 8, 2, 5, 8, 5, 7, 10, 5, 2, -1],
+        [2, 10, 5, 2, 5, 3, 3, 5, 7, -1],
+        [7, 9, 5, 7, 8, 9, 3, 11, 2, -1],
+        [9, 5, 7, 9, 7, 2, 9, 2, 0, 2, 7, 11, -1],
+        [2, 3, 11, 0, 1, 8, 1, 7, 8, 1, 5, 7, -1],
+        [11, 2, 1, 11, 1, 7, 7, 1, 5, -1],
+        [9, 5, 8, 8, 5, 7, 10, 1, 3, 10, 3, 11, -1],
+        [5, 7, 0, 5, 0, 9, 7, 11, 0, 1, 0, 10, 11, 10, 0, -1],
+        [11, 10, 0, 11, 0, 3, 10, 5, 0, 8, 0, 7, 5, 7, 0, -1],
+        [11, 10, 5, 7, 11, 5, -1],
+        [10, 6, 5, -1],
+        [0, 8, 3, 5, 10, 6, -1],
+        [9, 0, 1, 5, 10, 6, -1],
+        [1, 8, 3, 1, 9, 8, 5, 10, 6, -1],
+        [1, 6, 5, 2, 6, 1, -1],
+        [1, 6, 5, 1, 2, 6, 3, 0, 8, -1],
+        [9, 6, 5, 9, 0, 6, 0, 2, 6, -1],
+        [5, 9, 8, 5, 8, 2, 5, 2, 6, 3, 2, 8, -1],
+        [2, 3, 11, 10, 6, 5, -1],
+        [11, 0, 8, 11, 2, 0, 10, 6, 5, -1],
+        [0, 1, 9, 2, 3, 11, 5, 10, 6, -1],
+        [5, 10, 6, 1, 9, 2, 9, 11, 2, 9, 8, 11, -1],
+        [6, 3, 11, 6, 5, 3, 5, 1, 3, -1],
+        [0, 8, 11, 0, 11, 5, 0, 5, 1, 5, 11, 6, -1],
+        [3, 11, 6, 0, 3, 6, 0, 6, 5, 0, 5, 9, -1],
+        [6, 5, 9, 6, 9, 11, 11, 9, 8, -1],
+        [5, 10, 6, 4, 7, 8, -1],
+        [4, 3, 0, 4, 7, 3, 6, 5, 10, -1],
+        [1, 9, 0, 5, 10, 6, 8, 4, 7, -1],
+        [10, 6, 5, 1, 9, 7, 1, 7, 3, 7, 9, 4, -1],
+        [6, 1, 2, 6, 5, 1, 4, 7, 8, -1],
+        [1, 2, 5, 5, 2, 6, 3, 0, 4, 3, 4, 7, -1],
+        [8, 4, 7, 9, 0, 5, 0, 6, 5, 0, 2, 6, -1],
+        [7, 3, 9, 7, 9, 4, 3, 2, 9, 5, 9, 6, 2, 6, 9, -1],
+        [3, 11, 2, 7, 8, 4, 10, 6, 5, -1],
+        [5, 10, 6, 4, 7, 2, 4, 2, 0, 2, 7, 11, -1],
+        [0, 1, 9, 4, 7, 8, 2, 3, 11, 5, 10, 6, -1],
+        [9, 2, 1, 9, 11, 2, 9, 4, 11, 7, 11, 4, 5, 10, 6, -1],
+        [8, 4, 7, 3, 11, 5, 3, 5, 1, 5, 11, 6, -1],
+        [5, 1, 11, 5, 11, 6, 1, 0, 11, 7, 11, 4, 0, 4, 11, -1],
+        [0, 5, 9, 0, 6, 5, 0, 3, 6, 11, 6, 3, 8, 4, 7, -1],
+        [6, 5, 9, 6, 9, 11, 4, 7, 9, 7, 11, 9, -1],
+        [10, 4, 9, 6, 4, 10, -1],
+        [4, 10, 6, 4, 9, 10, 0, 8, 3, -1],
+        [10, 0, 1, 10, 6, 0, 6, 4, 0, -1],
+        [8, 3, 1, 8, 1, 6, 8, 6, 4, 6, 1, 10, -1],
+        [1, 4, 9, 1, 2, 4, 2, 6, 4, -1],
+        [3, 0, 8, 1, 2, 9, 2, 4, 9, 2, 6, 4, -1],
+        [0, 2, 4, 4, 2, 6, -1],
+        [8, 3, 2, 8, 2, 4, 4, 2, 6, -1],
+        [10, 4, 9, 10, 6, 4, 11, 2, 3, -1],
+        [0, 8, 2, 2, 8, 11, 4, 9, 10, 4, 10, 6, -1],
+        [3, 11, 2, 0, 1, 6, 0, 6, 4, 6, 1, 10, -1],
+        [6, 4, 1, 6, 1, 10, 4, 8, 1, 2, 1, 11, 8, 11, 1, -1],
+        [9, 6, 4, 9, 3, 6, 9, 1, 3, 11, 6, 3, -1],
+        [8, 11, 1, 8, 1, 0, 11, 6, 1, 9, 1, 4, 6, 4, 1, -1],
+        [3, 11, 6, 3, 6, 0, 0, 6, 4, -1],
+        [6, 4, 8, 11, 6, 8, -1],
+        [7, 10, 6, 7, 8, 10, 8, 9, 10, -1],
+        [0, 7, 3, 0, 10, 7, 0, 9, 10, 6, 7, 10, -1],
+        [10, 6, 7, 1, 10, 7, 1, 7, 8, 1, 8, 0, -1],
+        [10, 6, 7, 10, 7, 1, 1, 7, 3, -1],
+        [1, 2, 6, 1, 6, 8, 1, 8, 9, 8, 6, 7, -1],
+        [2, 6, 9, 2, 9, 1, 6, 7, 9, 0, 9, 3, 7, 3, 9, -1],
+        [7, 8, 0, 7, 0, 6, 6, 0, 2, -1],
+        [7, 3, 2, 6, 7, 2, -1],
+        [2, 3, 11, 10, 6, 8, 10, 8, 9, 8, 6, 7, -1],
+        [2, 0, 7, 2, 7, 11, 0, 9, 7, 6, 7, 10, 9, 10, 7, -1],
+        [1, 8, 0, 1, 7, 8, 1, 10, 7, 6, 7, 10, 2, 3, 11, -1],
+        [11, 2, 1, 11, 1, 7, 10, 6, 1, 6, 7, 1, -1],
+        [8, 9, 6, 8, 6, 7, 9, 1, 6, 11, 6, 3, 1, 3, 6, -1],
+        [0, 9, 1, 11, 6, 7, -1],
+        [7, 8, 0, 7, 0, 6, 3, 11, 0, 11, 6, 0, -1],
+        [7, 11, 6, -1],
+        [7, 6, 11, -1],
+        [3, 0, 8, 11, 7, 6, -1],
+        [0, 1, 9, 11, 7, 6, -1],
+        [8, 1, 9, 8, 3, 1, 11, 7, 6, -1],
+        [10, 1, 2, 6, 11, 7, -1],
+        [1, 2, 10, 3, 0, 8, 6, 11, 7, -1],
+        [2, 9, 0, 2, 10, 9, 6, 11, 7, -1],
+        [6, 11, 7, 2, 10, 3, 10, 8, 3, 10, 9, 8, -1],
+        [7, 2, 3, 6, 2, 7, -1],
+        [7, 0, 8, 7, 6, 0, 6, 2, 0, -1],
+        [2, 7, 6, 2, 3, 7, 0, 1, 9, -1],
+        [1, 6, 2, 1, 8, 6, 1, 9, 8, 8, 7, 6, -1],
+        [10, 7, 6, 10, 1, 7, 1, 3, 7, -1],
+        [10, 7, 6, 1, 7, 10, 1, 8, 7, 1, 0, 8, -1],
+        [0, 3, 7, 0, 7, 10, 0, 10, 9, 6, 10, 7, -1],
+        [7, 6, 10, 7, 10, 8, 8, 10, 9, -1],
+        [6, 8, 4, 11, 8, 6, -1],
+        [3, 6, 11, 3, 0, 6, 0, 4, 6, -1],
+        [8, 6, 11, 8, 4, 6, 9, 0, 1, -1],
+        [9, 4, 6, 9, 6, 3, 9, 3, 1, 11, 3, 6, -1],
+        [6, 8, 4, 6, 11, 8, 2, 10, 1, -1],
+        [1, 2, 10, 3, 0, 11, 0, 6, 11, 0, 4, 6, -1],
+        [4, 11, 8, 4, 6, 11, 0, 2, 9, 2, 10, 9, -1],
+        [10, 9, 3, 10, 3, 2, 9, 4, 3, 11, 3, 6, 4, 6, 3, -1],
+        [8, 2, 3, 8, 4, 2, 4, 6, 2, -1],
+        [0, 4, 2, 4, 6, 2, -1],
+        [1, 9, 0, 2, 3, 4, 2, 4, 6, 4, 3, 8, -1],
+        [1, 9, 4, 1, 4, 2, 2, 4, 6, -1],
+        [8, 1, 3, 8, 6, 1, 8, 4, 6, 6, 10, 1, -1],
+        [10, 1, 0, 10, 0, 6, 6, 0, 4, -1],
+        [4, 6, 3, 4, 3, 8, 6, 10, 3, 0, 3, 9, 10, 9, 3, -1],
+        [10, 9, 4, 6, 10, 4, -1],
+        [4, 9, 5, 7, 6, 11, -1],
+        [0, 8, 3, 4, 9, 5, 11, 7, 6, -1],
+        [5, 0, 1, 5, 4, 0, 7, 6, 11, -1],
+        [11, 7, 6, 8, 3, 4, 3, 5, 4, 3, 1, 5, -1],
+        [9, 5, 4, 10, 1, 2, 7, 6, 11, -1],
+        [6, 11, 7, 1, 2, 10, 0, 8, 3, 4, 9, 5, -1],
+        [7, 6, 11, 5, 4, 10, 4, 2, 10, 4, 0, 2, -1],
+        [3, 4, 8, 3, 5, 4, 3, 2, 5, 10, 5, 2, 11, 7, 6, -1],
+        [7, 2, 3, 7, 6, 2, 5, 4, 9, -1],
+        [9, 5, 4, 0, 8, 6, 0, 6, 2, 6, 8, 7, -1],
+        [3, 6, 2, 3, 7, 6, 1, 5, 0, 5, 4, 0, -1],
+        [6, 2, 8, 6, 8, 7, 2, 1, 8, 4, 8, 5, 1, 5, 8, -1],
+        [9, 5, 4, 10, 1, 6, 1, 7, 6, 1, 3, 7, -1],
+        [1, 6, 10, 1, 7, 6, 1, 0, 7, 8, 7, 0, 9, 5, 4, -1],
+        [4, 0, 10, 4, 10, 5, 0, 3, 10, 6, 10, 7, 3, 7, 10, -1],
+        [7, 6, 10, 7, 10, 8, 5, 4, 10, 4, 8, 10, -1],
+        [6, 9, 5, 6, 11, 9, 11, 8, 9, -1],
+        [3, 6, 11, 0, 6, 3, 0, 5, 6, 0, 9, 5, -1],
+        [0, 11, 8, 0, 5, 11, 0, 1, 5, 5, 6, 11, -1],
+        [6, 11, 3, 6, 3, 5, 5, 3, 1, -1],
+        [1, 2, 10, 9, 5, 11, 9, 11, 8, 11, 5, 6, -1],
+        [0, 11, 3, 0, 6, 11, 0, 9, 6, 5, 6, 9, 1, 2, 10, -1],
+        [11, 8, 5, 11, 5, 6, 8, 0, 5, 10, 5, 2, 0, 2, 5, -1],
+        [6, 11, 3, 6, 3, 5, 2, 10, 3, 10, 5, 3, -1],
+        [5, 8, 9, 5, 2, 8, 5, 6, 2, 3, 8, 2, -1],
+        [9, 5, 6, 9, 6, 0, 0, 6, 2, -1],
+        [1, 5, 8, 1, 8, 0, 5, 6, 8, 3, 8, 2, 6, 2, 8, -1],
+        [1, 5, 6, 2, 1, 6, -1],
+        [1, 3, 6, 1, 6, 10, 3, 8, 6, 5, 6, 9, 8, 9, 6, -1],
+        [10, 1, 0, 10, 0, 6, 9, 5, 0, 5, 6, 0, -1],
+        [0, 3, 8, 5, 6, 10, -1],
+        [10, 5, 6, -1],
+        [11, 5, 10, 7, 5, 11, -1],
+        [11, 5, 10, 11, 7, 5, 8, 3, 0, -1],
+        [5, 11, 7, 5, 10, 11, 1, 9, 0, -1],
+        [10, 7, 5, 10, 11, 7, 9, 8, 1, 8, 3, 1, -1],
+        [11, 1, 2, 11, 7, 1, 7, 5, 1, -1],
+        [0, 8, 3, 1, 2, 7, 1, 7, 5, 7, 2, 11, -1],
+        [9, 7, 5, 9, 2, 7, 9, 0, 2, 2, 11, 7, -1],
+        [7, 5, 2, 7, 2, 11, 5, 9, 2, 3, 2, 8, 9, 8, 2, -1],
+        [2, 5, 10, 2, 3, 5, 3, 7, 5, -1],
+        [8, 2, 0, 8, 5, 2, 8, 7, 5, 10, 2, 5, -1],
+        [9, 0, 1, 5, 10, 3, 5, 3, 7, 3, 10, 2, -1],
+        [9, 8, 2, 9, 2, 1, 8, 7, 2, 10, 2, 5, 7, 5, 2, -1],
+        [1, 3, 5, 3, 7, 5, -1],
+        [0, 8, 7, 0, 7, 1, 1, 7, 5, -1],
+        [9, 0, 3, 9, 3, 5, 5, 3, 7, -1],
+        [9, 8, 7, 5, 9, 7, -1],
+        [5, 8, 4, 5, 10, 8, 10, 11, 8, -1],
+        [5, 0, 4, 5, 11, 0, 5, 10, 11, 11, 3, 0, -1],
+        [0, 1, 9, 8, 4, 10, 8, 10, 11, 10, 4, 5, -1],
+        [10, 11, 4, 10, 4, 5, 11, 3, 4, 9, 4, 1, 3, 1, 4, -1],
+        [2, 5, 1, 2, 8, 5, 2, 11, 8, 4, 5, 8, -1],
+        [0, 4, 11, 0, 11, 3, 4, 5, 11, 2, 11, 1, 5, 1, 11, -1],
+        [0, 2, 5, 0, 5, 9, 2, 11, 5, 4, 5, 8, 11, 8, 5, -1],
+        [9, 4, 5, 2, 11, 3, -1],
+        [2, 5, 10, 3, 5, 2, 3, 4, 5, 3, 8, 4, -1],
+        [5, 10, 2, 5, 2, 4, 4, 2, 0, -1],
+        [3, 10, 2, 3, 5, 10, 3, 8, 5, 4, 5, 8, 0, 1, 9, -1],
+        [5, 10, 2, 5, 2, 4, 1, 9, 2, 9, 4, 2, -1],
+        [8, 4, 5, 8, 5, 3, 3, 5, 1, -1],
+        [0, 4, 5, 1, 0, 5, -1],
+        [8, 4, 5, 8, 5, 3, 9, 0, 5, 0, 3, 5, -1],
+        [9, 4, 5, -1],
+        [4, 11, 7, 4, 9, 11, 9, 10, 11, -1],
+        [0, 8, 3, 4, 9, 7, 9, 11, 7, 9, 10, 11, -1],
+        [1, 10, 11, 1, 11, 4, 1, 4, 0, 7, 4, 11, -1],
+        [3, 1, 4, 3, 4, 8, 1, 10, 4, 7, 4, 11, 10, 11, 4, -1],
+        [4, 11, 7, 9, 11, 4, 9, 2, 11, 9, 1, 2, -1],
+        [9, 7, 4, 9, 11, 7, 9, 1, 11, 2, 11, 1, 0, 8, 3, -1],
+        [11, 7, 4, 11, 4, 2, 2, 4, 0, -1],
+        [11, 7, 4, 11, 4, 2, 8, 3, 4, 3, 2, 4, -1],
+        [2, 9, 10, 2, 7, 9, 2, 3, 7, 7, 4, 9, -1],
+        [9, 10, 7, 9, 7, 4, 10, 2, 7, 8, 7, 0, 2, 0, 7, -1],
+        [3, 7, 10, 3, 10, 2, 7, 4, 10, 1, 10, 0, 4, 0, 10, -1],
+        [1, 10, 2, 8, 7, 4, -1],
+        [4, 9, 1, 4, 1, 7, 7, 1, 3, -1],
+        [4, 9, 1, 4, 1, 7, 0, 8, 1, 8, 7, 1, -1],
+        [4, 0, 3, 7, 4, 3, -1],
+        [4, 8, 7, -1],
+        [9, 10, 8, 10, 11, 8, -1],
+        [3, 0, 9, 3, 9, 11, 11, 9, 10, -1],
+        [0, 1, 10, 0, 10, 8, 8, 10, 11, -1],
+        [3, 1, 10, 11, 3, 10, -1],
+        [1, 2, 11, 1, 11, 9, 9, 11, 8, -1],
+        [3, 0, 9, 3, 9, 11, 1, 2, 9, 2, 11, 9, -1],
+        [0, 2, 11, 8, 0, 11, -1],
+        [3, 2, 11, -1],
+        [2, 3, 8, 2, 8, 10, 10, 8, 9, -1],
+        [9, 10, 2, 0, 9, 2, -1],
+        [2, 3, 8, 2, 8, 10, 0, 1, 8, 1, 10, 8, -1],
+        [1, 10, 2, -1],
+        [1, 3, 8, 9, 1, 8, -1],
+        [0, 9, 1, -1],
+        [0, 3, 8, -1],
+        [-1],
+      ];
+
+      const VMAP = new Map();
+
+      function marchingCubes(res, sdf, bounds) {
+        const [x0, x1, y0, y1, z0, z1] = bounds;
+        const dx = (x1 - x0) / (res - 1),
+          dy = (y1 - y0) / (res - 1),
+          dz = (z1 - z0) / (res - 1);
+        const field = new Float32Array(res * res * res);
+        for (let k = 0, idx = 0; k < res; k++)
+          for (let j = 0; j < res; j++)
+            for (let i = 0; i < res; i++, idx++)
+              field[idx] = sdf(x0 + i * dx, y0 + j * dy, z0 + k * dz);
+
+        let min = Infinity,
+          max = -Infinity;
+        for (let i = 0; i < field.length; i++) {
+          const v = field[i];
+          if (!Number.isFinite(v)) continue;
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+        //console.log("SDF range inside marchingCubes:", min, max);
+
+        // Preallocate — avoids thousands of Array.push reallocations
+        const MAX_VERTS = res * res * res * 5; // safe upper bound
+        const positions = new Float32Array(MAX_VERTS * 3);
+        const indices = new Uint32Array(MAX_VERTS * 3);
+        let vertexCount = 0;
+        let indexCount = 0;
+
+        // CLEAR the map instead of creating a new one
+        VMAP.clear();
+
+        const getVert = (v) => {
+          // 1. Quantize the position to an integer grid
+          // We use a larger epsilon or direct bit-shifting to pack 3 values into 32 bits
+          const ix = (v.x * 100) | 0;
+          const iy = (v.y * 100) | 0;
+          const iz = (v.z * 100) | 0;
+
+          // 2. Bit-packing (10 bits per axis: supports -512 to 511 range)
+          // This is way faster than string concatenation
+          const key = ((ix + 512) << 20) | ((iy + 512) << 10) | (iz + 512);
+
+          if (VMAP.has(key)) return VMAP.get(key);
+
+          const idx = vertexCount;
+          positions[vertexCount * 3 + 0] = v.x;
+          positions[vertexCount * 3 + 1] = v.y;
+          positions[vertexCount * 3 + 2] = v.z;
+          vertexCount++;
+
+          VMAP.set(key, idx);
+          return idx;
+        };
+
+        const lerp = (out, p1, p2, v1, v2) => {
+          const t = Math.abs(v1 - v2) < 1e-10 ? 0 : -v1 / (v2 - v1);
+          out.set(
+            p1.x + t * (p2.x - p1.x),
+            p1.y + t * (p2.y - p1.y),
+            p1.z + t * (p2.z - p1.z),
+          );
+        };
+
+        // Move outside — create only once
+        const corners = new Array(8);
+        for (let i = 0; i < 8; i++) corners[i] = new THREE.Vector3();
+
+        const verts = new Array(12);
+        for (let i = 0; i < 12; i++) verts[i] = new THREE.Vector3();
+
+        const vals = new Float32Array(8); // even better than Array
+
+        let nonZeroCubes = 0;
+        let anyEdges = 0;
+
+        for (let k = 0; k < res - 1; k++) {
+          for (let j = 0; j < res - 1; j++) {
+            for (let i = 0; i < res - 1; i++) {
+              const x = x0 + i * dx,
+                y = y0 + j * dy,
+                z = z0 + k * dz;
+              corners[0].set(x, y, z);
+              corners[1].set(x + dx, y, z);
+              corners[2].set(x + dx, y + dy, z);
+              corners[3].set(x, y + dy, z);
+              corners[4].set(x, y, z + dz);
+              corners[5].set(x + dx, y, z + dz);
+              corners[6].set(x + dx, y + dy, z + dz);
+              corners[7].set(x, y + dy, z + dz);
+
+              const base = k * res * res + j * res + i;
+
+              vals[0] = field[base]; // (0,0,0)
+              vals[1] = field[base + 1]; // (1,0,0)
+              vals[2] = field[base + 1 + res]; // (1,1,0)
+              vals[3] = field[base + res]; // (0,1,0)
+
+              vals[4] = field[base + res * res]; // (0,0,1)
+              vals[5] = field[base + 1 + res * res]; // (1,0,1)
+              vals[6] = field[base + 1 + res + res * res]; // (1,1,1)
+              vals[7] = field[base + res + res * res]; // (0,1,1)
+
+              let ci = 0;
+              for (let n = 0; n < 8; n++) if (vals[n] < 0) ci |= 1 << n;
+
+              if (ci !== 0 && ci !== 255) nonZeroCubes++;
+              if (edgeTable[ci]) anyEdges++;
+
+              const e = edgeTable[ci];
+
+              if (!e) continue;
+              if (e & 1)
+                lerp(verts[0], corners[0], corners[1], vals[0], vals[1]);
+              if (e & 2)
+                lerp(verts[1], corners[1], corners[2], vals[1], vals[2]);
+              if (e & 4)
+                lerp(verts[2], corners[2], corners[3], vals[2], vals[3]);
+              if (e & 8)
+                lerp(verts[3], corners[3], corners[0], vals[3], vals[0]);
+              if (e & 16)
+                lerp(verts[4], corners[4], corners[5], vals[4], vals[5]);
+              if (e & 32)
+                lerp(verts[5], corners[5], corners[6], vals[5], vals[6]);
+              if (e & 64)
+                lerp(verts[6], corners[6], corners[7], vals[6], vals[7]);
+              if (e & 128)
+                lerp(verts[7], corners[7], corners[4], vals[7], vals[4]);
+              if (e & 256)
+                lerp(verts[8], corners[0], corners[4], vals[0], vals[4]);
+              if (e & 512)
+                lerp(verts[9], corners[1], corners[5], vals[1], vals[5]);
+              if (e & 1024)
+                lerp(verts[10], corners[2], corners[6], vals[2], vals[6]);
+              if (e & 2048)
+                lerp(verts[11], corners[3], corners[7], vals[3], vals[7]);
+
+              const tri = triTable[ci];
+              for (let t = 0; tri[t] !== -1; t += 3) {
+                const a = verts[tri[t]],
+                  b = verts[tri[t + 1]],
+                  c = verts[tri[t + 2]];
+
+                if (!a || !b || !c) continue;
+
+                const ia = getVert(a);
+                const ib = getVert(b);
+                const ic = getVert(c);
+
+                if (ia !== ib && ib !== ic && ic !== ia) {
+                  // Typed array → manual index assignment (no .push)
+                  indices[indexCount++] = ia;
+                  indices[indexCount++] = ic;
+                  indices[indexCount++] = ib;
+                }
+              }
+            }
+          }
+        }
+
+        /*console.log(
+                "MC stats: nonZeroCubes =",
+                nonZeroCubes,
+                "anyEdges =",
+                anyEdges,
+              );*/
+
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(
+            positions.subarray(0, vertexCount * 3),
+            3,
+          ),
+        );
+        geom.setIndex(
+          new THREE.Uint32BufferAttribute(indices.subarray(0, indexCount), 1),
+        );
+        if (res > CONFIG.LOD_SPHERE0_RESOLUTION) {
+          geom.computeVertexNormals();
+        }
+        return geom;
+      }
+
+      function createBoxImpostor(radii) {
+        const r = radii.avgRadius;
+        const sq = radii.squashRatio;
+        return new THREE.BoxGeometry(r * 1.2, r * sq * 1.2, r * 1.2);
+      }
+      function createSphereImpostor0(radii) {
+        const geom = new THREE.IcosahedronGeometry(1, 0);
+        const r = radii.avgRadius;
+        const sq = radii.squashRatio;
+        geom.scale(r * 1.2, r * sq * 1.2, r * 1.2);
+        return geom;
+      }
+
+      function createSphereImpostor1(radii) {
+        const geom = new THREE.IcosahedronGeometry(1, 1);
+        const r = radii.avgRadius;
+        const sq = radii.squashRatio;
+        geom.scale(r * 0.9, r * sq * 0.9, r * 0.9);
+        return geom;
+      }
+
+      // ==========================================================
+      // GENERATE LOD GEOMETRIES
+      // ==========================================================
+      console.time("Generate rock LODs");
+      const rockLODs = [];
+      const rockBoundingRadii = [];
+
+      for (let s = 0; s < CONFIG.NUM_ROCK_SHAPES; s++) {
+        const { sdf, scale } = createRockSDF(s * 7919 + 1337);
+
+        // ---------------------------------------------------------
+        // FIRST: generate highest‑res marching cubes to get radius
+        // ---------------------------------------------------------
+        const highestRes = CONFIG.LOD_RESOLUTIONS[0]; // FIRST element is highest resolution
+
+        const bounds = [-1.5, 1.5, -1.5, 1.5, -1.5, 1.5];
+
+        const highGeom = marchingCubes(highestRes, sdf, bounds);
+
+        /*console.log(
+                "verts:",
+                highGeom.attributes.position.count,
+                "tris:",
+                highGeom.index.count,
+              );*/
+
+        // Calculate AVERAGE radius from vertices (not bounding sphere max)
+        const pos = highGeom.attributes.position.array;
+        const vertCount = pos.length / 3;
+
+        // First find centroid
+        let cx = 0,
+          cy = 0,
+          cz = 0;
+        for (let v = 0; v < vertCount; v++) {
+          cx += pos[v * 3];
+          cy += pos[v * 3 + 1];
+          cz += pos[v * 3 + 2];
+        }
+        cx /= vertCount;
+        cy /= vertCount;
+        cz /= vertCount;
+
+        // Calculate average distance from centroid AND track min/max per axis
+        let totalDist = 0;
+        let minY = Infinity,
+          maxY = -Infinity;
+        for (let v = 0; v < vertCount; v++) {
+          const dx = pos[v * 3] - cx;
+          const dy = pos[v * 3 + 1] - cy;
+          const dz = pos[v * 3 + 2] - cz;
+          totalDist += Math.sqrt(dx * dx + dy * dy + dz * dz);
+          minY = Math.min(minY, pos[v * 3 + 1]);
+          maxY = Math.max(maxY, pos[v * 3 + 1]);
+        }
+
+        const avgRadius = totalDist / vertCount;
+        const heightExtent = (maxY - minY) / 2;
+        const squashRatio = heightExtent / avgRadius; // How flat is the rock?
+
+        rockBoundingRadii[s] = {
+          avgRadius,
+          squashRatio,
+          bottomY: minY, // <-- store bottom of rock geometry
+          height: maxY - minY, // total vertical extent
+        };
+
+        /*console.log(
+                "Rock",
+                s,
+                "avgRadius =",
+                avgRadius.toFixed(3),
+                "squash =",
+                squashRatio.toFixed(3),
+              );*/
+
+        // ---------------------------------------------------------
+        // NOW generate all LODs (using impostors when needed)
+        // ---------------------------------------------------------
+        rockLODs.push(
+          CONFIG.LOD_RESOLUTIONS.map((res, i) => {
+            // 1) BOX impostor
+            if (res <= CONFIG.LOD_BOX_RESOLUTION) {
+              return createBoxImpostor(rockBoundingRadii[s]);
+            }
+
+            // 2) Icosahedron detail 0
+            if (res <= CONFIG.LOD_SPHERE0_RESOLUTION) {
+              return createSphereImpostor0(rockBoundingRadii[s]);
+            }
+
+            // 3) Icosahedron detail 1
+            if (res <= CONFIG.LOD_SPHERE1_RESOLUTION) {
+              return createSphereImpostor1(rockBoundingRadii[s]);
+            }
+
+            // Otherwise → marching cubes
+            return marchingCubes(res, sdf, [-1.5, 1.5, -1.5, 1.5, -1.5, 1.5]);
+          }),
+        );
+      }
+
+      console.timeEnd("Generate rock LODs");
+
+      // ==========================================================
+      // FLAT FLOAT32ARRAY INSTANCE DATA
+      // 13 floats per instance:
+      //   0: x, 1: z, 2: scale, 3: rotY, 4: rotX, 5: rotZ,
+      //   6: shape, 7: colorType, 8: seed,
+      //   9: wetness, 10: roughness, 11: colorTingeR, 12: squash
+      // ==========================================================
+      console.time("Generate instance data");
+      const FLOATS_PER_INSTANCE = 13;
+      const instanceData = new Float32Array(
+        CONFIG.INSTANCE_COUNT * FLOATS_PER_INSTANCE,
+      );
+      const rng = new SeededRNG(42);
+
+      const sideCount = Math.floor(Math.sqrt(CONFIG.INSTANCE_COUNT));
+      const cellSize = (CONFIG.TERRAIN_RADIUS * 2) / sideCount;
+
+      for (let i = 0; i < CONFIG.INSTANCE_COUNT; i++) {
+        const idx = i * FLOATS_PER_INSTANCE;
+
+        const gx = i % sideCount;
+        const gz = Math.floor(i / sideCount);
+
+        const x =
+          -CONFIG.TERRAIN_RADIUS + gx * cellSize + rng.range(0, cellSize);
+        const z =
+          -CONFIG.TERRAIN_RADIUS + gz * cellSize + rng.range(0, cellSize);
+
+        instanceData[idx + 0] = x;
+        instanceData[idx + 1] = z;
+
+        const t = rng.next();
+        const biased = t * t * t;
+        const baseScale =
+          CONFIG.MIN_SCALE + biased * (CONFIG.MAX_SCALE - CONFIG.MIN_SCALE);
+
+        const micro = rng.next();
+        const microMul = 0.92 + micro * 0.16; // → 0.92 – 1.08 range
+
+        instanceData[idx + 2] = baseScale * microMul;
+
+        // Full 3-axis rotation
+        instanceData[idx + 3] = rng.next() * Math.PI * 2; // rotY
+        instanceData[idx + 4] = (rng.next() - 0.5) * 0.5; // rotX
+        instanceData[idx + 5] = (rng.next() - 0.5) * 0.5; // rotZ
+
+        instanceData[idx + 6] = Math.floor(rng.next() * CONFIG.NUM_ROCK_SHAPES);
+        instanceData[idx + 7] = Math.floor(rng.next() * 7);
+        instanceData[idx + 8] = rng.next() * 1000;
+
+        instanceData[idx + 9] = rng.range(
+          CONFIG.MIN_WETNESS,
+          CONFIG.MAX_WETNESS,
+        );
+        instanceData[idx + 10] = rng.range(
+          CONFIG.MIN_ROUGHNESS,
+          CONFIG.MAX_ROUGHNESS,
+        );
+        instanceData[idx + 11] = rng.range(
+          CONFIG.MIN_COLOR_TINGE,
+          CONFIG.MAX_COLOR_TINGE,
+        );
+        instanceData[idx + 12] = rng.range(
+          CONFIG.MIN_SQUASH,
+          CONFIG.MAX_SQUASH,
+        );
+      }
+      console.timeEnd("Generate instance data");
+
+      // ==========================================================
+      // PRE-COMPUTE ALL MATRICES AT STARTUP (Static Buffers)
+      // ==========================================================
+      console.time("Pre-compute matrices");
+      const allMatrices = new Float32Array(CONFIG.INSTANCE_COUNT * 16);
+      const tempObj = new THREE.Object3D();
+
+      for (let i = 0; i < CONFIG.INSTANCE_COUNT; i++) {
+        const idx = i * FLOATS_PER_INSTANCE;
+        const scale = instanceData[idx + 2];
+        const squash = instanceData[idx + 12];
+        const shape = instanceData[idx + 6];
+        const rockInfo = rockBoundingRadii[shape];
+
+        const bottomY = rockInfo.bottomY;
+        const height = rockInfo.height;
+
+        // Apply rotation first
+        tempObj.rotation.set(
+          instanceData[idx + 4], // rotX
+          instanceData[idx + 3], // rotY
+          instanceData[idx + 5], // rotZ
+        );
+
+        // Apply scale
+        tempObj.scale.set(scale, scale * squash, scale);
+
+        // Compute bottom offset after rotation
+        // For most rocks, approximation: just use height * scale * squash
+        let yOffset =
+          -bottomY * scale * squash -
+          height * scale * squash * CONFIG.GROUND_SINKING;
+
+        // Set position
+        tempObj.position.set(
+          instanceData[idx + 0], // x
+          yOffset, // y
+          instanceData[idx + 1], // z
+        );
+
+        tempObj.updateMatrix();
+        tempObj.matrix.toArray(allMatrices, i * 16);
+      }
+      console.timeEnd("Pre-compute matrices");
+
+      // ==========================================================
+      // LOD MANAGER with Static Matrix Lookups
+      // ==========================================================
+      class LODInstanceManager {
+        constructor() {
+          this.meshes = [];
+          this.maxPerMesh = CONFIG.INSTANCE_COUNT;
+          this.lodCounts = CONFIG.LOD_RESOLUTIONS.map(() => 0);
+          this.totalVisible = 0;
+          this.culledCount = 0;
+          this.camForward = new THREE.Vector3();
+          this.toObj = new THREE.Vector3();
+          this.lodDistSq = CONFIG.LOD_DISTANCES.map((d) => d * d);
+          this.tempCenter = new THREE.Vector3();
+          this.tempSphere = new THREE.Sphere(this.tempCenter, 0); // reuse
+
+          // Target: full visibility refresh every so many milliseconds
+          const TARGET_CYCLE_TIME_MS = 70;
+
+          this.currentIndex = 0;
+          // Full scan every frame — 100K iterations costs ~0.16ms which is negligible.
+          // Time-slicing (commented below) saves CPU but causes pop-in during fast rotation
+          // because rocks lag behind the frustum by several frames.
+          this.batchSize = CONFIG.INSTANCE_COUNT;
+          /*this.batchSize = Math.ceil(
+            CONFIG.INSTANCE_COUNT / (TARGET_CYCLE_TIME_MS / (1000 / 60)),
+          ); // ≈ 23,810 rocks per frame at 60fps, full cycle in ~4 frames */
+
+          // Persistent counters that only reset when a full cycle completes
+          this.workingCounts = new Uint32Array(
+            CONFIG.NUM_ROCK_SHAPES * CONFIG.LOD_RESOLUTIONS.length,
+          );
+
+          this.workingHash = new Int32Array(
+            CONFIG.NUM_ROCK_SHAPES * CONFIG.LOD_RESOLUTIONS.length,
+          ); // rolling hash of rock indices per bucket this cycle
+          this.lastHash = new Int32Array(
+            CONFIG.NUM_ROCK_SHAPES * CONFIG.LOD_RESOLUTIONS.length,
+          ); // hash from previous cycle for comparison
+
+          this.init();
+        }
+
+        init() {
+          const material = new THREE.MeshStandardMaterial({
+            color: 0xffffff, // base color, multiplied by per-instance color
+            roughness: 1.0, // will be adjusted per-instance in shader
+            metalness: 0.0, // rocks are non-metallic
+            flatShading: false,
+            side: THREE.FrontSide,
+            fog: false, // no fog
+          });
+
+          material.onBeforeCompile = (shader) => {
+            // --- Per-instance uniforms ---
+            shader.uniforms.seed = { value: 0.0 };
+            shader.uniforms.colorTinge = { value: 0.0 };
+            shader.uniforms.variation = {
+              value: new THREE.Vector3(0.0, 0.0, 0.0),
+            };
+
+            // --- Use sun direction & color ---
+            shader.uniforms.lightDir = {
+              value: sun.position.clone().normalize(),
+            };
+            shader.uniforms.lightColor = {
+              value: sun.color.clone().multiplyScalar(sun.intensity),
+            };
+
+            // --- Vertex shader: inject attributes & varyings ---
+            shader.vertexShader =
+              `
+          attribute float seed;
+          attribute float colorType;
+          attribute vec4 variation;
+
+          varying vec3 vWorldPos;
+          varying vec3 vViewDir;
+
+          varying float vSeed;
+          varying float vColorType;
+          varying vec3 vVariation;      // x: wetness, y: roughness, z: tinge
+
+          varying vec3 vNormalComp;
+
+          varying float vViewZ;
+        ` + shader.vertexShader;
+
+            shader.vertexShader = shader.vertexShader.replace(
+              "#include <begin_vertex>",
+              `
+       #include <begin_vertex>
+            vec4 worldPos = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+            vWorldPos = worldPos.xyz;
+
+            vec4 viewPos = viewMatrix * worldPos;
+            vViewZ = -viewPos.z;
+
+            mat3 nMat = mat3(modelMatrix) * mat3(instanceMatrix);
+            vNormalComp = normalize(nMat * normal);
+            vViewDir = normalize(cameraPosition - worldPos.xyz);
+
+            vSeed = seed;
+            vColorType = colorType;
+            vVariation = variation.xyz;
+          `,
+            );
+
+            // --- Fragment shader: inject varyings & helper functions ---
+            shader.fragmentShader =
+              `            
+            varying float vSeed;
+            varying float vColorType;
+            varying vec3 vVariation;            
+
+            varying vec3 vWorldPos;
+            varying vec3 vViewDir;
+
+            varying vec3 vNormalComp;
+
+            varying float vViewZ;
+
+            uniform vec3 lightDir;
+            uniform vec3 lightColor;
+
+            float hash(float n) { return fract(sin(n) * 43758.5453); }
+
+            float noise(vec3 x) {
+              vec3 p = floor(x);
+              vec3 f = fract(x);
+              f = f * f * (3.0 - 2.0 * f);
+              float n = p.x + p.y * 57.0 + 113.0 * p.z;
+              return mix(mix(mix(hash(n + 0.0), hash(n + 1.0), f.x),
+                             mix(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
+                         mix(mix(hash(n + 113.0), hash(n + 114.0), f.x),
+                             mix(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+            }
+
+            float fbm(vec3 p) {
+              float f = 0.0;
+              f += 0.500 * noise(p); p *= 2.02;
+              f += 0.250 * noise(p); p *= 2.03;
+              f += 0.125 * noise(p);
+              return f;
+            }
+
+            vec3 perturbNormal(vec3 n, vec3 p, float scale, float strength) {
+              float eps = 0.05;
+              float n0 = fbm(p * scale);
+              float nX = fbm((p + vec3(eps, 0.0, 0.0)) * scale);
+              float nY = fbm((p + vec3(0.0, eps, 0.0)) * scale);
+              float nZ = fbm((p + vec3(0.0, 0.0, eps)) * scale);
+              vec3 grad = vec3(nX - n0, nY - n0, nZ - n0) / eps;
+              return normalize(n - grad * strength);
+            }
+
+            // Color palette generator
+            vec3 getRockColor(float t, float seed, float tinge) {
+                float i = floor(t+0.5);
+                vec3 base;
+                if(i < 0.5) base = vec3(0.12,0.11,0.10);
+                else if(i < 1.5) base = vec3(0.50,0.42,0.32);
+                else if(i < 2.5) base = vec3(0.42,0.41,0.43);
+                else if(i < 3.5) base = vec3(0.20,0.17,0.14);
+                else if(i < 4.5) base = vec3(0.08,0.08,0.09);
+                else if(i < 5.5) base = vec3(0.65,0.62,0.55);
+                else base = vec3(0.38,0.36,0.33);
+
+                float variation = hash(seed*0.1)*0.15 - 0.075;
+                base *= (1.0 + variation);
+
+                base.r += tinge;
+                base.g += tinge*0.5;
+                base.b -= tinge*0.3;
+
+                return clamp(base,0.0,1.0);
+            }
+
+          ` + shader.fragmentShader;
+
+            shader.fragmentShader = shader.fragmentShader.replace(
+              "#include <dithering_fragment>",
+              `
+        #include <dithering_fragment>
+
+        if (vWorldPos.y < ${CONFIG.WORLD_BOTTOM.toFixed(1)}) discard;
+
+        float wetness = vVariation.x;
+        float roughness = vVariation.y;
+        float colorTinge = vVariation.z;
+
+        vec3 N;
+        vec3 finalColor;
+        float detail = 0.5; // Default neutral detail for distant rocks
+        float nVal = 0.5;
+
+        float detailThreshold = ${(CONFIG.LOD_DISTANCES[2] * 0.75).toFixed(1)}; // faraway LODs get flat normals and a simple color mix with zero noise calls
+
+        if (vViewZ < detailThreshold) {
+              // 1. Detailed Noise
+              nVal = fbm(vWorldPos * 0.4 + vSeed);
+              detail = fbm(vWorldPos * 2.5 + vSeed);
+
+              // 2. Perturb Normal
+              N = perturbNormal(normalize(vNormalComp), vWorldPos, 2.5, 0.4 * (1.0 - wetness));
+
+              // 3. COLOR MIXING
+              vec3 instanceColor = getRockColor(vColorType, vSeed, colorTinge);
+              vec3 sandColor = mix(instanceColor, vec3(0.6, 0.55, 0.5), 0.5);
+
+              float upDot = dot(N, vec3(0.0, 1.0, 0.0));
+              // The mixFactor average is roughly 0.5-0.6 depending on noise distribution
+              float mixFactor = smoothstep(0.2, 0.8, nVal + detail * 0.5 + upDot * 0.2);
+              finalColor = mix(instanceColor, sandColor, mixFactor * 0.5);
+          } else {
+              // OPTIMIZED PATH
+              N = normalize(vNormalComp);
+              vec3 instanceColor = getRockColor(vColorType, vSeed, colorTinge);
+
+              // COMPENSATE FOR BRIGHTNESS:
+              // We simulate the average "sand" contribution from the detailed path.
+              // The detailed path mixes in 50% sandColor at a variable mixFactor.
+              // Applying a 0.25 (25%) mix of sandColor here matches the median brightness.
+              vec3 sandColor = mix(instanceColor, vec3(0.6, 0.55, 0.5), 0.5);
+              finalColor = mix(instanceColor, sandColor, 0.25);
+          }
+
+          finalColor *= mix(1.0, 0.5, wetness);
+
+          // 4. Lighting
+          vec3 L = normalize(lightDir);
+          vec3 V = vViewDir;
+          vec3 H = normalize(L + V);
+
+          float NdotL = max(dot(N, L), 0.0);
+          float NdotH = max(dot(N, H), 0.0);
+
+          vec3 lit = finalColor * (vec3(0.35) + lightColor * NdotL * 0.7);
+
+          // Wet Specular
+          float specPower = mix(10.0, 100.0, wetness * (2.0 - roughness));
+          float specStrength = mix(0.05, 1.0, wetness);
+
+          // Smooth transition for the mask
+          // We assume an average mask of 0.8 for distant rocks to avoid the "darkening" pop
+          float specMask = (vViewZ < detailThreshold) ? smoothstep(0.4, 0.6, detail) : 0.8;
+
+          float spec = pow(NdotH, specPower) * specStrength * specMask;
+          lit += lightColor * spec;
+
+          // Fresnel (Small compensation for distant path)
+          if (vViewZ < detailThreshold) {
+              float fresnel = pow(1.0 - max(dot(N, V), 0.0), 4.0);
+              lit += lightColor * fresnel * 0.3 * wetness;
+          } else {
+              // Add a tiny constant "rim" boost to distant wet rocks to match close-up Fresnel feel
+              lit += lightColor * 0.05 * wetness;
+          }
+
+          gl_FragColor.rgb = lit;
+          gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(1.1));
+          `,
+            );
+          };
+
+          // One mesh per LOD (4 draw calls total for rocks)
+          this.meshes = [];
+
+          for (let s = 0; s < CONFIG.NUM_ROCK_SHAPES; s++) {
+            for (let l = 0; l < CONFIG.LOD_RESOLUTIONS.length; l++) {
+              const geom = rockLODs[s][l].clone();
+
+              // same attribute setup as before
+              const seeds = new Float32Array(this.maxPerMesh);
+              const colorTypes = new Float32Array(this.maxPerMesh);
+              const variations = new Float32Array(this.maxPerMesh * 4);
+
+              geom.setAttribute(
+                "seed",
+                new THREE.InstancedBufferAttribute(seeds, 1),
+              );
+              geom.setAttribute(
+                "colorType",
+                new THREE.InstancedBufferAttribute(colorTypes, 1),
+              );
+              geom.setAttribute(
+                "variation",
+                new THREE.InstancedBufferAttribute(variations, 4),
+              );
+
+              const mesh = new THREE.InstancedMesh(
+                geom,
+                material,
+                this.maxPerMesh,
+              );
+              mesh.count = 0;
+              mesh.frustumCulled = false;
+              mesh.castShadow = l <= 1; // LOD 0, 1
+              mesh.receiveShadow = l <= 1; // LOD 0, 1
+
+              scene.add(mesh);
+              this.meshes.push(mesh); // flat: 0 = shape0-lod0, 1 = shape0-lod1, ..., 31 = shape7-lod3
+            }
+          }
+
+          // One-time setup: give each mesh a place to remember its last visible count
+          for (const mesh of this.meshes) {
+            mesh.count = 0; // already doing this probably
+            mesh._lastVisibleCount = 0; // previous cycle's count, used to detect changes
+          }
+        }
+
+        update(camera) {
+          const camX = camera.position.x;
+          const camZ = camera.position.z;
+          const numLods = CONFIG.LOD_RESOLUTIONS.length;
+          const maxDistSq = CONFIG.VIEW_DISTANCE * CONFIG.VIEW_DISTANCE;
+
+          // 1. Setup Frustum once per frame
+          projScreenMatrix.multiplyMatrices(
+            camera.projectionMatrix,
+            camera.matrixWorldInverse,
+          );
+          frustum.setFromProjectionMatrix(projScreenMatrix);
+          camera.getWorldDirection(this.camForward);
+
+          // 2. Start of Cycle: Reset working counts
+          if (this.currentIndex === 0) {
+            this.workingCounts.fill(0);
+            this.workingCulled = 0; // Temporary counter for culled rocks
+            this.workingHash.fill(0);
+          }
+
+          // 3. Batch Processing (Time-Slicing)
+          const end = Math.min(
+            this.currentIndex + this.batchSize,
+            CONFIG.INSTANCE_COUNT,
+          );
+
+          for (let i = this.currentIndex; i < end; i++) {
+            const idx = i * FLOATS_PER_INSTANCE;
+            const x = instanceData[idx + 0];
+            const z = instanceData[idx + 1];
+            const scale = instanceData[idx + 2];
+
+            const dx = x - camX;
+            const dz = z - camZ;
+            const distSq = dx * dx + dz * dz;
+
+            // 1. View Distance Cull (this is the fastest)
+            if (distSq > maxDistSq) continue;
+
+            if (CONFIG.FRUSTUM_CULLING) {
+              // Always apply frustum culling (hard-coded on)
+              this.tempSphere.center.x = x;
+              this.tempSphere.center.y = scale * 0.4; // y = scale*0.4 is a rough center estimate
+              this.tempSphere.center.z = z;
+              this.tempSphere.radius = scale * 1.7; // ← increased a bit for safety (adjust 1.6–2.0 if needed)
+
+              if (!frustum.intersectsSphere(this.tempSphere)) {
+                this.workingCulled++;
+                continue;
+              }
+            }
+
+            // If it survives, it gets rendered
+
+            // D. LOD Selection
+            let lod = numLods - 1;
+            for (let ll = 0; ll < numLods - 1; ll++) {
+              if (distSq < this.lodDistSq[ll + 1]) {
+                lod = ll;
+                break;
+              }
+            }
+
+            // read the shape index that was precomputed for this rock
+            const shape = Math.floor(instanceData[idx + 6]); // 0 .. NUM_ROCK_SHAPES-1
+
+            // flat bucket = shape × numLods + lod
+            const bucket = shape * numLods + lod;
+
+            const matrixIdx = i * 16;
+
+            // then use bucket everywhere instead of lod
+            const j = this.workingCounts[bucket];
+            if (j < this.maxPerMesh) {
+              const mesh = this.meshes[bucket];
+
+              mesh.instanceMatrix.array.set(
+                allMatrices.subarray(matrixIdx, matrixIdx + 16),
+                j * 16,
+              );
+
+              mesh.geometry.attributes.seed.array[j] = instanceData[idx + 8];
+              mesh.geometry.attributes.colorType.array[j] =
+                instanceData[idx + 7];
+
+              const vIdx = j * 4;
+              const varArr = mesh.geometry.attributes.variation.array;
+              varArr[vIdx + 0] = instanceData[idx + 9];
+              varArr[vIdx + 1] = instanceData[idx + 10];
+              varArr[vIdx + 2] = instanceData[idx + 11];
+              varArr[vIdx + 3] = 0;
+
+              this.workingCounts[bucket]++;
+              this.workingHash[bucket] =
+                (this.workingHash[bucket] * 31 + i) | 0;
+            }
+          }
+
+          this.currentIndex = end;
+
+          // 4. End of Cycle: Swap Buffers to GPU and Update UI
+          if (this.currentIndex >= CONFIG.INSTANCE_COUNT) {
+            this.totalVisible = 0;
+            this.culledCount = this.workingCulled;
+
+            const numLods = CONFIG.LOD_RESOLUTIONS.length;
+
+            // Reset per-LOD counts
+            this.lodCounts.fill(0);
+
+            for (let bucket = 0; bucket < this.meshes.length; bucket++) {
+              const mesh = this.meshes[bucket];
+              const count = this.workingCounts[bucket];
+
+              // Remember the PREVIOUS visible count before overwriting
+              const prevCount = mesh._lastVisibleCount;
+
+              // Now safe to update the actual mesh.count
+              mesh.count = count;
+
+              mesh._lastVisibleCount = count; // remember for next frame
+
+              const lod = bucket % numLods;
+              this.lodCounts[lod] += count;
+              this.totalVisible += count;
+
+              // Upload to GPU only when bucket contents changed (count or which rocks).
+              // Uses partial buffer upload (addUpdateRange) so only the visible
+              // slice gets sent — not the full 100K-capacity array.
+              if (
+                count !== mesh._lastVisibleCount ||
+                this.workingHash[bucket] !== this.lastHash[bucket]
+              ) {
+                mesh.instanceMatrix.clearUpdateRanges();
+                mesh.instanceMatrix.addUpdateRange(0, count * 16);
+                mesh.instanceMatrix.needsUpdate = true;
+
+                const seedAttr = mesh.geometry.attributes.seed;
+                seedAttr.clearUpdateRanges();
+                seedAttr.addUpdateRange(0, count);
+                seedAttr.needsUpdate = true;
+
+                const ctAttr = mesh.geometry.attributes.colorType;
+                ctAttr.clearUpdateRanges();
+                ctAttr.addUpdateRange(0, count);
+                ctAttr.needsUpdate = true;
+
+                const varAttr = mesh.geometry.attributes.variation;
+                varAttr.clearUpdateRanges();
+                varAttr.addUpdateRange(0, count * 4);
+                varAttr.needsUpdate = true;
+
+                mesh._lastVisibleCount = count;
+                this.lastHash[bucket] = this.workingHash[bucket];
+              }
+            }
+
+            if (typeof updateGUI === "function") updateGUI();
+            this.currentIndex = 0;
+
+            // Force shadow map to update once after first population
+            if (!this._shadowsInitialized) {
+              renderer.shadowMap.needsUpdate = true;
+              this._shadowsInitialized = true;
+            }
+          }
+        }
+      }
+
+      const lodManager = new LODInstanceManager();
+
+      // ==========================================================
+      // RENDER LOOP
+      // ==========================================================
+      let lastLODUpdate = 0;
+
+      const shadowSnap = 4; // world units — larger = fewer updates, more stable
+
+      function animate(time) {
+        requestAnimationFrame(animate);
+        camera.updateMatrixWorld(); // ensure frustum uses this frame's camera, not last frame's
+        lodManager.update(camera);
+
+        // Snap shadow camera to camera position (quantized to reduce shadow map updates)
+        const snapX = Math.round(camera.position.x / shadowSnap) * shadowSnap;
+        const snapZ = Math.round(camera.position.z / shadowSnap) * shadowSnap;
+
+        if (
+          snapX !== sun.target.position.x ||
+          snapZ !== sun.target.position.z
+        ) {
+          sun.target.position.set(snapX, 0, snapZ);
+          sun.position.set(snapX + 50, 80, snapZ + 50);
+          sun.target.updateMatrixWorld();
+          renderer.shadowMap.needsUpdate = true;
+        }
+
+        renderer.render(scene, camera);
+        updateStatsCustom(time);
+        stats.update();
+      }
+
+      animate(0);
+
+      // ==========================================================
+      // RESIZE
+      // ==========================================================
+      window.addEventListener("resize", () => {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+      });
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+
+      updateGUI();
+    </script>
+  </body>
+</html>

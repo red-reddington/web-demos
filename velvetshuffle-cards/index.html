@@ -1,0 +1,2868 @@
+<!-- https://codepen.io/the-red-reddington/full/yyarRpa -->
+<!-- https://discourse.threejs.org/t/velvetshuffle-a-clean-solid-starter-for-card-games-including-original-mini-games/91127 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>VelvetShuffle — Original Card Games (Three.js)</title>
+    <meta
+      name="description"
+      content="This Three.js showcase includes a collection of original card games by Red Reddington. Pick the one you like from the top-left selector. Enjoy!"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100dvh;
+        width: 100dvw;
+        background: #0d2016;
+        overscroll-behavior: none;
+      }
+      body {
+        margin: 0;
+        overscroll-behavior: none;
+        -webkit-user-select: none; /* Safari */
+        -ms-user-select: none; /* IE 10 and IE 11 */
+        user-select: none; /* Standard syntax */
+        -webkit-touch-callout: none;
+        -webkit-user-callout: none;
+      }
+      * {
+        touch-action: manipulation; /* kills the double-tap magnifier/zoom behavior */
+      }
+      canvas {
+        display: block;
+        cursor: grab;
+        touch-action: none;
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+        -webkit-user-drag: none !important;
+      }
+      canvas:active {
+        cursor: grabbing;
+      }
+
+      /* ── vignette overlay ── */
+      #vignette {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 1;
+        background: radial-gradient(
+          ellipse at 50% 60%,
+          transparent 30%,
+          rgba(0, 8, 4, 0.55) 100%
+        );
+      }
+
+      /* ── watermark ── */
+      #watermark {
+        position: fixed;
+        bottom: 16px;
+        left: 18px;
+        z-index: 10;
+        font:
+          400 13px "Courier New",
+          monospace;
+        color: rgba(255, 255, 255, 0.11);
+        user-select: none;
+        letter-spacing: 1.2px;
+        text-transform: uppercase;
+        transition: color 350ms ease;
+        cursor: pointer;
+      }
+      #watermark .big {
+        font-size: 15.5px; /* slightly taller */
+        font-weight: 500;
+        vertical-align: baseline;
+      }
+
+      #watermark:hover {
+        color: rgba(255, 255, 255, 0.28);
+      }
+
+      #performanceStats {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        z-index: 150;
+        display: flex;
+        cursor: pointer;
+        transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
+      }
+      #performanceStats.minimized {
+        transform: translate(100%, 100%); /* leaves just the top bar visible */
+      }
+      #performanceStats.minimized::before {
+        content: "▦";
+        position: absolute;
+        top: -32px;
+        left: -32px;
+        z-index: 100000;
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.06);
+        color: #888;
+        font:
+          bold 13px/26px "Courier New",
+          monospace;
+        text-align: center;
+        cursor: pointer;
+        padding: 0;
+      }
+      #performanceStats > div {
+        position: relative !important;
+        display: flex;
+      }
+      #performanceStats canvas:not([height="9"]):not([height="18"]) {
+        position: static !important;
+        cursor: pointer;
+      }
+      #statsCustom {
+        font: 10px monospace;
+        background: rgba(0, 0, 0, 1);
+        color: #0ff;
+        padding: 0 5px;
+        display: block !important;
+        white-space: pre;
+        width: fit-content !important;
+      }
+
+      /* On-demand render indicator */
+      #renderDot {
+        position: fixed;
+        top: 8px;
+        right: 8px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #333;
+        z-index: 200;
+        transition: background 80ms ease;
+        box-shadow: 0 0 0 0 transparent;
+      }
+      #renderDot.active {
+        background: #0f0;
+        box-shadow: 0 0 6px 2px rgba(0, 255, 0, 0.4);
+      }
+
+      /* ── shared panel shell ── */
+      #gamePanel {
+        position: fixed;
+        top: 16px;
+        left: 16px;
+        z-index: 100;
+        font:
+          13px/1.6 "Courier New",
+          monospace;
+        color: #ccc;
+        background: rgba(0, 0, 0, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 8px;
+        padding: 10px 12px 12px;
+        min-width: 188px;
+        backdrop-filter: blur(6px);
+        user-select: none;
+        pointer-events: none;
+      }
+
+      #redealBtn {
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.06);
+        color: #888;
+        font:
+          bold 14px/26px "Courier New",
+          monospace;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          background 120ms,
+          color 120ms;
+        padding: 0;
+      }
+      #redealBtn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+
+      /* ── mode row: dropdown + help ── */
+      #modeRow {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-bottom: 10px;
+        pointer-events: all;
+      }
+      #modeSelect {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+        color: #fff;
+        font:
+          12px/1 "Courier New",
+          monospace;
+        padding: 6px 8px;
+        cursor: pointer;
+      }
+      #modeSelect:focus {
+        outline: none;
+        border-color: rgba(255, 255, 255, 0.3);
+      }
+      select::picker(select) {
+        background: rgba(0, 0, 0, 0.95) !important;
+      }
+      select,
+      select::picker(select) {
+        appearance: base-select;
+        color: #fff !important;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+      }
+      #helpBtn,
+      #fullscreenBtn {
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.06);
+        color: #888;
+        font:
+          bold 13px/26px "Courier New",
+          monospace;
+        text-align: center;
+        cursor: pointer;
+        transition:
+          background 120ms,
+          color 120ms;
+        padding: 0;
+      }
+      #helpBtn:hover,
+      #fullscreenBtn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+
+      /* ── HUD ── */
+      #gameHud {
+        pointer-events: none;
+      }
+      #gameHud:empty {
+        display: none;
+      }
+      .hud-level {
+        font-size: 11px;
+        color: #aaa;
+        margin-bottom: 6px;
+      }
+      .hud-score {
+        font-size: 22px;
+        font-weight: bold;
+        color: #fff;
+        line-height: 1.2;
+      }
+      .hud-score-sub {
+        font-size: 13px;
+        font-weight: normal;
+        color: #666;
+      }
+      .hud-par {
+        font-size: 11px;
+        color: #666;
+        margin-top: 2px;
+      }
+      .hud-result {
+        font-size: 13px;
+        margin-top: 6px;
+        color: #eee;
+      }
+
+      /* CSS-driven countdown bar — zero JS per frame */
+      .hud-timer-track {
+        margin-top: 8px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .hud-timer-bar {
+        height: 100%;
+        width: 100%;
+        background: #4f4;
+        border-radius: 2px;
+        transform-origin: left center;
+      }
+      @keyframes timerShrink {
+        0% {
+          width: 100%;
+          background: #4f4;
+        }
+        75% {
+          background: #4f4;
+        }
+        90% {
+          background: #ff4;
+        }
+        100% {
+          width: 0%;
+          background: #f44;
+        }
+      }
+
+      /* ── help modal ── */
+      #helpOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 500;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        align-items: center;
+        justify-content: center;
+      }
+      #helpOverlay.open {
+        display: flex;
+      }
+      #helpModal {
+        background: #16161a;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        padding: 24px 24px 20px;
+        max-width: min(88vw, 360px);
+        width: 100%;
+        font:
+          13px/1.65 "Courier New",
+          monospace;
+        color: #bbb;
+        position: relative;
+      }
+      #helpModal h2 {
+        margin: 0 0 12px;
+        font-size: 15px;
+        color: #fff;
+        letter-spacing: 0.06em;
+      }
+      #helpModal p {
+        margin: 0 0 10px;
+      }
+      #helpModal .example {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        padding: 8px 10px;
+        font-size: 12px;
+        color: #ccc;
+        margin: 10px 0 14px;
+        line-height: 1.8;
+      }
+      #helpModal .example .lbl {
+        color: #666;
+        font-size: 10px;
+        letter-spacing: 0.1em;
+      }
+      #helpModal .example .cards {
+        letter-spacing: 0.04em;
+      }
+      #helpModal .example .red {
+        color: #e44;
+      }
+      #helpClose {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        background: none;
+        border: none;
+        color: #666;
+        font-size: 18px;
+        cursor: pointer;
+        line-height: 1;
+        padding: 2px 6px;
+      }
+      #helpClose:hover {
+        color: #fff;
+      }
+
+      /* ── confirm modal ── */
+      #confirmOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 600;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(4px);
+        align-items: center;
+        justify-content: center;
+      }
+      #confirmOverlay.open {
+        display: flex;
+      }
+      #confirmModal {
+        background: #16161a;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        padding: 24px 24px 20px;
+        max-width: min(88vw, 320px);
+        width: 100%;
+        font:
+          13px/1.65 "Courier New",
+          monospace;
+        color: #bbb;
+      }
+      #confirmModal h2 {
+        margin: 0 0 10px;
+        font-size: 15px;
+        color: #fff;
+        letter-spacing: 0.06em;
+      }
+      #confirmModal p {
+        margin: 0 0 18px;
+        color: #999;
+      }
+      #confirmBtns {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      #confirmBtns button {
+        font:
+          12px/1 "Courier New",
+          monospace;
+        padding: 7px 16px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        cursor: pointer;
+        transition:
+          background 120ms,
+          color 120ms;
+      }
+      #confirmCancel {
+        background: rgba(255, 255, 255, 0.06);
+        color: #aaa;
+      }
+      #confirmCancel:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+      }
+      #confirmOk {
+        background: rgba(180, 60, 60, 0.35);
+        color: #f88;
+        border-color: rgba(180, 60, 60, 0.5);
+      }
+      #confirmOk:hover {
+        background: rgba(180, 60, 60, 0.55);
+        color: #fcc;
+      }
+
+      /* ── Plus Shot target overlay ── */
+      #plusTarget {
+        display: none;
+        position: fixed;
+        top: 25dvh;
+        transform: translate(-50%, -50%);
+        z-index: 50;
+        pointer-events: none;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        background: rgba(0, 0, 0, 0.62);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 16px;
+        padding: 14px 36px 16px;
+        backdrop-filter: blur(6px);
+        white-space: nowrap;
+      }
+      #plusTarget.active {
+        display: flex;
+      }
+      #plusTargetNumber {
+        font:
+          bold 72px/1 Georgia,
+          serif;
+        color: rgba(255, 255, 255, 0.96);
+        letter-spacing: -1px;
+        user-select: none;
+      }
+      #plusTargetLabel {
+        font:
+          11px/1 "Courier New",
+          monospace;
+        color: rgba(255, 255, 255, 0.3);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-top: 7px;
+        user-select: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="performanceStats"
+      class="minimized"
+      title="Click to minimize / expand performance stats"
+    ></div>
+    <div id="renderDot" title="Rendering active"></div>
+    <div id="vignette"></div>
+    <div id="plusTarget">
+      <div id="plusTargetNumber"></div>
+      <div id="plusTargetLabel">find the pair</div>
+    </div>
+    <div id="watermark">
+      <span class="big">V</span>elvet•<span class="big">S</span>huffle
+    </div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/",
+          "stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@4.0.2/+esm"
+        }
+      }
+    </script>
+    <script type="module">
+import {
+  AmbientLight,
+  BufferAttribute,
+  BufferGeometry,
+  CanvasTexture,
+  Color,
+  DirectionalLight,
+  DoubleSide,
+  Euler,
+  FogExp2,
+  FrontSide,
+  BackSide,
+  InstancedMesh,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  MathUtils,
+  Matrix4,
+  Mesh,
+  MeshStandardMaterial,
+  NeutralToneMapping,
+  PerspectiveCamera,
+  Plane,
+  PMREMGenerator,
+  Quaternion,
+  Raycaster,
+  RepeatWrapping,
+  Scene,
+  Shape,
+  ShapeGeometry,
+  SRGBColorSpace,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
+} from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import StatsGL from "stats-gl";
+
+// ── constants ────────────────────────────────────────────────────────────────
+const SUITS = ["♠", "♥", "♦", "♣"];
+const RANKS = [
+  "A",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "J",
+  "Q",
+  "K",
+];
+const CELL = { W: 512, H: 716 };
+const CARD = { W: 1.0, H: 1.4, T: 0.01, RADIUS: 0.09 };
+// Elliptical fan with constant visual spacing. STEP is the per-card angular
+// step for small hands (giving a chord of roughly RX·STEP between cards). For
+// big hands the total span would wrap; we compress STEP and widen RX by the
+// same factor so chord (≈ RX·STEP) stays constant while the total stays under
+// SPAN. Net effect: cards maintain identical center-to-center spacing
+// regardless of how many you deal.
+const FAN = { RX: 9, RZ: 3, Y: 1.8, Z: 2.5 };
+
+// ── game mode ────────────────────────────────────────────────────────────────
+// null | "SpeedSort" | "SpeedShot" | "PlusShot" | "PairUp" | "MinMovesSort" | "MinDistanceSort"
+// Driven by the switcher UI; null = free-play (click to deal).
+let GAME_MODE = null;
+
+// SpeedSort par: seconds per card. Par = PAR_PER_CARD * N.
+const PAR_PER_CARD = 3.5;
+// SpeedShot par: tighter since clicking is faster than dragging.
+const PAR_PER_CARD_SHOT = 2.0;
+// PlusShot par: seconds per pair to find.
+const PAR_PER_PAIR = 6.0;
+
+// ── sort algorithm ────────────────────────────────────────────────────────────
+// "Sorted" = ranks non-decreasing (A < 2 < … < K).
+// Suit order is irrelevant — same-rank cards can appear in any suit order.
+
+/** Blackjack values for a card: A→[1,11], 2–9→[face], 10/J/Q/K→[10] */
+function bjValues(cardObj) {
+  const v = cardObj.mesh.userData.card.value;
+  if (v === "A") return [1, 11];
+  if (["J", "Q", "K"].includes(v)) return [10];
+  return [parseInt(v, 10)];
+}
+
+/** All unique sums achievable by any unflipped pair. */
+function validPlusSums(cardList) {
+  const sums = new Set();
+  for (let i = 0; i < cardList.length; i++)
+    for (let j = i + 1; j < cardList.length; j++)
+      for (const va of bjValues(cardList[i]))
+        for (const vb of bjValues(cardList[j])) sums.add(va + vb);
+  return [...sums];
+}
+
+/** Does this specific pair sum to the target (using BJ values)? */
+function pairMatchesTarget(a, b, target) {
+  for (const va of bjValues(a))
+    for (const vb of bjValues(b)) if (va + vb === target) return true;
+  return false;
+}
+
+/** Rank index for a card (0=A … 12=K). */
+function rankOf(c) {
+  return RANKS.indexOf(c.mesh.userData.card.value);
+}
+
+/**
+ * A hand is sorted when ranks are non-decreasing left to right.
+ * Same-rank cards adjacent in any suit order are fine.
+ */
+function isSorted(cardList) {
+  for (let i = 1; i < cardList.length; i++)
+    if (rankOf(cardList[i]) < rankOf(cardList[i - 1])) return false;
+  return true;
+}
+
+/**
+ * Minimum moves = N - LNDS (longest non-decreasing rank subsequence).
+ * Cards in the LNDS are already in valid relative order and don't need
+ * to move; the rest must each be picked up and reinserted once.
+ * O(N log N) patience sort with non-strict comparison (≤).
+ */
+function optimalMoves(cardList) {
+  const n = cardList.length;
+  if (n <= 1) return 0;
+  const tails = [];
+  for (const c of cardList) {
+    const x = rankOf(c);
+    let lo = 0,
+      hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      tails[mid] <= x ? (lo = mid + 1) : (hi = mid);
+    }
+    tails[lo] = x;
+  }
+  return n - tails.length; // moves = N - LNDS
+}
+
+/**
+ * Minimum total distance to sort = number of rank-inversions.
+ * A rank-inversion is a pair (i,j) where i<j but rank[i] > rank[j].
+ * Same-rank pairs are never inversions (suit order is free).
+ * Proof: each move of distance d resolves exactly d inversions.
+ * O(N²).
+ */
+function optimalDistance(cardList) {
+  const n = cardList.length;
+  if (n <= 1) return 0;
+  let inv = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = i + 1; j < n; j++)
+      if (rankOf(cardList[i]) > rankOf(cardList[j])) inv++;
+  return inv;
+}
+
+// ── game state ───────────────────────────────────────────────────────────────
+const GS = {
+  level: 1, // current level (= number of cards dealt)
+  startCards: 5, // first level card count
+
+  // SpeedSort
+  timerStart: 0, // performance.now() when round began
+  par: 0, // target seconds for current level
+
+  // MinMovesSort
+  moves: 0, // moves used this round
+  optMoves: 0, // optimal moves for the deal
+
+  // MinDistanceSort
+  distance: 0, // accumulated cost this round
+  optDistance: 0, // optimal distance for the deal
+  lastFromIdx: -1, // index of card before lift
+
+  // SpeedShot
+  shotOrder: [], // card objects in ascending rank order
+  shotNext: 0, // index into shotOrder — next card to click
+
+  // PairUp
+  puMisses: 0, // wrong second clicks this round
+  puParMisses: 0, // par misses for this deal
+  puSelected: null, // first card of current pair attempt
+  puSolved: 0, // matched pairs found
+  puLocked: false, // true during the brief "show mismatch" pause
+
+  // PlusShot
+  plusTarget: 0, // current target sum
+  plusSelected: null, // first card of the current pair
+  plusPairs: 0, // pairs cleared this round
+  plusPairsNeeded: 0, // total pairs needed to win
+
+  // shared
+  roundActive: false,
+  won: false,
+  result: null, // "advance" | "retry" | "leveldown" — set on round end
+  hasMoved: false, // true once any card has been dropped (guards pre-sorted deals)
+};
+// True while the help modal is blocking round start (timer not yet running)
+let _pendingRoundStart = false;
+let _pausedAt = 0; // performance.now() when modal opened mid-round
+
+function gsCardCount() {
+  if (GAME_MODE === "PairUp") return 4 + (GS.level - 1) * 2; // starts at 4, always even, +2 per level
+  return GS.startCards + GS.level - 1;
+}
+
+function gsBeginRound() {
+  GS.roundActive = true;
+  GS.won = false;
+  GS.result = null;
+  GS.hasMoved = false;
+  GS.moves = 0;
+  GS.distance = 0;
+  GS.lastFromIdx = -1;
+  if (GAME_MODE === "SpeedSort" || GAME_MODE === "SpeedShot") {
+    GS.par =
+      (GAME_MODE === "SpeedShot" ? PAR_PER_CARD_SHOT : PAR_PER_CARD) *
+      cards.length;
+    GS.timerStart = performance.now();
+    if (GAME_MODE === "SpeedShot") {
+      GS.shotNext = 0;
+    }
+    // CSS animation drives the live countdown bar — no rAF needed here
+  } else if (GAME_MODE === "PairUp") {
+    GS.puMisses = 0;
+    GS.puParMisses = cards.length / 2; // one miss allowed per pair
+    GS.puSelected = null;
+    GS.puSolved = 0;
+    GS.puLocked = false;
+  } else if (GAME_MODE === "PlusShot") {
+    GS.plusPairsNeeded = Math.floor(cards.length / 2);
+    GS.plusPairs = 0;
+    GS.plusSelected = null;
+    GS.timerStart = performance.now();
+    GS.par = PAR_PER_PAIR * GS.plusPairsNeeded;
+    plusPickNewTarget();
+  } else {
+    GS.optMoves = optimalMoves(cards);
+    GS.optDistance = optimalDistance(cards);
+  }
+  hudUpdate(); // writes DOM + kicks off CSS timer bar animation
+}
+
+function gsRecordLift(fromIdx) {
+  GS.lastFromIdx = fromIdx;
+}
+
+function gsRecordDrop(toIdx) {
+  if (!GS.roundActive || GS.won) return;
+  if (
+    GAME_MODE === "SpeedShot" ||
+    GAME_MODE === "PlusShot" ||
+    GAME_MODE === "PairUp"
+  )
+    return; // click-based modes
+  if (GAME_MODE === "MinMovesSort") {
+    GS.moves++;
+  } else if (GAME_MODE === "MinDistanceSort") {
+    GS.distance += Math.abs(GS.lastFromIdx - toIdx);
+  }
+  GS.lastFromIdx = -1;
+  GS.hasMoved = true; // at least one card has been placed
+
+  // Only check win if the player has actually moved something.
+  // Guards against already-sorted deals slipping through.
+  if (GS.hasMoved && isSorted(cards)) gsWin();
+  else hudUpdate();
+}
+
+/**
+ * SpeedShot: called when the player clicks a card.
+ * If it's the correct next card in rank order, flip it face-down.
+ * Ties (same rank) accept either card.
+ */
+function gsHandleShot(cardObj) {
+  if (!GS.roundActive || GS.won || GAME_MODE !== "SpeedShot") return false;
+
+  // Find the lowest rank still unflipped — that's the only valid rank to click
+  const unflipped = cards.filter((c) => !c.flipped);
+  if (!unflipped.length) return false;
+  const minRank = Math.min(...unflipped.map(rankOf));
+
+  // Reject if the clicked card isn't at the minimum rank
+  if (rankOf(cardObj) !== minRank) return false;
+
+  // Flip it
+  cardObj.flipped = true;
+  cardObj.targetQuat.copy(_flipQ);
+
+  const stillLeft = cards.filter((c) => !c.flipped).length;
+  if (stillLeft === 0) {
+    gsWin();
+  } else {
+    // Update shotNext to reflect progress (used only for HUD "X left" display)
+    GS.shotNext = cards.length - stillLeft;
+    hudUpdate();
+  }
+  return true;
+}
+
+// ── Plus Shot helpers ────────────────────────────────────────────────────────
+const plusTargetEl = document.getElementById("plusTarget");
+const plusTargetNumEl = document.getElementById("plusTargetNumber");
+
+// World-space point at the fan centre — badge tracks this
+const _badgeWorld = new Vector3();
+const _badgeNDC = new Vector3();
+
+/** Project fan centre to screen coords and move the badge there. */
+function plusUpdateBadgePos() {
+  if (!plusTargetEl.classList.contains("active")) return;
+  _badgeWorld.set(0, FAN.Y - CARD.H * 0.85, FAN.Z); // just below the card bottoms
+  _badgeNDC.copy(_badgeWorld).project(camera);
+  const hw = window.innerWidth / 2,
+    hh = window.innerHeight / 2;
+  plusTargetEl.style.left = (hw + _badgeNDC.x * hw).toFixed(1) + "px";
+  //plusTargetEl.style.top = (hh - _badgeNDC.y * hh).toFixed(1) + "px";
+}
+
+/** Pick a random valid target from remaining unflipped cards and show it. */
+function plusPickNewTarget() {
+  const unflipped = cards.filter((c) => !c.flipped);
+  const sums = validPlusSums(unflipped);
+  if (!sums.length) {
+    // No valid pair exists — shouldn't happen if hand was validated, but safe fallback
+    gsWin();
+    return;
+  }
+  GS.plusTarget = sums[(Math.random() * sums.length) | 0];
+  GS.plusSelected = null;
+  plusTargetNumEl.textContent = GS.plusTarget;
+  // Delay activation by one frame so plusUpdateBadgePos() runs after
+  // the camera has settled and project() returns correct NDC coords.
+  requestAnimationFrame(() => {
+    plusUpdateBadgePos();
+    plusTargetEl.classList.add("active");
+    markDirty();
+  });
+  // Deselect any highlighted card
+  for (const c of cards) c.mesh.material.emissive?.set(0, 0, 0);
+}
+
+/** Hide the target overlay (on win / mode exit). */
+function plusHideTarget() {
+  plusTargetEl.classList.remove("active");
+  GS.plusSelected = null;
+  for (const c of cards) {
+    if (c.mesh.material.emissive) c.mesh.material.emissive.set(0, 0, 0);
+  }
+}
+
+/**
+ * PlusShot click handler.
+ * First click: select a card (highlight it).
+ * Second click on a different card: check if the pair sums to target.
+ *   - Match → flip both, pick new target or win.
+ *   - No match → new card becomes the selection (swap).
+ */
+function gsHandlePlusShot(cardObj) {
+  if (!GS.roundActive || GS.won || GAME_MODE !== "PlusShot") return false;
+  if (cardObj.flipped) return false;
+
+  if (!GS.plusSelected) {
+    // First click — select this card
+    GS.plusSelected = cardObj;
+    cardObj.mesh.material.emissiveIntensity = 0.35;
+    cardObj.mesh.material.emissive.set(0.6, 0.5, 0.1);
+    return true;
+  }
+
+  if (cardObj === GS.plusSelected) {
+    // Clicked same card — deselect
+    cardObj.mesh.material.emissive.set(0, 0, 0);
+    GS.plusSelected = null;
+    return true;
+  }
+
+  // Second click — check the pair
+  if (pairMatchesTarget(GS.plusSelected, cardObj, GS.plusTarget)) {
+    // ✓ Valid pair — flip both
+    GS.plusSelected.mesh.material.emissive.set(0, 0, 0);
+    GS.plusSelected.flipped = true;
+    GS.plusSelected.targetQuat.copy(_flipQ);
+    cardObj.flipped = true;
+    cardObj.targetQuat.copy(_flipQ);
+    GS.plusSelected = null;
+    GS.plusPairs++;
+
+    const unflipped = cards.filter((c) => !c.flipped);
+    if (unflipped.length <= 2) {
+      plusHideTarget();
+      gsWin();
+    } else {
+      hudUpdate();
+      plusPickNewTarget();
+    }
+  } else {
+    // ✗ Wrong pair — swap selection to the new card
+    GS.plusSelected.mesh.material.emissive.set(0, 0, 0);
+    GS.plusSelected = cardObj;
+    cardObj.mesh.material.emissiveIntensity = 0.35;
+    cardObj.mesh.material.emissive.set(0.6, 0.5, 0.1);
+  }
+  return true;
+}
+
+// ── Pair Up helpers ─────────────────────────────────────────────────────────
+
+/** Rank value for matching — just the rank string, suit irrelevant. */
+function puRankOf(cardObj) {
+  return cardObj.mesh.userData.card.value;
+}
+
+/**
+ * Pair Up click handler.
+ * First click: reveal the card (flip face-up), store as puSelected.
+ * Second click: check rank match.
+ *   Match  → both stay face-up permanently, score pair.
+ *   No match → puMisses++, pause 900ms then flip both back.
+ */
+function gsHandlePairUp(cardObj) {
+  if (!GS.roundActive || GS.won || GAME_MODE !== "PairUp") return false;
+  if (!cardObj.flipped) return false; // already face-up (solved or selected)
+  if (GS.puLocked) return false; // mismatch pause in progress
+
+  if (!GS.puSelected) {
+    // First click — reveal and select
+    cardObj.flipped = false;
+    cardObj.targetQuat.copy(_standing);
+    GS.puSelected = cardObj;
+    puSyncFrontMat(cardObj); // ← restore real face
+    markDirty();
+    return true;
+  }
+
+  if (cardObj === GS.puSelected) return false; // same card, ignore
+
+  // Second click — reveal and check
+  cardObj.flipped = false;
+  cardObj.targetQuat.copy(_standing);
+  puSyncFrontMat(cardObj); // ← restore real face
+  markDirty();
+
+  if (puRankOf(cardObj) === puRankOf(GS.puSelected)) {
+    // ✓ Match — both stay face-up
+    GS.puSolved++;
+    GS.puSelected = null;
+    hudUpdate();
+    const faceDownLeft = cards.filter((c) => c.flipped).length;
+    if (faceDownLeft <= 2) {
+      setTimeout(gsRoundEnd, 600);
+    }
+  } else {
+    // ✗ Mismatch — show briefly then flip both back
+    GS.puMisses++;
+    GS.puLocked = true;
+    hudUpdate();
+    const a = GS.puSelected;
+    const b = cardObj;
+    GS.puSelected = null;
+    setTimeout(() => {
+      a.flipped = true;
+      a.targetQuat.copy(_flipQ);
+      puSyncFrontMat(a); // ← hide face again
+      b.flipped = true;
+      b.targetQuat.copy(_flipQ);
+      puSyncFrontMat(b); // ← hide face again
+      GS.puLocked = false;
+      markDirty();
+    }, 900);
+  }
+  return true;
+}
+
+let hudEl = null; // assigned after gamePanel is built below
+
+/**
+ * Called when a round is completed. Computes the outcome (advance / retry /
+ * level-down) from the current score, updates GS, redraws the HUD, then
+ * schedules the next round after a short pause.
+ *
+ * Timer modes  — 🟩 beat par → advance, 🟨 close → retry, 🟥 over → level down
+ * Move/dist modes — 🟩 optimal → advance, 🟨 close → retry, 🟥 inefficient → level down
+ */
+function gsRoundEnd() {
+  GS.won = true;
+  GS.roundActive = false;
+  _stopTimerTick();
+  if (GAME_MODE === "PlusShot" && typeof plusHideTarget === "function")
+    plusHideTarget();
+
+  // Determine outcome
+  let outcome;
+  if (
+    GAME_MODE === "SpeedSort" ||
+    GAME_MODE === "SpeedShot" ||
+    GAME_MODE === "PlusShot"
+  ) {
+    const elapsed = (performance.now() - GS.timerStart) / 1000;
+    const diff = elapsed - GS.par;
+    const closeThr = GAME_MODE === "PlusShot" ? 3 : 2; // PlusShot has wider window
+    outcome =
+      diff <= 0 ? "advance" : Math.abs(diff) < closeThr ? "retry" : "leveldown";
+  } else if (GAME_MODE === "PairUp") {
+    const diff = GS.puMisses - GS.puParMisses;
+    outcome = diff <= 0 ? "advance" : diff <= 2 ? "retry" : "leveldown";
+  } else if (GAME_MODE === "MinMovesSort") {
+    const diff = GS.moves - GS.optMoves;
+    outcome = diff <= 0 ? "advance" : diff <= 2 ? "retry" : "leveldown";
+  } else if (GAME_MODE === "MinDistanceSort") {
+    const diff = GS.distance - GS.optDistance;
+    outcome = diff <= 0 ? "advance" : diff <= 2 ? "retry" : "leveldown";
+  } else {
+    outcome = "advance"; // free play / unknown
+  }
+  GS.result = outcome;
+
+  hudUpdate();
+
+  setTimeout(() => {
+    if (outcome === "advance") {
+      GS.level++;
+    } else if (outcome === "leveldown") {
+      GS.level = Math.max(1, GS.level - 1);
+    }
+    // retry → level unchanged
+    startRound();
+  }, 2200);
+}
+
+// Keep old name as alias so all callers (gsHandleShot, gsRecordDrop, etc.) still work
+const gsWin = gsRoundEnd;
+
+// ── HUD ─────────────────────────────────────────────────────────────────────
+// Architecture:
+//   hudUpdate()   — rewrites innerHTML (round start, win, mode switch, drops)
+//   _timerTick()  — tight rAF loop that ONLY mutates two text nodes and a color.
+//                   Never touches WebGL — markDirty() is never called here.
+//                   Runs only during an active SpeedSort round.
+//
+// The CSS bar animation handles the shrinking bar — JS just keeps the number live.
+
+let _timerRaf = 0;
+
+function _timerTick(now) {
+  // Always re-schedule first — stop only via _stopTimerTick()
+  _timerRaf = requestAnimationFrame(_timerTick);
+
+  if (
+    !GS.roundActive ||
+    GS.won ||
+    (GAME_MODE !== "SpeedSort" &&
+      GAME_MODE !== "SpeedShot" &&
+      GAME_MODE !== "PlusShot")
+  )
+    return;
+
+  // Re-query each frame: hudUpdate() rewrites innerHTML on drops,
+  // which invalidates any previously cached element reference
+  const el = hudEl && hudEl.querySelector("#hud-live-t");
+  if (!el) return;
+
+  const elapsed = (now - GS.timerStart) / 1000;
+  const ratio = elapsed / Math.max(GS.par, 0.001);
+  el.textContent = elapsed.toFixed(2) + "s";
+  el.style.color = ratio < 0.75 ? "#4f4" : ratio < 1 ? "#ff4" : "#f44";
+}
+
+function _stopTimerTick() {
+  cancelAnimationFrame(_timerRaf);
+  _timerRaf = 0;
+}
+
+function hudUpdate(now = performance.now()) {
+  if (!hudEl) return;
+  if (!GAME_MODE) {
+    hudEl.innerHTML = "";
+    _stopTimerTick();
+    return;
+  }
+
+  let html = `<div class="hud-level">Level ${GS.level}: ${cards.length} cards</div>`;
+
+  if (GAME_MODE === "SpeedSort") {
+    const elapsed = (now - GS.timerStart) / 1000;
+    const par = GS.par;
+    const ratio = elapsed / Math.max(par, 0.001);
+    const color = ratio < 0.75 ? "#4f4" : ratio < 1 ? "#ff4" : "#f44";
+
+    if (GS.won) {
+      _stopTimerTick();
+      const diff = elapsed - par;
+      const sign = diff <= 0 ? "−" : "+";
+      const rating =
+        diff <= 0
+          ? "🟩 Under par"
+          : Math.abs(diff) < 2
+            ? "🟨 Close"
+            : "🟥 Over par";
+      const next =
+        GS.result === "advance"
+          ? "⬆ Advancing!"
+          : GS.result === "retry"
+            ? "↺ Try again"
+            : "⬇ Level down";
+      html += `<div class="hud-score" style="color:${color}">✓ ${elapsed.toFixed(2)}s</div>`;
+      html += `<div class="hud-par">par ${par.toFixed(1)}s</div>`;
+      html += `<div class="hud-result">${rating} &nbsp; ${sign}${Math.abs(diff).toFixed(2)}s</div>`;
+      html += `<div class="hud-result" style="margin-top:4px;color:#aaa">${next}</div>`;
+    } else {
+      // Scaffold: the <span id="hud-live-t"> is mutated each frame by _timerTick
+      html += `<div class="hud-score"><span id="hud-live-t" style="color:${color}">${elapsed.toFixed(2)}s</span></div>`;
+      html += `<div class="hud-par">par ${par.toFixed(1)}s</div>`;
+      html += `<div class="hud-timer-track"><div class="hud-timer-bar"></div></div>`;
+    }
+  } else if (GAME_MODE === "SpeedShot") {
+    const elapsed = (now - GS.timerStart) / 1000;
+    const par = GS.par;
+    const ratio = elapsed / Math.max(par, 0.001);
+    const color = ratio < 0.75 ? "#4f4" : ratio < 1 ? "#ff4" : "#f44";
+    const remaining = cards.length - GS.shotNext;
+
+    if (GS.won) {
+      _stopTimerTick();
+      const diff = elapsed - par;
+      const sign = diff <= 0 ? "−" : "+";
+      const rating =
+        diff <= 0
+          ? "🟩 Under par"
+          : Math.abs(diff) < 2
+            ? "🟨 Close"
+            : "🟥 Over par";
+      const next =
+        GS.result === "advance"
+          ? "⬆ Advancing!"
+          : GS.result === "retry"
+            ? "↺ Try again"
+            : "⬇ Level down";
+      html += `<div class="hud-score" style="color:${color}">✓ ${elapsed.toFixed(2)}s</div>`;
+      html += `<div class="hud-par">par ${par.toFixed(1)}s</div>`;
+      html += `<div class="hud-result">${rating} &nbsp; ${sign}${Math.abs(diff).toFixed(2)}s</div>`;
+      html += `<div class="hud-result" style="margin-top:4px;color:#aaa">${next}</div>`;
+    } else {
+      html += `<div class="hud-score"><span id="hud-live-t" style="color:${color}">${elapsed.toFixed(2)}s</span></div>`;
+      html += `<div class="hud-par">par ${par.toFixed(1)}s &nbsp;·&nbsp; ${remaining} left</div>`;
+      html += `<div class="hud-timer-track"><div class="hud-timer-bar"></div></div>`;
+    }
+  } else if (GAME_MODE === "PlusShot") {
+    const elapsed = (now - GS.timerStart) / 1000;
+    const par = GS.par;
+    const ratio = elapsed / Math.max(par, 0.001);
+    const color = ratio < 0.75 ? "#4f4" : ratio < 1 ? "#ff4" : "#f44";
+    const pairsLeft = GS.plusPairsNeeded - GS.plusPairs;
+
+    if (GS.won) {
+      _stopTimerTick();
+      const diff = elapsed - par;
+      const sign = diff <= 0 ? "−" : "+";
+      const rating =
+        diff <= 0
+          ? "🟩 Under par"
+          : Math.abs(diff) < 3
+            ? "🟨 Close"
+            : "🟥 Over par";
+      const next =
+        GS.result === "advance"
+          ? "⬆ Advancing!"
+          : GS.result === "retry"
+            ? "↺ Try again"
+            : "⬇ Level down";
+      html += `<div class="hud-score" style="color:${color}">✓ ${elapsed.toFixed(2)}s</div>`;
+      html += `<div class="hud-par">par ${par.toFixed(1)}s</div>`;
+      html += `<div class="hud-result">${rating} &nbsp; ${sign}${Math.abs(diff).toFixed(2)}s</div>`;
+      html += `<div class="hud-result" style="margin-top:4px;color:#aaa">${next}</div>`;
+    } else {
+      html += `<div class="hud-score"><span id="hud-live-t" style="color:${color}">${elapsed.toFixed(2)}s</span></div>`;
+      html += `<div class="hud-par">par ${par.toFixed(1)}s &nbsp;·&nbsp; ${pairsLeft} pair${pairsLeft !== 1 ? "s" : ""} left</div>`;
+      html += `<div class="hud-timer-track"><div class="hud-timer-bar"></div></div>`;
+    }
+  } else if (GAME_MODE === "PairUp") {
+    _stopTimerTick();
+    const pairs = cards.length / 2;
+    html += `<div class="hud-score">${GS.puMisses} <span class="hud-score-sub">miss${GS.puMisses !== 1 ? "es" : ""} / ${GS.puParMisses} par</span></div>`;
+    html += `<div class="hud-par">${GS.puSolved} / ${pairs} pairs found</div>`;
+    if (GS.won) {
+      const diff = GS.puMisses - GS.puParMisses;
+      const rating =
+        diff <= 0
+          ? "🟩 Sharp memory!"
+          : diff <= 2
+            ? "🟨 Close"
+            : "🟥 Too many misses";
+      const next =
+        GS.result === "advance"
+          ? "⬆ Advancing!"
+          : GS.result === "retry"
+            ? "↺ Try again"
+            : "⬇ Level down";
+      html += `<div class="hud-result">${rating}</div>`;
+      html += `<div class="hud-result" style="margin-top:4px;color:#aaa">${next}</div>`;
+    }
+  } else if (GAME_MODE === "MinMovesSort") {
+    _stopTimerTick();
+    html += `<div class="hud-score">${GS.moves} <span class="hud-score-sub">/ ${GS.optMoves} optimal</span></div>`;
+    if (GS.won) {
+      const diff = GS.moves - GS.optMoves;
+      const rating =
+        diff <= 0 ? "🟩 Perfect!" : diff <= 2 ? "🟨 Close" : "🟥 Inefficient";
+      const next =
+        GS.result === "advance"
+          ? "⬆ Advancing!"
+          : GS.result === "retry"
+            ? "↺ Try again"
+            : "⬇ Level down";
+      html += `<div class="hud-result">${rating}</div>`;
+      html += `<div class="hud-result" style="margin-top:4px;color:#aaa">${next}</div>`;
+    }
+  } else if (GAME_MODE === "MinDistanceSort") {
+    _stopTimerTick();
+    html += `<div class="hud-score">${GS.distance} <span class="hud-score-sub">/ ${GS.optDistance} optimal</span></div>`;
+    if (GS.won) {
+      const diff = GS.distance - GS.optDistance;
+      const rating =
+        diff <= 0 ? "🟩 Perfect!" : diff <= 2 ? "🟨 Close" : "🟥 Inefficient";
+      const next =
+        GS.result === "advance"
+          ? "⬆ Advancing!"
+          : GS.result === "retry"
+            ? "↺ Try again"
+            : "⬇ Level down";
+      html += `<div class="hud-result">${rating}</div>`;
+      html += `<div class="hud-result" style="margin-top:4px;color:#aaa">${next}</div>`;
+    }
+  }
+
+  hudEl.innerHTML = html;
+
+  // After DOM is written, restart CSS bar + JS number tick
+  if (
+    (GAME_MODE === "SpeedSort" ||
+      GAME_MODE === "SpeedShot" ||
+      GAME_MODE === "PlusShot") &&
+    GS.roundActive &&
+    !GS.won
+  ) {
+    const elapsed = (now - GS.timerStart) / 1000;
+    const bar = hudEl.querySelector(".hud-timer-bar");
+    if (bar) {
+      bar.style.animation = "none";
+      bar.offsetWidth; // force reflow
+      bar.style.animation = `timerShrink ${GS.par}s ${-elapsed}s linear forwards`;
+    }
+    // (Re)start the DOM-only number tick
+    _stopTimerTick();
+    _timerRaf = requestAnimationFrame(_timerTick);
+  }
+}
+
+// ── help content per mode ─────────────────────────────────────────────────────
+const HELP = {
+  null: {
+    title: "Free Play",
+    body: "Deal cards by clicking empty space. Drag to rearrange. No goals, no timer — just explore.",
+    example: null,
+  },
+  VelvetShuffle: {
+    title: "Velvet Shuffle",
+    body: 'This Three.js showcase includes a collection of original card games by <a href="https://codepen.io/the-red-reddington" target="_blank" rel="noopener" style="color:#adf;text-decoration:underline">Red Reddington</a>. Pick the one you like from the top-left selector. Enjoy!',
+    example: null,
+  },
+  PairUp: {
+    title: "🧠 Pair Up",
+    body: "All cards are dealt face-down. Click any card to reveal it, then click a second card to find its rank match. A correct pair stays face-up. A wrong pair flips back down — that's a miss. Clear all pairs with as few misses as possible.",
+    example: null,
+    note: "Pairs match by rank regardless of suit.<br />🟩 At or under par &nbsp;🟨 1–2 over &nbsp;🟥 3+ over",
+  },
+  PlusShot: {
+    title: "➕ Plus Shot",
+    body: "A target number is shown on screen. Click two cards whose Blackjack values add up to it — they flip face-down. A new target appears. Clear all but 2 cards to win.",
+    example: null,
+    note: "A = 1 or 11 &nbsp;·&nbsp; J, Q, K = 10<br />First click selects a card, second click completes the pair.",
+  },
+  SpeedShot: {
+    title: "🎯 Speed Shot",
+    body: "Click the cards in rank order (A → K) as fast as possible. Each correct click flips the card face-down. Beat the par time to advance.",
+    example: {
+      unsorted: ["K♠", "3♦", "A♣", "7♥", "Q♦"],
+      sorted: ["A♣", "3♦", "7♥", "Q♦", "K♠"],
+    },
+    note: "Click in rank order — no dragging needed.<br />Within the same rank, click either suit first.",
+  },
+  SpeedSort: {
+    title: "⏱ Speed Sort",
+    body: "Sort all cards rank-ascending (A → K) as fast as possible. Beat the par time to advance to the next level with one extra card.",
+    example: {
+      unsorted: ["K♠", "3♦", "A♣", "7♥", "Q♦"],
+      sorted: ["A♣", "3♦", "7♥", "Q♦", "K♠"],
+    },
+    note: "Within the same rank, any suit order is fine.",
+  },
+  MinMovesSort: {
+    title: "♟ Min Moves Sort",
+    body: "Sort rank-ascending in as few pick-up-and-place operations as possible. Each drag = 1 move. Match the optimal to score 🟩 Perfect.",
+    example: {
+      unsorted: ["5♠", "A♥", "Q♣", "2♦", "J♥"],
+      sorted: ["A♥", "2♦", "5♠", "J♥", "Q♣"],
+    },
+    note: "Within the same rank, any suit order is fine.<br />🟩 Optimal  🟨 +1–2 moves  🟥 Far off",
+  },
+  MinDistanceSort: {
+    title: "📏 Min Distance Sort",
+    body: "Sort rank-ascending while minimising total travel distance. Moving a card 3 positions costs 3. Each inversion in the deal equals 1 unit of minimum cost.",
+    example: {
+      unsorted: ["8♣", "2♥", "K♦", "A♠", "5♣"],
+      sorted: ["A♠", "2♥", "5♣", "8♣", "K♦"],
+    },
+    note: "Within the same rank, any suit order is fine.<br />🟩 Optimal  🟨 Close  🟥 Inefficient",
+  },
+};
+
+function renderHelpContent(mode) {
+  const h = HELP[mode] || HELP[null];
+  let ex = "";
+  if (h.example) {
+    const fmt = (arr) =>
+      arr
+        .map((c) => {
+          const isRed = c.includes("♥") || c.includes("♦");
+          return `<span class="${isRed ? "red" : ""}">${c}</span>`;
+        })
+        .join("  ");
+    ex = `
+            <div class="example">
+              <div class="lbl">UNSORTED</div>
+              <div class="cards">${fmt(h.example.unsorted)}</div>
+              <div class="lbl" style="margin-top:6px">SORTED</div>
+              <div class="cards">${fmt(h.example.sorted)}</div>
+            </div>`;
+  }
+  const note = h.note
+    ? `<p style="font-size:11px;color:#666;margin:0">${h.note}</p>`
+    : "";
+  return `<h2>${h.title}</h2><p>${h.body}</p>${ex}${note}`;
+}
+
+// Build the panel DOM
+const gamePanel = document.createElement("div");
+gamePanel.id = "gamePanel";
+gamePanel.innerHTML = `
+        <div id="modeRow">
+          <select id="modeSelect">
+            <option value="">Free Play</option>
+            <option value="SpeedSort">⏱ Speed Sort</option>
+            <option value="SpeedShot">🎯 Speed Shot</option>
+            <option value="PlusShot">➕ Plus Shot</option>
+            <option value="PairUp">🧠 Pair Up</option>
+            <option value="MinMovesSort">♟ Min Moves Sort</option>
+            <option value="MinDistanceSort">📏 Min Distance Sort</option>
+          </select>
+          <button id="redealBtn" title="Re-deal">↺</button>
+          <button id="helpBtn" title="How to play">?</button>
+          <button id="fullscreenBtn" title="Toggle Fullscreen (Alt+Enter)">&#x26F6;</button>
+        </div>
+        <div id="gameHud"></div>
+      `;
+document.body.appendChild(gamePanel);
+
+// Help modal
+const helpOverlay = document.createElement("div");
+helpOverlay.id = "helpOverlay";
+helpOverlay.innerHTML = `
+        <div id="helpModal">
+          <button id="helpClose">×</button>
+          <div id="helpBody"></div>
+        </div>
+      `;
+document.body.appendChild(helpOverlay);
+const helpBody = helpOverlay.querySelector("#helpBody");
+
+helpOverlay.querySelector("#helpClose").addEventListener("click", () => {
+  helpOverlay.classList.remove("open");
+  _drainPendingRound();
+});
+helpOverlay.addEventListener("click", (e) => {
+  if (e.target === helpOverlay) {
+    helpOverlay.classList.remove("open");
+    _drainPendingRound();
+  }
+});
+
+gamePanel.querySelector("#helpBtn").addEventListener("click", () => {
+  helpBody.innerHTML = renderHelpContent(GAME_MODE);
+  helpOverlay.classList.add("open");
+  _pauseTimerIfActive();
+});
+
+document.getElementById("watermark").addEventListener("click", () => {
+  helpBody.innerHTML = renderHelpContent("VelvetShuffle");
+  helpOverlay.classList.add("open");
+  _pauseTimerIfActive();
+});
+
+hudEl = gamePanel.querySelector("#gameHud");
+
+// Wire mode dropdown
+// ── confirm modal ──────────────────────────────────────────────────────────
+const confirmOverlay = document.createElement("div");
+confirmOverlay.id = "confirmOverlay";
+confirmOverlay.innerHTML = `
+        <div id="confirmModal">
+          <h2>Switch game?</h2>
+          <p id="confirmMsg"></p>
+          <div id="confirmBtns">
+            <button id="confirmCancel">Cancel</button>
+            <button id="confirmOk">Switch</button>
+          </div>
+        </div>
+      `;
+document.body.appendChild(confirmOverlay);
+
+function showConfirm(msg, onOk) {
+  confirmOverlay.querySelector("#confirmMsg").textContent = msg;
+  confirmOverlay.classList.add("open");
+  const ok = confirmOverlay.querySelector("#confirmOk");
+  const cancel = confirmOverlay.querySelector("#confirmCancel");
+  function close(confirmed) {
+    confirmOverlay.classList.remove("open");
+    ok.removeEventListener("click", handleOk);
+    cancel.removeEventListener("click", handleCancel);
+    confirmOverlay.removeEventListener("click", handleBackdrop);
+    if (confirmed) onOk();
+  }
+  function handleOk() {
+    close(true);
+  }
+  function handleCancel() {
+    close(false);
+  }
+  function handleBackdrop(e) {
+    if (e.target === confirmOverlay) close(false);
+  }
+  ok.addEventListener("click", handleOk);
+  cancel.addEventListener("click", handleCancel);
+  confirmOverlay.addEventListener("click", handleBackdrop);
+}
+
+const modeSelect = gamePanel.querySelector("#modeSelect");
+modeSelect.addEventListener("change", () => {
+  const newMode = modeSelect.value || null;
+  if (newMode === GAME_MODE) return;
+
+  function applyModeChange() {
+    _stopTimerTick();
+    GS.roundActive = false;
+    GAME_MODE = newMode;
+    GS.level = 1;
+    hudUpdate();
+    helpBody.innerHTML = renderHelpContent(GAME_MODE);
+    helpOverlay.classList.add("open");
+    startRound();
+  }
+
+  if (GAME_MODE && GS.level > 1) {
+    modeSelect.value = GAME_MODE ?? "";
+    showConfirm(
+      `You're on level ${GS.level}. Switching will lose your progress.`,
+      () => {
+        modeSelect.value = newMode ?? "";
+        applyModeChange();
+      },
+    );
+  } else {
+    applyModeChange();
+  }
+});
+
+// Re-deal: restart current level
+gamePanel.querySelector("#redealBtn").addEventListener("click", () => {
+  _stopTimerTick();
+  GS.roundActive = false;
+  hudUpdate();
+  startRound();
+});
+const renderer = new WebGLRenderer({
+  antialias: true,
+  precision: "highp",
+  powerPreference: "high-performance",
+});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight, true);
+renderer.physicallyCorrectLights = true;
+renderer.outputColorSpace = SRGBColorSpace;
+renderer.toneMapping = NeutralToneMapping; // ACESFilmicToneMapping
+renderer.toneMappingExposure = 0.8;
+document.body.appendChild(renderer.domElement);
+
+const scene = new Scene();
+scene.background = new Color(0x0d2016); // dark felt green
+scene.fog = new FogExp2(0x061208, 0.018); // very subtle, same hue darker
+
+// ── environment map (RoomEnvironment → PMREM) ────────────────────────────────
+// Generates a soft indoor lighting environment used by MeshStandardMaterial
+// for reflections and the gloss sheen on card faces.
+const pmrem = new PMREMGenerator(renderer);
+pmrem.compileEquirectangularShader();
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+pmrem.dispose();
+
+const camera = new PerspectiveCamera(
+  80,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100,
+);
+camera.position.set(0, 3.2, 8);
+
+// ── On-demand rendering bootstrap (hoisted — referenced by controls et al.) ────
+const SETTLE_EPS_POS2 = 1e-8; // position delta² threshold
+const SETTLE_EPS_QDOT = 1 - 1e-9; // quaternion dot threshold (≈ 0.0008° arc)
+const SETTLE_FRAMES = 3; // consecutive quiet frames before idle
+
+const renderDot = document.getElementById("renderDot");
+let rafId = 0; // current rAF handle (0 = idle)
+let settling = 0; // frames below threshold so far
+let lastT = performance.now();
+const _scratchPos = new Vector3();
+const _scratchQuat = new Quaternion();
+
+/** Idempotent: schedule at most one pending frame. */
+function requestRender() {
+  if (rafId === 0) {
+    settling = 0;
+    rafId = requestAnimationFrame(animate);
+    renderDot.classList.add("active");
+  }
+}
+/** Alias — call whenever external state changes. */
+const markDirty = requestRender;
+// ─────────────────────────────────────────────────────────────────────────────
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.8, 0);
+//controls.enablePan = false;
+controls.minDistance = 5;
+controls.maxDistance = 45;
+//controls.minAzimuthAngle = -Math.PI * 0.3;
+//controls.maxAzimuthAngle = Math.PI * 0.3;
+controls.minPolarAngle = Math.PI * 0.15;
+controls.maxPolarAngle = Math.PI * 0.49; // don't orbit below the table
+controls.addEventListener("change", markDirty); // on-demand: orbit wakes the loop
+
+// Warm key light from upper-right, cool dim fill from lower-left
+scene.add(new AmbientLight(0xfff0e0, 0.5));
+const keyLight = new DirectionalLight(0xfff5e0, 1.4);
+keyLight.position.set(6, 14, 10);
+scene.add(keyLight);
+const fillLight = new DirectionalLight(0xc0d8ff, 0.25);
+fillLight.position.set(-8, -4, 6);
+scene.add(fillLight);
+
+const stats = new StatsGL({ trackGPU: true, trackHz: true });
+const perfPanel = document.getElementById("performanceStats");
+perfPanel.appendChild(stats.dom);
+stats.init(renderer);
+const statsCustom = document.createElement("div");
+statsCustom.id = "statsCustom";
+perfPanel.appendChild(statsCustom);
+perfPanel.addEventListener("click", (e) => {
+  perfPanel.classList.toggle("minimized");
+});
+
+// ── Stats ────────────────────────────────────
+function fmtN(n) {
+  return n >= 1e6
+    ? (n / 1e6).toFixed(1) + "M"
+    : n >= 1e3
+      ? (n / 1e3).toFixed(1) + "K"
+      : String(n);
+}
+const ST = {
+  dc: -1,
+  vrt: "—",
+  tri: "—",
+  geo: "—",
+  tex: "—",
+};
+function writeStats() {
+  statsCustom.textContent = `DC:  ${fmtN(ST.dc)}\nVRT: ${ST.vrt}\nTRI: ${ST.tri}\nGEO: ${ST.geo}\tTEX: ${ST.tex}`;
+}
+writeStats();
+
+/**
+ * Compute true vertex and triangle counts by walking every visible mesh.
+ * VRT = sum of position attribute vertex count per unique geometry,
+ *       multiplied by instance count (always 1 here, but future-proof).
+ * TRI = sum of index.count / 3 (indexed) or position.count / 3 (non-indexed),
+ *       per draw call (each material group is one draw call).
+ *
+ * We track seen geometry IDs to avoid double-counting shared geometries —
+ * but for per-mesh accuracy we count per-mesh (each card IS one mesh).
+ * The ExtrudeGeometry is shared across all cards so we intentionally
+ * count it once per mesh (each mesh issues its own draw calls).
+ */
+function computeGeometryStats() {
+  let totalVRT = 0,
+    totalTRI = 0;
+  scene.traverseVisible((obj) => {
+    if (!(obj instanceof Mesh)) return;
+    const g = obj.geometry;
+    if (!g) return;
+    const pos = g.attributes.position;
+    if (!pos) return;
+
+    // Vertices: full position buffer length regardless of groups
+    totalVRT += pos.count;
+
+    // Triangles: sum over every index range this mesh draws
+    if (g.index) {
+      const idx = g.index;
+      if (g.groups.length > 0) {
+        for (const grp of g.groups) totalTRI += grp.count / 3;
+      } else {
+        totalTRI += idx.count / 3;
+      }
+    } else {
+      // Non-indexed: 3 positions per triangle
+      if (g.groups.length > 0) {
+        for (const grp of g.groups) totalTRI += grp.count / 3;
+      } else {
+        totalTRI += pos.count / 3;
+      }
+    }
+  });
+  return { vrt: Math.round(totalVRT), tri: Math.round(totalTRI) };
+}
+
+let _lt = 0,
+  _lastDC = -1,
+  _lastTRI = -1;
+function updateStats(now) {
+  if (_lt !== 0 && now - _lt < 300) return;
+  _lt = now;
+  const r = renderer.info.render;
+  const m = renderer.info.memory;
+  if (r.calls === _lastDC && r.triangles === _lastTRI) return;
+  _lastDC = r.calls;
+  _lastTRI = r.triangles;
+  ST.dc = r.calls;
+  ST.geo = m.geometries;
+  ST.tex = m.textures;
+  // Precise geometry walk for VRT and TRI
+  const { vrt, tri } = computeGeometryStats();
+  ST.vrt = fmtN(vrt);
+  ST.tri = fmtN(tri);
+  writeStats();
+}
+
+function onResize() {
+  // Double rAF: iOS Safari updates innerWidth/innerHeight asynchronously
+  // after orientation change — one frame is not always enough.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      renderer.setSize(window.innerWidth, window.innerHeight, true);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      _zoomTarget = -1;
+      autoZoomToHand(true);
+      markDirty();
+    }),
+  );
+}
+addEventListener("resize", onResize);
+addEventListener("orientationchange", onResize);
+
+// ── auto-zoom ────────────────────────────────────────────────────────────────
+/**
+ * Smoothly zoom the camera so the entire fan is visible.
+ *
+ * Strategy: compute the fan's world-space bounding sphere analytically
+ * (no mesh traversal needed — we know the arc geometry exactly), then
+ * find the camera distance at which the sphere fits inside the frustum
+ * with a small padding margin.  We only ever zoom OUT, never in — the
+ * player may have manually zoomed in and we don't want to fight that.
+ *
+ * The fan arc extreme positions are the two outermost card centres, plus
+ * half a card-height toward the viewer for the near edge.  We treat this
+ * as a sphere centred on controls.target.
+ */
+function autoZoomToHand(onResize = false) {
+  const n = cards.length;
+  if (n === 0) return;
+
+  // Use actual target positions (set by updateFan) rather than analytical
+  // arc math — this is correct regardless of fan geometry.
+  let minX = Infinity,
+    maxX = -Infinity;
+  let minY = Infinity,
+    maxY = -Infinity;
+  let minZ = Infinity,
+    maxZ = -Infinity;
+  for (const c of cards) {
+    const p = c.targetPos;
+    minX = Math.min(minX, p.x - CARD.W * 0.5);
+    maxX = Math.max(maxX, p.x + CARD.W * 0.5);
+    minY = Math.min(minY, p.y - CARD.H * 0.5);
+    maxY = Math.max(maxY, p.y + CARD.H * 0.5);
+    minZ = Math.min(minZ, p.z - CARD.T * 0.5);
+    maxZ = Math.max(maxZ, p.z + CARD.T * 0.5);
+  }
+
+  // Bounding sphere centre and radius
+  const cx = (minX + maxX) / 2,
+    cy = (minY + maxY) / 2,
+    cz = (minZ + maxZ) / 2;
+  const boundR = Math.sqrt(
+    ((maxX - minX) / 2) ** 2 +
+      ((maxY - minY) / 2) ** 2 +
+      ((maxZ - minZ) / 2) ** 2,
+  );
+
+  const target = controls.target;
+  const fovV = MathUtils.degToRad(camera.fov) / 2;
+  const fovH = Math.atan(Math.tan(fovV) * camera.aspect);
+  const halfFov = Math.min(fovV, fovH);
+  const PADDING = 1.15;
+
+  const offset = Math.sqrt(
+    (cx - target.x) ** 2 + (cy - target.y) ** 2 + (cz - target.z) ** 2,
+  );
+  const minDist = (boundR * PADDING) / Math.tan(halfFov) + offset;
+
+  const currentDist = camera.position.distanceTo(target);
+
+  // On resize/rotation: zoom both in and out to fit the new frustum.
+  // On deal: only zoom out — don't override a manual zoom-in.
+  if (!onResize && currentDist >= minDist) return;
+
+  const targetDist = Math.min(
+    controls.maxDistance,
+    Math.max(controls.minDistance, minDist),
+  );
+  _zoomTarget = targetDist;
+  markDirty();
+}
+
+let _zoomTarget = -1; // -1 = no pending zoom
+
+// ── texture atlas: every face + one back in a single canvas ──────────────────
+// Layout: 13 ranks × 4 suits grid, with the back painted in an extra row below.
+// Each card gets its own `offset`/`repeat` so the GPU texture is shared.
+function buildAtlas() {
+  // Atlas DPR: the cell is already 2× the original (512 vs 256), giving
+  // 4× the texels. Applying devicePixelRatio on top would push the atlas
+  // width past the 8192px GPU limit (13 ranks × 512 × dpr > 8192 at dpr>1).
+  // The cell size itself is the resolution knob; dpr stays at 1 here.
+  const dpr = 1;
+  const canvas = document.createElement("canvas");
+  canvas.width = CELL.W * RANKS.length * dpr;
+  canvas.height = CELL.H * (SUITS.length + 1) * dpr;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.scale(dpr, dpr);
+
+  for (let r = 0; r < SUITS.length; r++)
+    for (let c = 0; c < RANKS.length; c++)
+      paintFace(ctx, RANKS[c], SUITS[r], c * CELL.W, r * CELL.H);
+  paintBack(ctx, 0, SUITS.length * CELL.H);
+
+  const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy(); // kills aliasing
+  tex.minFilter = LinearMipmapLinearFilter;
+  tex.magFilter = LinearFilter;
+  tex.generateMipmaps = true;
+  return { canvas, tex, repaint };
+
+  function repaint() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (let r = 0; r < SUITS.length; r++)
+      for (let c = 0; c < RANKS.length; c++)
+        paintFace(ctx, RANKS[c], SUITS[r], c * CELL.W, r * CELL.H);
+    paintBack(ctx, 0, SUITS.length * CELL.H);
+    tex.needsUpdate = true;
+  }
+}
+
+function paintFace(ctx, rank, suit, x, y) {
+  const W = CELL.W,
+    H = CELL.H;
+  // All metrics scaled proportionally to cell size (baseline: 256×358)
+  const S = W / 256;
+  // Content margin — no drawn border, the rounded geometry IS the edge.
+  // Inset keeps text well clear of the card's physical rounded corners.
+  const M = 20 * S; // margin from card edge to content
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = "#faf8f4";
+  ctx.fillRect(0, 0, W, H);
+
+  const color = suit === "♥" || suit === "♦" ? "#c0181a" : "#1a1a1a";
+  ctx.fillStyle = color;
+
+  // ── top-left corner index ──
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  ctx.font = `bold ${46 * S}px sans-serif`;
+  ctx.fillText(rank, M, M);
+  ctx.font = `bold ${38 * S}px sans-serif`;
+  ctx.fillText(suit, M + 2 * S, M + 50 * S);
+
+  // ── bottom-right corner index (rotated 180°) ──
+  ctx.save();
+  ctx.translate(W, H);
+  ctx.rotate(Math.PI);
+  ctx.textBaseline = "top";
+  ctx.textAlign = "left";
+  ctx.font = `bold ${46 * S}px sans-serif`;
+  ctx.fillText(rank, M, M);
+  ctx.font = `bold ${38 * S}px sans-serif`;
+  ctx.fillText(suit, M + 2 * S, M + 50 * S);
+  ctx.restore();
+
+  // ── centre suit symbol ──
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `bold ${152 * S}px serif`;
+  ctx.fillText(suit, W / 2, H / 2);
+  ctx.restore();
+}
+
+function paintBack(ctx, x, y) {
+  const W = CELL.W,
+    H = CELL.H;
+  const S = W / 256;
+  ctx.save();
+  ctx.translate(x, y);
+
+  // ── base field ──
+  ctx.fillStyle = "#1a3a6e";
+  ctx.fillRect(0, 0, W, H);
+
+  // ── outer white border ──
+  const B = 14 * S; // border inset
+  ctx.strokeStyle = "rgba(255,255,255,0.85)";
+  ctx.lineWidth = 3 * S;
+  ctx.strokeRect(B, B, W - 2 * B, H - 2 * B);
+
+  // ── inner border ──
+  const B2 = 22 * S;
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = 1.5 * S;
+  ctx.strokeRect(B2, B2, W - 2 * B2, H - 2 * B2);
+
+  // ── diagonal crosshatch pattern inside inner border ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(B2, B2, W - 2 * B2, H - 2 * B2);
+  ctx.clip();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1 * S;
+  const spacing = 18 * S;
+  // diagonals: top-left to bottom-right
+  for (let d = -H; d < W + H; d += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(d, 0);
+    ctx.lineTo(d + H, H);
+    ctx.stroke();
+  }
+  // diagonals: top-right to bottom-left
+  for (let d = 0; d < W + H + H; d += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(d, 0);
+    ctx.lineTo(d - H, H);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // ── centre VS monogram ──
+  const cx = W / 2,
+    cy = H / 2;
+
+  // Outer diamond (larger, faint fill)
+  const dw = 52 * S,
+    dh = 70 * S;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - dh);
+  ctx.lineTo(cx + dw, cy);
+  ctx.lineTo(cx, cy + dh);
+  ctx.lineTo(cx - dw, cy);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(255,255,255,0.10)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 2 * S;
+  ctx.stroke();
+
+  // Inner diamond (tight, slightly brighter)
+  const dw2 = 38 * S,
+    dh2 = 51 * S;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - dh2);
+  ctx.lineTo(cx + dw2, cy);
+  ctx.lineTo(cx, cy + dh2);
+  ctx.lineTo(cx - dw2, cy);
+  ctx.closePath();
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.lineWidth = 1 * S;
+  ctx.stroke();
+
+  // "VS" staggered monogram — V upper-left, S lower-right, both overlapping inner ring
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(255,255,255,0.82)";
+  ctx.font = `italic ${38 * S}px Georgia, "Times New Roman", serif`;
+  // offset = half-distance between the two letter centres
+  // shift the whole pair by -offset/2 so the midpoint lands on cx,cy
+  const offset = 14 * S;
+  const halfOff = offset / 2;
+  ctx.fillText("V", cx - halfOff, cy - halfOff);
+  ctx.fillText("S", cx + halfOff, cy + halfOff);
+
+  ctx.restore();
+}
+
+const atlas = buildAtlas();
+const UV = {
+  // per-cell UV size (shared)
+  repeat: new Vector2(1 / RANKS.length, 1 / (SUITS.length + 1)),
+};
+// bottom-left UV offset for (rank, suit). Canvas row 0 is on top; UVs run up.
+function faceOffset(rank, suit) {
+  const c = RANKS.indexOf(rank),
+    r = SUITS.indexOf(suit);
+  return new Vector2(c / RANKS.length, 1 - (r + 1) / (SUITS.length + 1));
+}
+const backOff = new Vector2(0, 0); // last canvas row → v=0..1/5
+
+// ── card geometry via ExtrudeGeometry ────────────────────────────────────────
+// A 2D Shape with arc corners is extruded to card thickness.
+// This gives large, real-card corner rounding on the face silhouette,
+// with perfectly straight thin sides.
+//
+// ExtrudeGeometry groups: 0 = front face, 1 = back face, 2 = sides.
+// These map directly to geoFront, geoBack, geoEdge — no restructuring needed.
+
+function buildCardGeo() {
+  const W = CARD.W,
+    H = CARD.H,
+    R = CARD.RADIUS;
+  const hw = W / 2,
+    hh = H / 2;
+  const ARC_SEGS = 12;
+
+  // Rounded-rectangle Shape
+  const shape = new Shape();
+  shape.moveTo(-hw + R, -hh);
+  shape.lineTo(hw - R, -hh);
+  shape.absarc(hw - R, -hh + R, R, -Math.PI / 2, 0, false);
+  shape.lineTo(hw, hh - R);
+  shape.absarc(hw - R, hh - R, R, 0, Math.PI / 2, false);
+  shape.lineTo(-hw + R, hh);
+  shape.absarc(-hw + R, hh - R, R, Math.PI / 2, Math.PI, false);
+  shape.lineTo(-hw, -hh + R);
+  shape.absarc(-hw + R, -hh + R, R, Math.PI, Math.PI * 1.5, false);
+
+  // ── front face: ShapeGeometry, face up (+Z) ──────────────────────────────
+  const shapegeo = new ShapeGeometry(shape, ARC_SEGS);
+  // ShapeGeometry UVs: remap from local coords to [0,1]
+  const frontUV = shapegeo.attributes.uv;
+  const frontPos = shapegeo.attributes.position;
+  for (let i = 0; i < frontPos.count; i++) {
+    frontUV.setXY(i, (frontPos.getX(i) + hw) / W, (frontPos.getY(i) + hh) / H);
+  }
+  frontUV.needsUpdate = true;
+  // Translate to sit at Z = +T/2 (front face)
+  shapegeo.translate(0, 0, CARD.T / 2);
+  shapegeo.computeVertexNormals();
+
+  // ── back face: same shape, flipped, at Z = -T/2 ──────────────────────────
+  const backgeo = new ShapeGeometry(shape, ARC_SEGS);
+  const backUV = backgeo.attributes.uv;
+  const backPos = backgeo.attributes.position;
+  for (let i = 0; i < backPos.count; i++) {
+    // U is mirrored on back face (facing -Z)
+    backUV.setXY(i, 1 - (backPos.getX(i) + hw) / W, (backPos.getY(i) + hh) / H);
+  }
+  backUV.needsUpdate = true;
+  backgeo.translate(0, 0, -CARD.T / 2);
+  // Flip normals to point -Z
+  const backNorm = backgeo.attributes.normal;
+  for (let i = 0; i < backNorm.count; i++) backNorm.setZ(i, -1);
+  backNorm.needsUpdate = true;
+
+  // ── sides: extrude the outline as a thin shell ────────────────────────────
+  const pts = shape.getPoints(ARC_SEGS * 4);
+  const sideVerts = [],
+    sideNorms = [],
+    sideUVs = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i],
+      b = pts[(i + 1) % pts.length];
+    // Quad: two triangles for each edge segment
+    const nx = b.y - a.y,
+      ny = -(b.x - a.x);
+    const len = Math.sqrt(nx * nx + ny * ny) || 1;
+    const nxn = nx / len,
+      nyn = ny / len;
+    // tri 1 — reversed winding so normal points outward
+    sideVerts.push(
+      a.x,
+      a.y,
+      CARD.T / 2,
+      a.x,
+      a.y,
+      -CARD.T / 2,
+      b.x,
+      b.y,
+      CARD.T / 2,
+    );
+    // tri 2 — reversed winding
+    sideVerts.push(
+      b.x,
+      b.y,
+      CARD.T / 2,
+      a.x,
+      a.y,
+      -CARD.T / 2,
+      b.x,
+      b.y,
+      -CARD.T / 2,
+    );
+    for (let t = 0; t < 6; t++) {
+      sideNorms.push(nxn, nyn, 0);
+      sideUVs.push(0, 0);
+    }
+  }
+  const sidegeo = new BufferGeometry();
+  sidegeo.setAttribute(
+    "position",
+    new BufferAttribute(new Float32Array(sideVerts), 3),
+  );
+  sidegeo.setAttribute(
+    "normal",
+    new BufferAttribute(new Float32Array(sideNorms), 3),
+  );
+  sidegeo.setAttribute("uv", new BufferAttribute(new Float32Array(sideUVs), 2));
+
+  return { front: shapegeo, back: backgeo, edge: sidegeo };
+}
+
+const { front: geoFront, back: geoBack, edge: geoEdge } = buildCardGeo();
+
+// ── paper-grain normal map ────────────────────────────────────────────────────
+// A small tileable normal map simulating paper/card-stock micro-texture.
+// Baked once from canvas noise — shared across all card faces and backs.
+// NormalMap encodes surface normals as RGB: (0.5,0.5,1) = flat, deviations = bumps.
+const paperNormal = (() => {
+  const SZ = 256;
+  const nc = document.createElement("canvas");
+  nc.width = nc.height = SZ;
+  const nx = nc.getContext("2d");
+  const img = nx.createImageData(SZ, SZ);
+  const d = img.data;
+
+  // Layered noise: coarse grain + fine grain
+  function rand(x, y, seed) {
+    // cheap but deterministic pseudo-random
+    const n = Math.sin(x * 127.1 + y * 311.7 + seed * 74.3) * 43758.5453;
+    return n - Math.floor(n);
+  }
+  function smoothNoise(x, y, seed) {
+    const ix = Math.floor(x),
+      iy = Math.floor(y);
+    const fx = x - ix,
+      fy = y - iy;
+    const ux = fx * fx * (3 - 2 * fx);
+    const uy = fy * fy * (3 - 2 * fy);
+    return (
+      rand(ix, iy, seed) * (1 - ux) * (1 - uy) +
+      rand(ix + 1, iy, seed) * ux * (1 - uy) +
+      rand(ix, iy + 1, seed) * (1 - ux) * uy +
+      rand(ix + 1, iy + 1, seed) * ux * uy
+    );
+  }
+
+  for (let py = 0; py < SZ; py++) {
+    for (let px = 0; px < SZ; px++) {
+      // Two octaves: coarse fibre direction + fine grain
+      const coarse = smoothNoise(px / 40, py / 8, 0) * 0.6; // paper fibre (horizontal)
+      const fine = smoothNoise(px / 6, py / 6, 1) * 0.4; // fine grain
+      const val = coarse + fine; // 0..1
+
+      // Convert height to normal: approximate gradient via finite difference
+      const r =
+        coarse +
+        smoothNoise((px + 1) / 40, py / 8, 0) * 0.6 +
+        smoothNoise((px + 1) / 6, py / 6, 1) * 0.4;
+      const u =
+        coarse +
+        smoothNoise(px / 40, (py + 1) / 8, 0) * 0.6 +
+        smoothNoise(px / 6, (py + 1) / 6, 1) * 0.4;
+      // dX, dY → normal (strength 0.04 keeps it subtle)
+      const str = 0.04;
+      const nx_ = -(r - val) * str;
+      const ny_ = -(u - val) * str;
+      const nz_ = 1.0;
+      const len = Math.sqrt(nx_ * nx_ + ny_ * ny_ + nz_ * nz_);
+
+      const i = (py * SZ + px) * 4;
+      d[i] = ((nx_ / len) * 0.5 + 0.5) * 255;
+      d[i + 1] = ((ny_ / len) * 0.5 + 0.5) * 255;
+      d[i + 2] = ((nz_ / len) * 0.5 + 0.5) * 255;
+      d[i + 3] = 255;
+    }
+  }
+  nx.putImageData(img, 0, 0);
+  const t = new CanvasTexture(nc);
+  t.wrapS = t.wrapT = RepeatWrapping;
+  t.repeat.set(4, 6); // tile across card face
+  return t;
+})();
+const edgeMat = new MeshStandardMaterial({
+  color: 0x1a1a1a,
+  roughness: 0.55,
+  metalness: 0.1,
+  side: FrontSide,
+});
+
+const backMap = atlas.tex.clone();
+backMap.needsUpdate = true;
+backMap.repeat.copy(UV.repeat);
+backMap.offset.copy(backOff);
+const backMat = new MeshStandardMaterial({
+  map: backMap,
+  normalMap: paperNormal,
+  normalScale: new Vector2(0.5, 0.5),
+  roughness: 0.3,
+  metalness: 0.08,
+  side: BackSide, // ShapeGeometry winding faces +Z; back face faces -Z
+});
+// PairUp-specific: same back texture as backMat but FrontSide so it's
+// visible on the front mesh when a card is face-down.
+const puBackMat = new MeshStandardMaterial({
+  color: 0x0d2016, // same as scene.background — card "disappears" into the felt
+  roughness: 0.8,
+  metalness: 0.0,
+  side: FrontSide,
+});
+
+// ── instanced meshes for shared geometry ──────────────────────────────────────
+// Pre-allocated to full deck size (52). Count is updated as cards are dealt.
+const MAX_INSTANCES = 52;
+const edgeInstanced = new InstancedMesh(geoEdge, edgeMat, MAX_INSTANCES);
+const backInstanced = new InstancedMesh(geoBack, backMat, MAX_INSTANCES);
+edgeInstanced.count = 0;
+backInstanced.count = 0;
+// Instanced meshes have no meaningful world-space bounds of their own;
+// disable frustum culling so Three.js never incorrectly hides them.
+edgeInstanced.frustumCulled = false;
+backInstanced.frustumCulled = false;
+scene.add(edgeInstanced);
+scene.add(backInstanced);
+
+/**
+ * Copy every card's current world matrix into the instanced meshes.
+ * Called after every position/quaternion change (updateFan, drag, animate).
+ * O(N) matrix copies — negligible.
+ */
+const _mat4 = new Matrix4();
+function syncInstances() {
+  const n = cards.length;
+  edgeInstanced.count = n;
+  backInstanced.count = n;
+  for (let i = 0; i < n; i++) {
+    const mesh = cards[i].mesh;
+    mesh.updateWorldMatrix(true, false);
+    _mat4.copy(mesh.matrixWorld);
+    edgeInstanced.setMatrixAt(i, _mat4);
+    backInstanced.setMatrixAt(i, _mat4);
+  }
+  edgeInstanced.instanceMatrix.needsUpdate = true;
+  backInstanced.instanceMatrix.needsUpdate = true;
+}
+
+// ── per-card front mesh only ──────────────────────────────────────────────────
+// Each card is now just its face geometry + unique frontMat.
+// Raycasting and dragging work against this mesh as before.
+function createCard(card) {
+  const faceMap = atlas.tex.clone();
+  faceMap.needsUpdate = true;
+  faceMap.repeat.copy(UV.repeat);
+  faceMap.offset.copy(faceOffset(card.value, card.suit));
+  const frontMat = new MeshStandardMaterial({
+    map: faceMap,
+    normalMap: paperNormal,
+    normalScale: new Vector2(0.4, 0.4),
+    roughness: 0.18,
+    metalness: 0.06,
+  });
+  const mesh = new Mesh(geoFront, frontMat);
+  mesh.userData = { card, frontMat, faceMap };
+  return mesh;
+}
+
+// ── deck ─────────────────────────────────────────────────────────────────────
+function buildDeck() {
+  const d = [];
+  for (const s of SUITS) for (const v of RANKS) d.push({ suit: s, value: v });
+  for (let i = d.length - 1; i > 0; i--) {
+    // Fisher–Yates
+    const j = (Math.random() * (i + 1)) | 0;
+    [d[i], d[j]] = [d[j], d[i]];
+  }
+  return d;
+}
+
+const deck = buildDeck();
+const cards = []; // {mesh, targetPos, targetQuat}
+const DECK_POS = new Vector3(0, FAN.Y, -5);
+
+// ── fan layout ───────────────────────────────────────────────────────────────
+// Cards are placed on an elliptical arc x=rx·sinθ, z=FAN.Z+rz−rz·cosθ.
+// We assign card centres at EQUAL X INTERVALS (not equal angles) so the
+// visual spacing is perfectly constant regardless of arc curvature.
+// θ is derived from x via asin — arcPose uses it for yaw only.
+
+// ExtrudeGeometry face is in XY plane, facing +Z (toward camera) — identity rotation.
+const _standing = new Quaternion(); // identity
+const _tmpQ = new Quaternion();
+const _tmpE = new Euler();
+
+// Card x-spacing in world units. Slightly wider than card width so cards
+// don't touch, and consistent at all hand sizes.
+const CARD_SPACING = CARD.W * 1.08;
+
+/** Returns rx for the current hand size.
+ *  rx grows so the arc is wide enough to fit n cards at CARD_SPACING each,
+ *  but we cap sinθ_max < 1 (never reach the pole of the ellipse).
+ *  @returns {{ rx:number, rz:number }} */
+function fanMetrics(n) {
+  const halfSpan = ((n - 1) / 2) * CARD_SPACING;
+  // rx must satisfy: rx * sin(θ_max) = halfSpan, with θ_max < ~70°
+  // Use rx = max(FAN.RX, halfSpan / sin(65°)) so cards fit without distortion
+  const rx = Math.max(FAN.RX, halfSpan / Math.sin(MathUtils.degToRad(65)));
+  return { rx, rz: FAN.RZ };
+}
+
+/** Writes position + rotation on the ellipse for a card at world x-position xPos. */
+function arcPose(xPos, rx, rz, lift, outPos, outQuat) {
+  const _rz = rz - lift;
+  const sinT = Math.max(-1, Math.min(1, xPos / rx));
+  const theta = Math.asin(sinT);
+  outPos.set(xPos, FAN.Y, FAN.Z + rz - _rz * Math.cos(theta));
+  // Yaw: align card face with ellipse inward normal
+  const yaw = Math.atan2(-_rz * sinT, rx * Math.cos(theta));
+  _tmpE.set(0, yaw, 0);
+  _tmpQ.setFromEuler(_tmpE).multiply(_standing);
+  outQuat.copy(_tmpQ);
+}
+
+// Quaternion for a face-down (flipped) card: 180° around Y
+const _flipQ = new Quaternion().setFromEuler(new Euler(0, Math.PI, 0));
+
+function updateFan() {
+  // When a card is being dragged it's parked at the end of the array but
+  // should not occupy a fan slot — lay out only the non-dragged cards.
+  const fanCards = dragged ? cards.filter((c) => c !== dragged) : cards;
+  const m = fanCards.length;
+  const { rx, rz } = fanMetrics(m);
+  const mid = (m - 1) / 2;
+  for (let i = 0; i < m; i++) {
+    const xPos = (i - mid) * CARD_SPACING;
+    arcPose(xPos, rx, rz, 0, fanCards[i].targetPos, fanCards[i].targetQuat);
+    fanCards[i].targetPos.y += i * 0.001; // tiny y-offset to avoid z-fight
+    // Preserve face-down state for flipped cards
+    if (fanCards[i].flipped) fanCards[i].targetQuat.copy(_flipQ);
+    // PairUp selected card: face-up (not flipped) — quat already set to _standing by arcPose
+  }
+}
+
+function deal(n = 1) {
+  for (let i = 0; i < n && deck.length; i++) {
+    const mesh = createCard(deck.pop());
+    mesh.position.copy(DECK_POS);
+    mesh.quaternion.copy(_standing);
+    scene.add(mesh);
+    cards.push({
+      mesh,
+      targetPos: new Vector3().copy(DECK_POS),
+      targetQuat: new Quaternion().copy(_standing),
+      flipped: false,
+    });
+  }
+  updateFan();
+  syncInstances();
+  autoZoomToHand();
+  markDirty(); // new cards → wake the loop
+}
+
+// ── drag & drop: pointer → angle on the ellipse, free vertical ──────────────
+const raycaster = new Raycaster();
+const ndc = new Vector2();
+// Drag plane is vertical, facing the camera. We recompute its z each frame to
+// match the card's actual arc z — so a single raycast against one plane gives
+// both a screen-accurate (x, y) and no perspective mismatch / drift.
+const dragPlane = new Plane(new Vector3(0, 0, 1), 0);
+const hit = new Vector3();
+const DRAG_LIFT = 0.35;
+
+let dragged = null;
+let pointerId = -1;
+let dragZ = FAN.Z; // current drag-plane depth (converges frame-to-frame)
+let downX = 0,
+  downY = 0,
+  downT = 0;
+
+function ndcOf(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(
+    ((e.clientX - r.left) / r.width) * 2 - 1,
+    -((e.clientY - r.top) / r.height) * 2 + 1,
+  );
+}
+
+function pick(e) {
+  ndcOf(e);
+  raycaster.setFromCamera(ndc, camera);
+  // Click-based modes: filter valid targets
+  let targets;
+  if (GAME_MODE === "SpeedShot" || GAME_MODE === "PlusShot") {
+    targets = cards.filter((c) => !c.flipped).map((c) => c.mesh);
+  } else if (GAME_MODE === "PairUp") {
+    // Face-down cards have their front mesh facing away — temporarily make
+    // all card materials double-sided so the raycast hits them regardless.
+    const clickable = cards.filter((c) => c !== GS.puSelected);
+    for (const c of clickable) c.mesh.material.side = DoubleSide;
+    const hits = raycaster.intersectObjects(
+      clickable.map((c) => c.mesh),
+      false,
+    );
+    for (const c of clickable) c.mesh.material.side = FrontSide;
+    return hits.length ? hits[0].object : null;
+  } else {
+    targets = cards.map((c) => c.mesh);
+  }
+  const hits = raycaster.intersectObjects(targets, false);
+  return hits.length ? hits[0].object : null;
+}
+
+/** Toggle "always on top" for the dragged card. The DRAG_LIFT offset keeps it
+ *  physically in front of neighbours; renderOrder breaks any depth-tie. */
+function setOnTop(mesh, on) {
+  mesh.renderOrder = on ? 999 : 0;
+}
+
+/**
+ * Update the dragged card to track the cursor. Strategy:
+ *   1. Cast the cursor ray against a vertical plane at z = dragZ.
+ *   2. The hit's (x, y) is the cursor in world space at that depth. x gives
+ *      us θ on the ellipse; y is the free vertical.
+ *   3. Recompute the card's actual arc z from θ and store it as the next
+ *      frame's dragZ. After one frame the plane matches the card and the
+ *      cursor→card mapping is pixel-accurate.
+ * Because x comes from the SAME hit point as y, there's no perspective
+ * mismatch between horizontal and vertical components — no drift.
+ */
+function updateDragFromPointer(e) {
+  if (!dragged) return false;
+  ndcOf(e);
+  raycaster.setFromCamera(ndc, camera);
+  dragPlane.constant = -dragZ; // plane eq: z - dragZ = 0
+  if (!raycaster.ray.intersectPlane(dragPlane, hit)) return false;
+
+  const { rx, rz } = fanMetrics(cards.length);
+  // hit.x is already the world-space x — pass it directly as xPos
+  arcPose(hit.x, rx, rz, DRAG_LIFT, dragged.targetPos, dragged.targetQuat);
+  dragged.targetPos.y = hit.y; // free Y from the same hit
+  dragZ = dragged.targetPos.z; // feed back for next frame
+  return true;
+}
+
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  downX = e.clientX;
+  downY = e.clientY;
+  downT = performance.now();
+  const mesh = pick(e);
+  if (!mesh) return;
+
+  // Click-based modes: no dragging allowed
+  if (
+    (GAME_MODE === "SpeedShot" ||
+      GAME_MODE === "PlusShot" ||
+      GAME_MODE === "PairUp") &&
+    GS.roundActive
+  ) {
+    const cardObj = cards.find((c) => c.mesh === mesh);
+    if (cardObj) {
+      if (GAME_MODE === "SpeedShot") gsHandleShot(cardObj);
+      else if (GAME_MODE === "PlusShot") gsHandlePlusShot(cardObj);
+      else gsHandlePairUp(cardObj);
+    }
+    markDirty();
+    return;
+  }
+
+  dragged = cards.find((c) => c.mesh === mesh);
+  pointerId = e.pointerId;
+  renderer.domElement.setPointerCapture?.(e.pointerId);
+  controls.enabled = false;
+
+  const idx = cards.indexOf(dragged);
+  // Record lift position for game scoring before we reorder the array
+  if (GAME_MODE && GS.roundActive) gsRecordLift(idx);
+  cards.splice(idx, 1);
+  cards.push(dragged);
+  setOnTop(dragged.mesh, true);
+  updateFan(); // skips `dragged` internally
+
+  // Seed dragZ with the card's current z so the first plane is close to right,
+  // then run the update twice: first iteration gives an approximate hit, the
+  // second is pixel-accurate. Snap mesh to target (no animation).
+  dragZ = dragged.mesh.position.z;
+  if (updateDragFromPointer(e)) updateDragFromPointer(e);
+  dragged.mesh.position.copy(dragged.targetPos);
+  dragged.mesh.quaternion.copy(dragged.targetQuat);
+});
+
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (!dragged || e.pointerId !== pointerId) return;
+  updateDragFromPointer(e);
+  markDirty(); // drag movement → wake the loop
+});
+
+function endDrag(e) {
+  if (dragged) {
+    const x = dragged.mesh.position.x; // live cursor-driven x
+    let insert = 0;
+    for (let i = 0; i < cards.length; i++) {
+      if (cards[i] === dragged) continue;
+      if (x < cards[i].targetPos.x) {
+        insert = i;
+        break;
+      }
+      insert = i + 1;
+    }
+    const from = cards.indexOf(dragged);
+    cards.splice(from, 1);
+    const toIdx = Math.min(insert, cards.length);
+    cards.splice(toIdx, 0, dragged);
+
+    setOnTop(dragged.mesh, false); // back to normal depth testing
+    renderer.domElement.releasePointerCapture?.(pointerId);
+    controls.enabled = true;
+    dragged = null;
+    pointerId = -1;
+    updateFan();
+    syncInstances();
+    // Record the drop for game scoring (uses final position in array)
+    if (GAME_MODE && GS.roundActive) gsRecordDrop(toIdx);
+    markDirty();
+    return;
+  }
+  // click on empty space → deal (disabled in game modes)
+  if (GAME_MODE) return;
+  const dx = e.clientX - downX,
+    dy = e.clientY - downY,
+    dt = performance.now() - downT;
+  if (dx * dx + dy * dy < 36 && dt < 400 && !pick(e)) deal(1);
+}
+renderer.domElement.addEventListener("pointerup", endDrag);
+renderer.domElement.addEventListener("pointercancel", endDrag);
+
+// ========== FULLSCREEN ==========
+function isFullscreenSupported() {
+  const elem = document.documentElement;
+  return !!(
+    elem.requestFullscreen ||
+    elem.webkitRequestFullscreen ||
+    elem.msRequestFullscreen ||
+    elem.mozRequestFullScreen
+  );
+}
+
+let isTogglingFullscreen = false;
+let hasFullscreenCapability = isFullscreenSupported();
+
+function toggleFullscreen() {
+  const doc = document;
+  const elem = document.documentElement;
+
+  isTogglingFullscreen = true; // flag before changing fullscreen
+
+  if (
+    !doc.fullscreenElement &&
+    !doc.webkitFullscreenElement &&
+    !doc.msFullscreenElement &&
+    !doc.mozFullScreenElement
+  ) {
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen();
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+    } else if (elem.msRequestFullscreen) {
+      elem.msRequestFullscreen();
+    } else if (elem.mozRequestFullScreen) {
+      elem.mozRequestFullScreen();
+    }
+  } else {
+    if (doc.exitFullscreen) {
+      doc.exitFullscreen();
+    } else if (doc.webkitExitFullscreen) {
+      doc.webkitExitFullscreen();
+    } else if (doc.msExitFullscreen) {
+      doc.msExitFullscreen();
+    } else if (doc.mozCancelFullScreen) {
+      doc.mozCancelFullScreen();
+    }
+  }
+}
+
+// Fullscreen change handler
+function onFullscreenChange() {
+  const isFullscreen = !!(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    document.msFullscreenElement ||
+    document.mozFullScreenElement
+  );
+
+  if (!isFullscreen) {
+    // We just EXITED fullscreen
+  } else {
+    // We just ENTERED fullscreen
+  }
+}
+
+if (hasFullscreenCapability) {
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+  document.addEventListener("mozfullscreenchange", onFullscreenChange);
+  document.addEventListener("msfullscreenchange", onFullscreenChange);
+} else {
+  const fullscreenKey = document.getElementById("fullscreenKey");
+  if (fullscreenKey) fullscreenKey.style.display = "none";
+  const fullscreenBtn = document.getElementById("fullscreenBtn");
+  if (fullscreenBtn) fullscreenBtn.style.display = "none";
+}
+
+window.addEventListener("keydown", (event) => {
+  const lowCaseEvent = event.code.toLowerCase();
+
+  // ALT + ENTER → Toggle Fullscreen
+  if (hasFullscreenCapability && event.altKey && lowCaseEvent === "enter") {
+    event.preventDefault();
+    toggleFullscreen();
+    return;
+  }
+});
+
+gamePanel.querySelector("#fullscreenBtn").addEventListener("click", () => {
+  toggleFullscreen();
+});
+
+// ── On-demand rendering loop ─────────────────────────────────────────────────
+// animate() is only scheduled via markDirty(). It re-schedules itself as long
+// as meshes are still converging, then idles once SETTLE_FRAMES quiet frames
+// have passed. See bootstrap block above for constants and markDirty().
+function animate(now) {
+  rafId = 0; // consumed — may be re-queued below
+
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+  const k = 1 - Math.exp(-12 * dt);
+
+  let stillMoving = false;
+
+  for (const c of cards) {
+    // Position lerp — check convergence before applying
+    _scratchPos.copy(c.targetPos).sub(c.mesh.position);
+    if (_scratchPos.lengthSq() > SETTLE_EPS_POS2) {
+      c.mesh.position.lerp(c.targetPos, k);
+      stillMoving = true;
+    } else {
+      c.mesh.position.copy(c.targetPos); // snap to prevent drift
+    }
+
+    // Quaternion slerp — dot product measures angular distance
+    const qdot = Math.abs(c.mesh.quaternion.dot(c.targetQuat));
+    if (qdot < SETTLE_EPS_QDOT) {
+      c.mesh.quaternion.slerp(c.targetQuat, k);
+      stillMoving = true;
+    } else {
+      c.mesh.quaternion.copy(c.targetQuat); // snap
+    }
+  }
+
+  // OrbitControls has internal damping — ask it if it's still moving
+  const controlsMoving = controls.update();
+  if (controlsMoving) stillMoving = true;
+
+  // Sync instanced edge/back meshes to current card transforms
+  if (cards.length) syncInstances();
+
+  // Smooth zoom-to-fit: lerp camera along its current ray toward target distance
+  if (_zoomTarget > 0) {
+    const dir = camera.position.clone().sub(controls.target).normalize();
+    const currentDist = camera.position.distanceTo(controls.target);
+    const newDist = MathUtils.lerp(currentDist, _zoomTarget, k);
+    camera.position.copy(controls.target).addScaledVector(dir, newDist);
+    controls.update();
+    if (Math.abs(newDist - _zoomTarget) < 0.001) {
+      _zoomTarget = -1; // converged
+    } else {
+      stillMoving = true;
+    }
+  }
+
+  renderer.render(scene, camera);
+  plusUpdateBadgePos();
+  updateStats(now);
+  stats.update();
+
+  if (stillMoving) {
+    settling = 0;
+    rafId = requestAnimationFrame(animate);
+  } else if (++settling < SETTLE_FRAMES) {
+    // A few extra frames after apparent stillness to flush GPU work
+    rafId = requestAnimationFrame(animate);
+  } else {
+    // Truly idle — stop the loop
+    renderDot.classList.remove("active");
+  }
+}
+
+/**
+ * Start the round, but if the help modal is currently open (because we
+ * auto-opened it on mode switch), defer gsBeginRound until it closes.
+ * For timed modes this means the timer never starts until the player
+ * has read the instructions and dismissed the overlay.
+ */
+function _maybeBeginRound() {
+  if (helpOverlay.classList.contains("open")) {
+    _pendingRoundStart = true;
+  } else {
+    setTimeout(gsBeginRound, 600);
+  }
+}
+
+/** Called whenever the help modal closes — fires deferred round start if waiting. */
+function _drainPendingRound() {
+  if (_pendingRoundStart) {
+    _pendingRoundStart = false;
+    setTimeout(gsBeginRound, 600);
+    return;
+  }
+  // Resume a paused active timer round
+  if (
+    GS.roundActive &&
+    !GS.won &&
+    (GAME_MODE === "SpeedSort" ||
+      GAME_MODE === "SpeedShot" ||
+      GAME_MODE === "PlusShot")
+  ) {
+    GS.timerStart += performance.now() - _pausedAt;
+    hudUpdate(); // restarts the CSS bar + JS tick
+  }
+}
+
+/** Snapshot the current time so we can offset timerStart on resume. */
+function _pauseTimerIfActive() {
+  if (
+    GS.roundActive &&
+    !GS.won &&
+    (GAME_MODE === "SpeedSort" ||
+      GAME_MODE === "SpeedShot" ||
+      GAME_MODE === "PlusShot")
+  ) {
+    _pausedAt = performance.now();
+    _stopTimerTick(); // freeze the live counter
+  }
+}
+
+/**
+ * In PairUp, the front face must show the back design while the card is
+ * face-down so orbiting the camera reveals nothing. Swap materials in-place
+ * so raycasting and instanced meshes are unaffected.
+ */
+function puSyncFrontMat(cardObj) {
+  if (GAME_MODE !== "PairUp") return;
+  cardObj.mesh.material = cardObj.flipped
+    ? puBackMat // face-down → back design, FrontSide
+    : cardObj.mesh.userData.frontMat; // face-up   → real card face
+  markDirty();
+}
+
+// ── round lifecycle ──────────────────────────────────────────────────────────
+/**
+ * Clear all cards from the scene and hand, rebuild and reshuffle deck,
+ * deal the right number for the current level, then start the game timer.
+ * In null mode, just deals the starting hand normally.
+ *
+ * For game modes: guarantees the dealt hand is NOT already sorted by
+ * reshuffling until it isn't. Cap at 200 attempts to avoid infinite loops
+ * on pathological cases (e.g. n=1 is always trivially sorted).
+ */
+function startRound() {
+  // Tear down existing hand
+  for (const c of cards) scene.remove(c.mesh);
+  cards.length = 0;
+  GS.shotOrder = [];
+  GS.shotNext = 0;
+  GS.puSelected = null;
+  GS.puLocked = false;
+  if (typeof plusHideTarget === "function") plusHideTarget();
+  edgeInstanced.count = 0;
+  backInstanced.count = 0;
+
+  const n = GAME_MODE ? gsCardCount() : 5;
+
+  if (GAME_MODE === "PairUp") {
+    // Build a deck of exactly N/2 rank-pairs, shuffled.
+    // Pick N/2 distinct ranks at random, then grab any 2 cards of each rank.
+    const pairs = n / 2;
+    const fullDeck = buildDeck(); // shuffled full deck
+    // Group by rank
+    const byRank = {};
+    for (const c of fullDeck) {
+      if (!byRank[c.value]) byRank[c.value] = [];
+      byRank[c.value].push(c);
+    }
+    // Shuffle rank keys and pick first `pairs` ranks that have ≥2 cards
+    const rankKeys = Object.keys(byRank).sort(() => Math.random() - 0.5);
+    const chosen = [];
+    for (const r of rankKeys) {
+      if (chosen.length >= pairs) break;
+      if (byRank[r].length >= 2) chosen.push(r);
+    }
+    // Build deck: 2 cards per chosen rank, then shuffle
+    const pairedCards = [];
+    for (const r of chosen) {
+      pairedCards.push(byRank[r][0], byRank[r][1]);
+    }
+    // Fisher-Yates shuffle
+    for (let i = pairedCards.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      [pairedCards[i], pairedCards[j]] = [pairedCards[j], pairedCards[i]];
+    }
+    deck.length = 0;
+    deck.push(...pairedCards);
+
+    // Deal face-down: set flipped=true after deal
+    deal(n);
+    for (const c of cards) {
+      c.flipped = true;
+      c.targetQuat.copy(_flipQ);
+      c.mesh.quaternion.copy(_flipQ);
+      puSyncFrontMat(c); // ← hide face while dealt face-down
+    }
+    markDirty();
+    _maybeBeginRound();
+  } else if (GAME_MODE) {
+    // For other game modes, guarantee an unsorted starting hand.
+    const MAX_ATTEMPTS = 200;
+    let attempts = 0;
+    let chosenCards = null;
+
+    while (attempts < MAX_ATTEMPTS) {
+      attempts++;
+      deck.length = 0;
+      deck.push(...buildDeck());
+      const candidate = deck.slice(-n);
+      const tempHand = candidate.map((c) => ({
+        mesh: { userData: { card: { value: c.value, suit: c.suit } } },
+      }));
+      if (!isSorted(tempHand)) {
+        chosenCards = candidate;
+        break;
+      }
+    }
+
+    if (!chosenCards) {
+      // All 200 attempts were sorted (only possible for n≤1).
+      // Just use whatever — can't guarantee unsorted for trivial hands.
+      deck.length = 0;
+      deck.push(...buildDeck());
+    } else {
+      deck.length = 0;
+      deck.push(...chosenCards);
+    }
+
+    // Final safety check: if by any chance the dealt hand is sorted,
+    // keep reshuffling until it isn't (handles edge cases in the fallback).
+    // This loop is O(attempts) and terminates quickly in practice.
+    if (chosenCards) {
+      const tempCheck = chosenCards.map((c) => ({
+        mesh: { userData: { card: { value: c.value, suit: c.suit } } },
+      }));
+      if (isSorted(tempCheck)) {
+        // Shouldn't happen given the loop above found chosenCards unsorted,
+        // but belt-and-suspenders: flag it clearly rather than silently proceed.
+        console.warn(
+          "startRound: hand was sorted after selection — reshuffling",
+        );
+        deck.length = 0;
+        deck.push(...buildDeck());
+      }
+    }
+
+    deal(n);
+    _maybeBeginRound();
+  } else {
+    deck.length = 0;
+    deck.push(...buildDeck());
+    deal(n);
+  }
+}
+
+startRound();
+
+// repaint atlas once webfonts resolve (no-op for default sans-serif, but
+// keeps the door open for custom fonts later)
+document.fonts?.ready?.then(() => {
+  atlas.repaint();
+  markDirty();
+});
+
+    </script>
+  </body>
+</html>

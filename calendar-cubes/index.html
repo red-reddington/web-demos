@@ -1,0 +1,1325 @@
+<!-- https://codepen.io/the-red-reddington/full/pvbYpLZ -->
+<!-- https://discourse.threejs.org/t/calendar-cubes-two-cubes-every-day/89832 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Calendar Cubes — 3D Date Display</title>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg-dark: #0a0a0f;
+        --bg-card: rgba(255, 255, 255, 0.03);
+        --border: rgba(255, 255, 255, 0.08);
+        --text-primary: #f5f5f7;
+        --text-muted: rgba(255, 255, 255, 0.5);
+        --accent: #d4a574;
+        --accent-glow: rgba(212, 165, 116, 0.3);
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg-dark);
+        font-family: "DM Sans", sans-serif;
+        color: var(--text-primary);
+        overscroll-behavior: none;
+        -webkit-user-select: none; /* Safari */
+        -ms-user-select: none; /* IE 10 and IE 11 */
+        user-select: none; /* Standard syntax */
+        -webkit-touch-callout: none;
+        -webkit-user-callout: none;
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .controls {
+        position: fixed;
+        bottom: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 100;
+        background: var(--bg-card);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 12px 20px;
+        box-shadow:
+          0 20px 60px rgba(0, 0, 0, 0.5),
+          0 0 80px var(--accent-glow);
+      }
+
+      .nav-btn {
+        width: 44px;
+        height: 44px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-primary);
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .nav-btn:hover {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--bg-dark);
+        transform: scale(1.05);
+        box-shadow: 0 0 30px var(--accent-glow);
+      }
+
+      .nav-btn:active {
+        transform: scale(0.95);
+      }
+
+      .date-display {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0 20px;
+        min-width: 200px;
+      }
+
+      .date-text {
+        font-family: "Playfair Display", serif;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: color 0.2s;
+      }
+
+      .date-text:hover {
+        color: var(--accent);
+      }
+
+      .date-hint {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        margin-top: 4px;
+      }
+
+      .hidden-date-input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .title {
+        position: fixed;
+        top: 40px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        text-align: center;
+      }
+
+      .title h1 {
+        font-family: "Playfair Display", serif;
+        font-size: 14px;
+        font-weight: 700;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 8px;
+      }
+
+      .title p {
+        font-size: 11px;
+        color: var(--text-muted);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+      }
+
+      .title .dedication {
+        margin-top: 12px;
+        font-size: 12px;
+        color: var(--text-muted);
+        letter-spacing: 0.05em;
+        font-style: italic;
+        text-transform: none;
+      }
+
+      .title .dedication .heart {
+        color: #e07a7a;
+        font-style: normal;
+      }
+
+      .glow-orb {
+        position: fixed;
+        border-radius: 50%;
+        filter: blur(100px);
+        pointer-events: none;
+        opacity: 0.4;
+      }
+
+      .glow-orb.one {
+        width: 400px;
+        height: 400px;
+        background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+        top: -100px;
+        right: -100px;
+      }
+
+      .glow-orb.two {
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, #7c6a5a 0%, transparent 70%);
+        bottom: 100px;
+        left: -50px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="glow-orb one"></div>
+    <div class="glow-orb two"></div>
+
+    <div class="title">
+      <h1>Calendar Cubes</h1>
+      <p>Interactive 3D Date Display</p>
+      <p class="dedication">
+        For my brilliant friends, A & H <span class="heart">♥</span>
+      </p>
+    </div>
+
+    <div class="controls">
+      <button class="nav-btn" id="prevDay">←</button>
+      <div class="date-display">
+        <span class="date-text" id="dateText">13-FEB-2026</span>
+        <input type="date" class="hidden-date-input" id="datePicker" />
+        <span class="date-hint">Click to change</span>
+      </div>
+      <button class="nav-btn" id="nextDay">→</button>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+
+      /* ================================================= */
+      /* Configuration                                     */
+      /* ================================================= */
+
+      const CUBE_SIZE = 2.2;
+      const CUBE_GAP = 0.8;
+      const CUBE_RADIUS = 0.2;
+      const CUBE_SMOOTHNESS = 6;
+
+      const LEFT_X = -(CUBE_SIZE / 2 + CUBE_GAP / 2);
+      const RIGHT_X = CUBE_SIZE / 2 + CUBE_GAP / 2;
+      const BASE_Y = CUBE_SIZE / 2 + 0.01;
+
+      // RoundedBoxGeometry material/face order: +X, -X, +Y, -Y, +Z, -Z
+      // Cube A has digits: 0, 1, 2, 3, 4, 5 (NO 6, so cannot show 9)
+      // Cube B has digits: 0, 1, 2, 6, 7, 8 (HAS 6, so CAN show 9 by flipping)
+      const CUBE_A_DIGITS = [0, 1, 2, 3, 4, 5];
+      const CUBE_B_DIGITS = [0, 1, 2, 6, 7, 8];
+
+      const MONTHS = [
+        "JAN",
+        "FEB",
+        "MAR",
+        "APR",
+        "MAY",
+        "JUN",
+        "JUL",
+        "AUG",
+        "SEP",
+        "OCT",
+        "NOV",
+        "DEC",
+      ];
+
+      /* ================================================= */
+      /* Scene Setup                                       */
+      /* ================================================= */
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a0a0f);
+
+      const camera = new THREE.PerspectiveCamera(
+        45,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        500,
+      );
+      camera.position.set(0, 4, 10);
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
+      document.body.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.minDistance = 5;
+      controls.maxDistance = 25;
+      controls.maxPolarAngle = Math.PI / 2 - 0.05;
+      controls.target.set(0, 1.2, 0);
+
+      /* ================================================= */
+      /* Custom Dark Studio Environment                    */
+      /* ================================================= */
+
+      function createStudioEnvironment() {
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        pmremGenerator.compileEquirectangularShader();
+
+        // Create a subtle gradient environment
+        const envScene = new THREE.Scene();
+
+        // Dark sphere with subtle warm/cool gradient
+        const envGeom = new THREE.SphereGeometry(50, 64, 32);
+        const envMat = new THREE.ShaderMaterial({
+          side: THREE.BackSide,
+          uniforms: {},
+          vertexShader: `
+      varying vec3 vWorldPosition;
+      void main() {
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPos.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+          fragmentShader: `
+      varying vec3 vWorldPosition;
+      void main() {
+        vec3 dir = normalize(vWorldPosition);
+        float y = dir.y * 0.5 + 0.5;
+        
+        // Dark base with subtle variation
+        vec3 bottomColor = vec3(0.02, 0.02, 0.025);
+        vec3 topColor = vec3(0.06, 0.055, 0.05);
+        vec3 warmAccent = vec3(0.12, 0.08, 0.05);
+        vec3 coolAccent = vec3(0.04, 0.05, 0.08);
+        
+        vec3 color = mix(bottomColor, topColor, y);
+        
+        // Add subtle warm highlight on one side
+        float warmSide = max(0.0, dir.x * 0.5 + dir.y * 0.3);
+        color = mix(color, warmAccent, warmSide * 0.3);
+        
+        // Add subtle cool on opposite
+        float coolSide = max(0.0, -dir.x * 0.3 + dir.y * 0.2);
+        color = mix(color, coolAccent, coolSide * 0.2);
+        
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+        });
+
+        const envMesh = new THREE.Mesh(envGeom, envMat);
+        envScene.add(envMesh);
+
+        // Add some subtle light sources in the environment
+        const lightGeom = new THREE.PlaneGeometry(8, 8);
+
+        // Warm key light panel
+        const warmLightMat = new THREE.MeshBasicMaterial({
+          color: 0x332211,
+          side: THREE.DoubleSide,
+        });
+        const warmLight = new THREE.Mesh(lightGeom, warmLightMat);
+        warmLight.position.set(20, 25, 15);
+        warmLight.lookAt(0, 0, 0);
+        envScene.add(warmLight);
+
+        // Cool fill panel
+        const coolLightMat = new THREE.MeshBasicMaterial({
+          color: 0x111522,
+          side: THREE.DoubleSide,
+        });
+        const coolLight = new THREE.Mesh(lightGeom, coolLightMat);
+        coolLight.position.set(-15, 15, -10);
+        coolLight.lookAt(0, 0, 0);
+        envScene.add(coolLight);
+
+        const envTexture = pmremGenerator.fromScene(
+          envScene,
+          0,
+          0.1,
+          100,
+        ).texture;
+        pmremGenerator.dispose();
+
+        return envTexture;
+      }
+
+      scene.environment = createStudioEnvironment();
+
+      /* ================================================= */
+      /* Lighting                                          */
+      /* ================================================= */
+
+      // Subtle ambient
+      scene.add(new THREE.AmbientLight(0xffffff, 0.12));
+
+      // Main key light - warm, dramatic
+      const keyLight = new THREE.DirectionalLight(0xffeedd, 1.6);
+      keyLight.position.set(6, 15, 8);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.width = 2048;
+      keyLight.shadow.mapSize.height = 2048;
+      keyLight.shadow.camera.near = 1;
+      keyLight.shadow.camera.far = 50;
+      keyLight.shadow.camera.left = -12;
+      keyLight.shadow.camera.right = 12;
+      keyLight.shadow.camera.top = 12;
+      keyLight.shadow.camera.bottom = -12;
+      keyLight.shadow.bias = -0.0005;
+      keyLight.shadow.normalBias = -0.02;
+      keyLight.shadow.radius = 3;
+      scene.add(keyLight);
+
+      // Cool fill light
+      const fillLight = new THREE.DirectionalLight(0x99aabb, 0.3);
+      fillLight.position.set(-8, 8, -6);
+      scene.add(fillLight);
+
+      // Warm rim light
+      const rimLight = new THREE.DirectionalLight(0xffccaa, 0.4);
+      rimLight.position.set(0, 4, -10);
+      scene.add(rimLight);
+
+      // Subtle accent lights
+      const accentLight1 = new THREE.PointLight(0xd4a574, 0.4, 25);
+      accentLight1.position.set(-6, 4, 6);
+      scene.add(accentLight1);
+
+      const accentLight2 = new THREE.PointLight(0x8ca5c4, 0.25, 20);
+      accentLight2.position.set(6, 3, -4);
+      scene.add(accentLight2);
+
+      // Ground spotlights for text shadows
+      const groundSpotLeft = new THREE.SpotLight(
+        0xfff5ee,
+        2.0,
+        18,
+        Math.PI / 5,
+        0.6,
+        1,
+      );
+      groundSpotLeft.position.set(LEFT_X, 6, 6);
+      groundSpotLeft.target.position.set(LEFT_X, 0, 3.2);
+      scene.add(groundSpotLeft);
+      scene.add(groundSpotLeft.target);
+
+      const groundSpotRight = new THREE.SpotLight(
+        0xfff5ee,
+        2.0,
+        18,
+        Math.PI / 5,
+        0.6,
+        1,
+      );
+      groundSpotRight.position.set(RIGHT_X, 6, 6);
+      groundSpotRight.target.position.set(RIGHT_X, 0, 3.2);
+      scene.add(groundSpotRight);
+      scene.add(groundSpotRight.target);
+
+      /* ================================================= */
+      /* Ground Plane                                      */
+      /* ================================================= */
+
+      const groundGeom = new THREE.PlaneGeometry(60, 60);
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0x12121a,
+        roughness: 0.8,
+        metalness: 0.05,
+        envMapIntensity: 0.15,
+      });
+      const ground = new THREE.Mesh(groundGeom, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = 0;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      /* ================================================= */
+      /* Text Shadow Shader Material                       */
+      /* ================================================= */
+
+      function createTextTexture(text) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 512;
+        canvas.height = 256;
+        const ctx = canvas.getContext("2d");
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 150px Georgia, serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        return texture;
+      }
+
+      const shadowVertexShader = `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+      const shadowFragmentShader = `
+  uniform sampler2D tText;
+  uniform float opacity;
+  varying vec2 vUv;
+  
+  void main() {
+    vec4 texel = texture2D(tText, vUv);
+    float alpha = texel.r * opacity;
+    gl_FragColor = vec4(0.0, 0.0, 0.0, alpha);
+  }
+`;
+
+      const shadowPlaneGeom = new THREE.PlaneGeometry(4.5, 2.2);
+
+      // Pre-cache month and year textures
+      const monthTextures = {};
+      MONTHS.forEach((m) => {
+        monthTextures[m] = createTextTexture(m);
+      });
+
+      const yearTextures = {};
+      for (let y = 0; y <= 99; y++) {
+        const label = "'" + y.toString().padStart(2, "0");
+        yearTextures[y] = createTextTexture(label);
+      }
+
+      const monthShadowMat = new THREE.ShaderMaterial({
+        uniforms: {
+          tText: { value: createTextTexture("FEB") },
+          opacity: { value: 0.85 },
+        },
+        vertexShader: shadowVertexShader,
+        fragmentShader: shadowFragmentShader,
+        transparent: true,
+        depthWrite: false,
+      });
+
+      const yearShadowMat = new THREE.ShaderMaterial({
+        uniforms: {
+          tText: { value: createTextTexture("'26") },
+          opacity: { value: 0.85 },
+        },
+        vertexShader: shadowVertexShader,
+        fragmentShader: shadowFragmentShader,
+        transparent: true,
+        depthWrite: false,
+      });
+
+      const monthShadow = new THREE.Mesh(shadowPlaneGeom, monthShadowMat);
+      monthShadow.rotation.x = -Math.PI / 2;
+      monthShadow.position.set(LEFT_X, 0.01, 3.2);
+      scene.add(monthShadow);
+
+      const yearShadow = new THREE.Mesh(shadowPlaneGeom, yearShadowMat);
+      yearShadow.rotation.x = -Math.PI / 2;
+      yearShadow.position.set(RIGHT_X, 0.01, 3.2);
+      scene.add(yearShadow);
+
+      /* ================================================= */
+      /* Texture Generation - Bump Map & Patina Numbers    */
+      /* ================================================= */
+
+      // Create subtle bump/roughness texture for cube surface
+      function createSurfaceTextures() {
+        const size = 512;
+
+        // Bump map - subtle surface imperfections
+        const bumpCanvas = document.createElement("canvas");
+        bumpCanvas.width = size;
+        bumpCanvas.height = size;
+        const bumpCtx = bumpCanvas.getContext("2d");
+
+        // Base gray
+        bumpCtx.fillStyle = "#808080";
+        bumpCtx.fillRect(0, 0, size, size);
+
+        // Add fine noise
+        const bumpData = bumpCtx.getImageData(0, 0, size, size);
+        for (let i = 0; i < bumpData.data.length; i += 4) {
+          const noise = (Math.random() - 0.5) * 25;
+          const val = 128 + noise;
+          bumpData.data[i] = val;
+          bumpData.data[i + 1] = val;
+          bumpData.data[i + 2] = val;
+        }
+        bumpCtx.putImageData(bumpData, 0, 0);
+
+        // Add some larger subtle variations
+        for (let i = 0; i < 50; i++) {
+          const x = Math.random() * size;
+          const y = Math.random() * size;
+          const r = Math.random() * 30 + 10;
+          const brightness = Math.random() > 0.5 ? 135 : 120;
+
+          const gradient = bumpCtx.createRadialGradient(x, y, 0, x, y, r);
+          gradient.addColorStop(
+            0,
+            `rgb(${brightness}, ${brightness}, ${brightness})`,
+          );
+          gradient.addColorStop(1, "rgba(128, 128, 128, 0)");
+          bumpCtx.fillStyle = gradient;
+          bumpCtx.fillRect(x - r, y - r, r * 2, r * 2);
+        }
+
+        const bumpTexture = new THREE.CanvasTexture(bumpCanvas);
+        bumpTexture.wrapS = THREE.RepeatWrapping;
+        bumpTexture.wrapT = THREE.RepeatWrapping;
+
+        // Roughness map - slight variation in surface roughness
+        const roughCanvas = document.createElement("canvas");
+        roughCanvas.width = size;
+        roughCanvas.height = size;
+        const roughCtx = roughCanvas.getContext("2d");
+
+        roughCtx.fillStyle = "#666666";
+        roughCtx.fillRect(0, 0, size, size);
+
+        const roughData = roughCtx.getImageData(0, 0, size, size);
+        for (let i = 0; i < roughData.data.length; i += 4) {
+          const noise = (Math.random() - 0.5) * 40;
+          const val = 102 + noise; // ~0.4 roughness base
+          roughData.data[i] = val;
+          roughData.data[i + 1] = val;
+          roughData.data[i + 2] = val;
+        }
+        roughCtx.putImageData(roughData, 0, 0);
+
+        const roughTexture = new THREE.CanvasTexture(roughCanvas);
+        roughTexture.wrapS = THREE.RepeatWrapping;
+        roughTexture.wrapT = THREE.RepeatWrapping;
+
+        return { bumpTexture, roughTexture };
+      }
+
+      const surfaceTextures = createSurfaceTextures();
+
+      // Pre-cache all number textures (0-9)
+      const numberTextures = {};
+      for (let i = 0; i <= 9; i++) {
+        numberTextures[i] = createNumberTexture(i);
+      }
+
+      // Create number texture with patina/aged effect
+      function createNumberTexture(number) {
+        const canvas = document.createElement("canvas");
+        const size = 512;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+
+        // Rich dark warm background
+        const gradient = ctx.createRadialGradient(
+          size / 2,
+          size / 2,
+          0,
+          size / 2,
+          size / 2,
+          size * 0.7,
+        );
+        gradient.addColorStop(0, "#3a332d");
+        gradient.addColorStop(1, "#252220");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, size, size);
+
+        // Add subtle grain texture
+        const imageData = ctx.getImageData(0, 0, size, size);
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const noise = (Math.random() - 0.5) * 12;
+          imageData.data[i] = Math.min(
+            255,
+            Math.max(0, imageData.data[i] + noise),
+          );
+          imageData.data[i + 1] = Math.min(
+            255,
+            Math.max(0, imageData.data[i + 1] + noise),
+          );
+          imageData.data[i + 2] = Math.min(
+            255,
+            Math.max(0, imageData.data[i + 2] + noise),
+          );
+        }
+        ctx.putImageData(imageData, 0, 0);
+
+        // Add subtle vignette
+        const vignette = ctx.createRadialGradient(
+          size / 2,
+          size / 2,
+          size * 0.2,
+          size / 2,
+          size / 2,
+          size * 0.7,
+        );
+        vignette.addColorStop(0, "rgba(0,0,0,0)");
+        vignette.addColorStop(1, "rgba(0,0,0,0.15)");
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, size, size);
+
+        // Draw the number with patina effect
+        ctx.save();
+
+        // Main number - slightly off-white with warm tint
+        ctx.fillStyle = "#e8e2da";
+        ctx.font = "bold 300px Georgia, serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        // Subtle shadow for depth
+        ctx.shadowColor = "rgba(0, 0, 0, 0.4)";
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 4;
+
+        ctx.fillText(number.toString(), size / 2, size / 2);
+        ctx.restore();
+
+        // Add patina/wear effect to the number
+        ctx.save();
+        ctx.globalCompositeOperation = "source-atop";
+
+        // Add subtle color variation
+        const patinaGradient = ctx.createLinearGradient(0, 0, size, size);
+        patinaGradient.addColorStop(0, "rgba(180, 170, 150, 0.08)");
+        patinaGradient.addColorStop(0.5, "rgba(200, 195, 185, 0.03)");
+        patinaGradient.addColorStop(1, "rgba(160, 150, 140, 0.1)");
+        ctx.fillStyle = patinaGradient;
+        ctx.fillRect(0, 0, size, size);
+
+        ctx.restore();
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return texture;
+      }
+
+      /* ================================================= */
+      /* Create Cube                                       */
+      /* ================================================= */
+
+      function createCalendarCube(digits, name) {
+        const geometry = new RoundedBoxGeometry(
+          CUBE_SIZE,
+          CUBE_SIZE,
+          CUBE_SIZE,
+          CUBE_SMOOTHNESS,
+          CUBE_RADIUS,
+        );
+
+        const materials = digits.map((digit) => {
+          return new THREE.MeshStandardMaterial({
+            map: numberTextures[digit],
+            bumpMap: surfaceTextures.bumpTexture,
+            bumpScale: 0.015,
+            roughnessMap: surfaceTextures.roughTexture,
+            roughness: 0.55,
+            metalness: 0.08,
+            envMapIntensity: 0.4,
+          });
+        });
+
+        const mesh = new THREE.Mesh(geometry, materials);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.userData.digits = digits;
+        mesh.userData.name = name;
+
+        return mesh;
+      }
+
+      /* ================================================= */
+      /* Create the two cubes                              */
+      /* ================================================= */
+
+      const cubeA = createCalendarCube(CUBE_A_DIGITS, "A");
+      const cubeB = createCalendarCube(CUBE_B_DIGITS, "B");
+
+      cubeA.position.set(LEFT_X, BASE_Y, 0);
+      cubeB.position.set(RIGHT_X, BASE_Y, 0);
+
+      scene.add(cubeA);
+      scene.add(cubeB);
+
+      /* ================================================= */
+      /* Rotation Logic                                    */
+      /* ================================================= */
+
+      // Face order: +X(0), -X(1), +Y(2), -Y(3), +Z(4), -Z(5)
+      function getRotationForFaceIndex(faceIndex, flip180 = false) {
+        const rotations = [
+          new THREE.Euler(0, -Math.PI / 2, 0), // 0: +X to front
+          new THREE.Euler(0, Math.PI / 2, 0), // 1: -X to front
+          new THREE.Euler(Math.PI / 2, 0, 0), // 2: +Y to front
+          new THREE.Euler(-Math.PI / 2, 0, 0), // 3: -Y to front
+          new THREE.Euler(0, 0, 0), // 4: +Z already front
+          new THREE.Euler(0, Math.PI, 0), // 5: -Z to front
+        ];
+
+        const euler = rotations[faceIndex].clone();
+
+        if (flip180) {
+          // Rotate 180° around the face normal AFTER it is brought to front
+          const q = new THREE.Quaternion().setFromEuler(euler);
+          // Local Z axis of the face once it is facing forward
+          const localForward = new THREE.Vector3(0, 0, 1);
+          localForward.applyQuaternion(q);
+          const flipQ = new THREE.Quaternion().setFromAxisAngle(
+            localForward,
+            Math.PI,
+          );
+          q.multiply(flipQ);
+          euler.setFromQuaternion(q);
+        }
+
+        return euler;
+      }
+
+      // Find which face shows a digit on a given cube
+      function findDigitOnCube(digit, cubeDigits) {
+        // Special case: 9 is shown by flipping 6
+        if (digit === 9) {
+          const idx = cubeDigits.indexOf(6);
+          if (idx !== -1) {
+            return { faceIndex: idx, flip: true };
+          }
+          return null; // This cube cannot show 9
+        }
+
+        const idx = cubeDigits.indexOf(digit);
+        if (idx !== -1) {
+          return { faceIndex: idx, flip: false };
+        }
+        return null; // This cube doesn't have this digit
+      }
+
+      // Check if a cube can display a digit
+      function cubeHasDigit(digit, cubeDigits) {
+        if (digit === 9) return cubeDigits.includes(6);
+        return cubeDigits.includes(digit);
+      }
+
+      /* ================================================= */
+      /* Animation State                                   */
+      /* ================================================= */
+
+      const animation = {
+        cubeA: { startQ: new THREE.Quaternion(), endQ: new THREE.Quaternion() },
+        cubeB: { startQ: new THREE.Quaternion(), endQ: new THREE.Quaternion() },
+        cubeA_startPos: new THREE.Vector3(),
+        cubeA_endPos: new THREE.Vector3(),
+        cubeB_startPos: new THREE.Vector3(),
+        cubeB_endPos: new THREE.Vector3(),
+        needsSwap: false,
+        progress: 1,
+        duration: 0.6,
+        active: false,
+      };
+
+      function easeInOutCubic(t) {
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      }
+
+      /* ================================================= */
+      /* Update Date Display                               */
+      /* ================================================= */
+
+      function updateDisplay(date) {
+        const day = date.getDate();
+        const month = date.getMonth();
+        const year = date.getFullYear();
+
+        const dayStr = day.toString().padStart(2, "0");
+        const tensDigit = parseInt(dayStr[0]);
+        const onesDigit = parseInt(dayStr[1]);
+
+        // console.log(`\n=== Displaying ${dayStr} ===`);
+        // console.log(`Tens: ${tensDigit}, Ones: ${onesDigit}`);
+
+        // Determine cube assignment
+        // Rule: LEFT cube shows TENS, RIGHT cube shows ONES
+        // We need to figure out which physical cube (A or B) goes to which position
+
+        // Check capabilities
+        const A_hasTens = cubeHasDigit(tensDigit, CUBE_A_DIGITS);
+        const A_hasOnes = cubeHasDigit(onesDigit, CUBE_A_DIGITS);
+        const B_hasTens = cubeHasDigit(tensDigit, CUBE_B_DIGITS);
+        const B_hasOnes = cubeHasDigit(onesDigit, CUBE_B_DIGITS);
+
+        // console.log(`CubeA can show: tens=${A_hasTens}, ones=${A_hasOnes}`);
+        // console.log(`CubeB can show: tens=${B_hasTens}, ones=${B_hasOnes}`);
+
+        let cubeForTens, cubeForOnes;
+
+        // Priority: If one digit is 9, cubeB MUST handle it (only B has 6)
+        if (tensDigit === 9) {
+          // Tens is 9, so cubeB must be on left (for tens)
+          cubeForTens = cubeB;
+          cubeForOnes = cubeA;
+        } else if (onesDigit === 9) {
+          // Ones is 9, so cubeB must be on right (for ones)
+          cubeForTens = cubeA;
+          cubeForOnes = cubeB;
+        } else {
+          // Neither is 9, use default: A=left(tens), B=right(ones) if possible
+          if (A_hasTens && B_hasOnes) {
+            cubeForTens = cubeA;
+            cubeForOnes = cubeB;
+          } else if (B_hasTens && A_hasOnes) {
+            cubeForTens = cubeB;
+            cubeForOnes = cubeA;
+          } else {
+            console.error("Cannot display day:", day);
+            return;
+          }
+        }
+
+        // Get rotation info
+        const tensInfo = findDigitOnCube(
+          tensDigit,
+          cubeForTens.userData.digits,
+        );
+        const onesInfo = findDigitOnCube(
+          onesDigit,
+          cubeForOnes.userData.digits,
+        );
+
+        /* console.log(
+          `Tens cube: ${cubeForTens.userData.name}, face ${tensInfo.faceIndex}, flip=${tensInfo.flip}`,
+        );
+        console.log(
+          `Ones cube: ${cubeForOnes.userData.name}, face ${onesInfo.faceIndex}, flip=${onesInfo.flip}`,
+        );*/
+
+        // Store starting state
+        animation.cubeA.startQ.copy(cubeA.quaternion);
+        animation.cubeB.startQ.copy(cubeB.quaternion);
+        animation.cubeA_startPos.copy(cubeA.position);
+        animation.cubeB_startPos.copy(cubeB.position);
+
+        // Determine if physical swap is needed
+        const cubeACurrentlyLeft = cubeA.position.x < 0;
+        const cubeAShouldBeLeft = cubeForTens === cubeA;
+        animation.needsSwap = cubeACurrentlyLeft !== cubeAShouldBeLeft;
+
+        // console.log(`Swap needed: ${animation.needsSwap}`);
+
+        // Set target positions
+        // cubeForTens goes LEFT, cubeForOnes goes RIGHT
+        if (cubeForTens === cubeA) {
+          animation.cubeA_endPos.set(LEFT_X, BASE_Y, 0);
+          animation.cubeB_endPos.set(RIGHT_X, BASE_Y, 0);
+        } else {
+          animation.cubeA_endPos.set(RIGHT_X, BASE_Y, 0);
+          animation.cubeB_endPos.set(LEFT_X, BASE_Y, 0);
+        }
+
+        // Set target rotations
+        const tensEuler = getRotationForFaceIndex(
+          tensInfo.faceIndex,
+          tensInfo.flip,
+        );
+        const onesEuler = getRotationForFaceIndex(
+          onesInfo.faceIndex,
+          onesInfo.flip,
+        );
+
+        // Assign rotations to the correct cubes
+        if (cubeForTens === cubeA) {
+          animation.cubeA.endQ.setFromEuler(tensEuler);
+          animation.cubeB.endQ.setFromEuler(onesEuler);
+        } else {
+          animation.cubeA.endQ.setFromEuler(onesEuler);
+          animation.cubeB.endQ.setFromEuler(tensEuler);
+        }
+
+        // Start animation
+        animation.progress = 0;
+        animation.active = true;
+
+        // Update shadows
+        monthShadowMat.uniforms.tText.value = monthTextures[MONTHS[month]];
+        yearShadowMat.uniforms.tText.value = yearTextures[year % 100];
+
+        updateDateText(date);
+      }
+
+      /* ================================================= */
+      /* Animate with arc motion for swapping              */
+      /* ================================================= */
+
+      // Calculate the lift needed during rotation to prevent corner clipping
+      // When a cube rotates 45°, its corner is at max distance from center
+      // Corner distance = (CUBE_SIZE / 2) * sqrt(2) ≈ CUBE_SIZE * 0.707
+      // Lift needed = corner distance - half size = CUBE_SIZE * (sqrt(2)/2 - 0.5) ≈ CUBE_SIZE * 0.207
+      const CORNER_LIFT = CUBE_SIZE * (Math.SQRT2 / 2 - 0.5) + 0.05; // Extra margin
+
+      function getRotationLift(startQ, endQ, progress) {
+        // Calculate how much the cube is "mid-rotation"
+        // Max lift at progress = 0.5, zero lift at 0 and 1
+        const rotationAmount = Math.sin(progress * Math.PI);
+
+        // Check if there's significant rotation happening
+        const dot = startQ.dot(endQ);
+        const rotationMagnitude = 1 - Math.abs(dot); // 0 = no rotation, ~1 = big rotation
+
+        // Only lift if actually rotating significantly
+        if (rotationMagnitude < 0.01) return 0;
+
+        return (
+          CORNER_LIFT * rotationAmount * Math.min(rotationMagnitude * 5, 1)
+        );
+      }
+
+      function updateAnimation(delta, time) {
+        if (!animation.active) {
+          cubeA.position.y = BASE_Y + Math.sin(time * 1.2) * 0.025;
+          cubeB.position.y = BASE_Y + Math.sin(time * 1.2 + 0.4) * 0.025;
+          return;
+        }
+
+        animation.progress += delta / animation.duration;
+
+        if (animation.progress >= 1) {
+          animation.progress = 1;
+          animation.active = false;
+        }
+
+        const t = easeInOutCubic(Math.min(animation.progress, 1));
+
+        // Interpolate rotations
+        cubeA.quaternion.slerpQuaternions(
+          animation.cubeA.startQ,
+          animation.cubeA.endQ,
+          t,
+        );
+        cubeB.quaternion.slerpQuaternions(
+          animation.cubeB.startQ,
+          animation.cubeB.endQ,
+          t,
+        );
+
+        // Calculate rotation lift for each cube
+        const liftA = getRotationLift(
+          animation.cubeA.startQ,
+          animation.cubeA.endQ,
+          t,
+        );
+        const liftB = getRotationLift(
+          animation.cubeB.startQ,
+          animation.cubeB.endQ,
+          t,
+        );
+
+        // Interpolate positions
+        if (animation.needsSwap) {
+          const arcHeight = 2.5;
+          const arcAmount = Math.sin(t * Math.PI);
+
+          const cubeA_x =
+            animation.cubeA_startPos.x +
+            (animation.cubeA_endPos.x - animation.cubeA_startPos.x) * t;
+          const cubeB_x =
+            animation.cubeB_startPos.x +
+            (animation.cubeB_endPos.x - animation.cubeB_startPos.x) * t;
+
+          const cubeA_z = arcAmount * arcHeight;
+          const cubeB_z = -arcAmount * arcHeight;
+
+          // Combine swap lift with rotation lift
+          const swapLift = arcAmount * 0.8;
+
+          cubeA.position.set(cubeA_x, BASE_Y + swapLift + liftA, cubeA_z);
+          cubeB.position.set(cubeB_x, BASE_Y + swapLift + liftB, cubeB_z);
+        } else {
+          cubeA.position.lerpVectors(
+            animation.cubeA_startPos,
+            animation.cubeA_endPos,
+            t,
+          );
+          cubeB.position.lerpVectors(
+            animation.cubeB_startPos,
+            animation.cubeB_endPos,
+            t,
+          );
+
+          // Apply rotation lift
+          cubeA.position.y = BASE_Y + liftA;
+          cubeB.position.y = BASE_Y + liftB;
+        }
+      }
+
+      /* ================================================= */
+      /* Date Picker UI                                    */
+      /* ================================================= */
+
+      const datePicker = document.getElementById("datePicker");
+      const dateText = document.getElementById("dateText");
+      const prevBtn = document.getElementById("prevDay");
+      const nextBtn = document.getElementById("nextDay");
+
+      let currentDate = new Date();
+
+      function formatDateDisplay(date) {
+        const day = date.getDate().toString().padStart(2, "0");
+        const month = MONTHS[date.getMonth()];
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`;
+      }
+
+      function formatDateForInput(date) {
+        const y = date.getFullYear();
+        const m = (date.getMonth() + 1).toString().padStart(2, "0");
+        const d = date.getDate().toString().padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+
+      function updateDateText(date) {
+        dateText.textContent = formatDateDisplay(date);
+        datePicker.value = formatDateForInput(date);
+      }
+
+      function setDate(date) {
+        currentDate = new Date(date);
+        updateDisplay(currentDate);
+      }
+
+      dateText.addEventListener("click", (e) => {
+        e.stopPropagation();
+        // Double-click or tap on date text resets to today
+        resetToToday();
+      });
+
+      datePicker.addEventListener("change", (e) => {
+        if (e.target.value) {
+          const parts = e.target.value.split("-");
+          const newDate = new Date(parts[0], parts[1] - 1, parts[2]);
+          setDate(newDate);
+        }
+      });
+
+      prevBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        goToPrevDay();
+      });
+
+      nextBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        goToNextDay();
+      });
+
+      /* ================================================= */
+      /* Input Handling with Throttling                    */
+      /* ================================================= */
+
+      let lastInputTime = 0;
+      const INPUT_THROTTLE_MS = 400; // Minimum time between date changes
+
+      function isThrottled() {
+        const now = Date.now();
+        if (now - lastInputTime < INPUT_THROTTLE_MS) {
+          return true;
+        }
+        lastInputTime = now;
+        return false;
+      }
+
+      function goToPrevDay() {
+        if (isThrottled()) return;
+        currentDate.setDate(currentDate.getDate() - 1);
+        setDate(new Date(currentDate));
+      }
+
+      function goToNextDay() {
+        if (isThrottled()) return;
+        currentDate.setDate(currentDate.getDate() + 1);
+        setDate(new Date(currentDate));
+      }
+
+      function resetToToday() {
+        if (isThrottled()) return;
+        setDate(new Date());
+      }
+
+      // Keyboard handling
+      document.addEventListener("keydown", (e) => {
+        // Ignore if user is in an input field
+        if (e.target.tagName === "INPUT") return;
+
+        const key = e.key;
+        const code = e.code;
+
+        // Date LEFT: arrow left, down, page down, a, s, shift+tab
+        if (
+          key === "ArrowLeft" ||
+          key === "ArrowDown" ||
+          key === "PageDown" ||
+          code === "KeyA" ||
+          code === "KeyS" ||
+          (key === "Tab" && e.shiftKey)
+        ) {
+          e.preventDefault();
+          goToPrevDay();
+          return;
+        }
+
+        // Date RIGHT: arrow right, up, page up, w, d, space, enter, tab
+        if (
+          key === "ArrowRight" ||
+          key === "ArrowUp" ||
+          key === "PageUp" ||
+          code === "KeyW" ||
+          code === "KeyD" ||
+          key === " " ||
+          key === "Enter" ||
+          (key === "Tab" && !e.shiftKey)
+        ) {
+          e.preventDefault();
+          goToNextDay();
+          return;
+        }
+      });
+
+      // Mobile touch handling
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchHandled = false;
+
+      document.addEventListener(
+        "touchstart",
+        (e) => {
+          if (e.touches.length === 1) {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchHandled = false;
+          }
+        },
+        { passive: true },
+      );
+
+      document.addEventListener(
+        "touchend",
+        (e) => {
+          if (touchHandled) return;
+
+          // Check if it was a tap (not a drag/swipe for orbit controls)
+          const touch = e.changedTouches[0];
+          const deltaX = Math.abs(touch.clientX - touchStartX);
+          const deltaY = Math.abs(touch.clientY - touchStartY);
+
+          // If moved too much, it's a drag not a tap
+          if (deltaX > 30 || deltaY > 30) return;
+
+          // Check if tap was on controls area (ignore those)
+          const controls = document.querySelector(".controls");
+          const rect = controls.getBoundingClientRect();
+          if (
+            touch.clientX >= rect.left &&
+            touch.clientX <= rect.right &&
+            touch.clientY >= rect.top &&
+            touch.clientY <= rect.bottom
+          ) {
+            return;
+          }
+
+          // Left half of screen = prev day, right half = next day
+          const screenMidX = window.innerWidth / 2;
+
+          if (touch.clientX < screenMidX) {
+            goToPrevDay();
+          } else {
+            goToNextDay();
+          }
+
+          touchHandled = true;
+        },
+        { passive: true },
+      );
+
+      // Initialize
+      setDate(new Date());
+
+      /* ================================================= */
+      /* Animation Loop                                    */
+      /* ================================================= */
+
+      const clock = new THREE.Clock();
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const delta = clock.getDelta();
+        const time = clock.getElapsedTime();
+
+        controls.update();
+        updateAnimation(delta, time);
+        renderer.render(scene, camera);
+      }
+
+      animate();
+
+      /* ================================================= */
+      /* Resize                                            */
+      /* ================================================= */
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+    </script>
+  </body>
+</html>

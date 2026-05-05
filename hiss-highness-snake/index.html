@@ -1,0 +1,3353 @@
+<!-- https://codepen.io/the-red-reddington/pen/JoKoXqW -->
+<!-- https://discourse.threejs.org/t/hiss-highness-procedural-snake-game-with-terrain-accurate-slithering-no-raycasts/88844 -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🐍 Hiss Highness: Rodent à la King 👑</title>
+    <link
+      rel="icon"
+      type="image/png"
+      href="https://raw.githubusercontent.com/red-reddington/public-assets/main/hiss_highness_logo.PNG"
+    />
+
+    <style>
+      .lil-gui.root {
+        --width: 170px;
+      }
+      .lil-gui.autoPlace {
+        right: 0;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100dvh;
+        width: 100dvw;
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        overflow: hidden;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #ui {
+        position: fixed;
+        top: 0;
+        left: 0;
+        color: #fff;
+        font: 600 13px/1.7 monospace;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 5px 7px;
+        border-radius: 8px;
+        pointer-events: none;
+        min-width: 180px;
+      }
+      #ui h1 {
+        font-size: 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        cursor: pointer;
+        pointer-events: auto;
+        user-select: none;
+      }
+      #ui h1:hover {
+        color: #4ecdc4;
+      }
+      #ui h1::after {
+        content: " ▶";
+        margin-left: 10px;
+        font-size: 10px;
+        opacity: 0.6;
+      }
+      #ui.collapsed h1::after {
+        content: " ▼";
+      }
+      #ui.collapsed #uiContent {
+        display: none;
+      }
+      .score {
+        color: #ffd700;
+        font-size: 15px;
+      }
+      .mice-count {
+        color: #ff9999;
+        display: none;
+      }
+      :root {
+        --facecam-width: 150px;
+        --facecam-height: 105px;
+      }
+      #facecam {
+        pointer-events: all;
+        margin: 10px 0;
+        width: var(--facecam-width);
+        height: var(--facecam-height);
+        border: 4px solid rgba(255, 255, 255, 0.8);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        z-index: 10;
+      }
+      #performanceStats {
+        display: none;
+        position: fixed;
+        flex-direction: column;
+        bottom: 0;
+        /*left: 0;*/
+        right: 275px;
+        height: 50px;
+      }
+      #performanceStats.gl {
+        display: flex;
+      }
+      #performanceStats div {
+        display: flex;
+        visibility: visible !important;
+        position: relative !important;
+        opacity: 0.9 !important;
+        z-index: 10000 !important;
+      }
+      #mobileControls {
+        font-family: Monospace;
+        font-size: 13px;
+        pointer-events: auto;
+        --unit: 8px;
+        --glass-bg: rgba(0, 0, 0, 0.35);
+        --solid-border: rgba(255, 255, 255, 1);
+      }
+      #mobileControls #joystick-left,
+      #mobileControls #joystick-right {
+        width: calc(14 * var(--unit)) !important;
+        height: calc(14 * var(--unit)) !important;
+        position: fixed;
+        z-index: 1000;
+      }
+      #mobileControls #joystick-left {
+        bottom: calc(3 * var(--unit));
+        left: calc(0.5 * var(--unit));
+      }
+      #mobileControls #joystick-right {
+        bottom: calc(3 * var(--unit));
+        right: calc(0.5 * var(--unit));
+      }
+      #mobileControls #joystick-left #nipple_0_0 .back,
+      #mobileControls #joystick-right #nipple_1_1 .back {
+        width: calc(14 * var(--unit)) !important;
+        height: calc(14 * var(--unit)) !important;
+        margin-left: calc(-7 * var(--unit)) !important;
+        margin-top: calc(-7 * var(--unit)) !important;
+        background: var(--glass-bg) !important;
+        border: 1px solid var(--solid-border) !important;
+      }
+      #mobileControls #joystick-left #nipple_0_0 .front,
+      #mobileControls #joystick-right #nipple_1_1 .front {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        width: calc(5 * var(--unit)) !important;
+        height: calc(5 * var(--unit)) !important;
+        margin-left: calc(-2.5 * var(--unit)) !important;
+        margin-top: calc(-2.5 * var(--unit)) !important;
+        background: rgba(255, 255, 255, 1) !important;
+        text-align: center;
+        color: black;
+        font-size: calc(1.8 * var(--unit));
+        font-weight: 600;
+      }
+      #mobileControls #joystick-left #nipple_0_0 .front::before {
+        content: "FWD";
+      }
+      #mobileControls #joystick-right #nipple_1_1 .front::before {
+        content: "TURN";
+      }
+      /* Score popup animation */
+      .score-popup {
+        position: fixed;
+        pointer-events: none;
+        z-index: 1000;
+        color: #ffd700;
+        font: bold 28px monospace;
+        text-shadow: 0 0 10px rgba(255, 215, 0, 0.8),
+          2px 2px 4px rgba(0, 0, 0, 0.5);
+        animation: scoreFloat 1.2s ease-out forwards;
+      }
+      @keyframes scoreFloat {
+        0% {
+          opacity: 1;
+          transform: translate(-50%, 0) scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: translate(-50%, -80px) scale(1.5);
+        }
+      }
+      /* Splash screen */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #000
+          url("https://raw.githubusercontent.com/red-reddington/public-assets/main/hiss_highness_splash.PNG")
+          center/cover no-repeat;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #splash .click-prompt {
+        position: absolute;
+        bottom: 50%;
+        transform: translateY(50%);
+        color: #fff;
+        font: bold 24px monospace;
+        text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+        animation: loadingPulse 1s ease-in-out infinite;
+      }
+      @keyframes loadingPulse {
+        0%,
+        100% {
+          opacity: 0.4;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      #splash.hidden {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.5s ease-out;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="splash">
+      <div class="click-prompt">🍽️ Tap to Start 🍽️</div>
+    </div>
+    <div id="container"></div>
+    <div id="performanceStats"></div>
+    <div id="mobileControls"></div>
+    <div id="ui" class="collapsed">
+      <h1 id="uiHeader">🐍 Hiss Highness</h1>
+      <div id="facecam"></div>
+      <div class="score">🐭 <span id="scoreDisplay">0</span></div>
+      <div id="uiContent">
+        <div class="mice-count">Mice: <span id="miceCount">0</span></div>
+        <hr style="border-color: rgba(255, 255, 255, 0.2); margin: 5px 0" />
+        <div id="keyMappings">
+          <strong>WASD</strong>- Move | <strong>Q/E</strong>- Rotate<br />
+          <strong>Shift</strong>- Sprint | <strong>Z</strong>- Slow<br />
+          <strong>Mouse Wheel</strong>- Zoom
+        </div>
+        <div id="touchControls" style="display: none">
+          <strong>Left Stick</strong>- Move<br />
+          <strong>Right Stick</strong>- Turn<br />
+          <strong>Pinch</strong>- Zoom
+        </div>
+      </div>
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/",
+          "stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@3.8.0/+esm",
+          "nipplejs": "https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/+esm",
+          "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.3/+esm"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { createNoise2D } from "simplex-noise";
+      import GUI from "https://cdn.jsdelivr.net/npm/lil-gui@0.18.0/dist/lil-gui.esm.min.js";
+      import StatsGL from "stats-gl";
+      import nipplejs from "nipplejs";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+      import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+
+      // ==========================================================================
+      // CONFIG
+      // ==========================================================================
+      const CONFIG = {
+        STATS: true,
+
+        EXPOSURE: 1.0,
+        DEFAULT_ZOOM: 2.0,
+        DEFAULT_FOV: 90,
+        ZOOM_PER_SCROLL_TICK: 0.001,
+        MIN_ZOOM: 0.1,
+        MAX_ZOOM: 2.5,
+
+        ORBIT: false,
+
+        FACECAM_SHOW: true,
+        FACECAM_ZOOM: 1.2,
+        FACECAM_FOV: 60,
+        FACECAM_WIDTH: 150,
+        FACECAM_HEIGHT: 105,
+
+        TERRAIN: {
+          WIDTH: 500,
+          HEIGHT: 400,
+          MAX_HEIGHT: 15,
+          FREQUENCY: 150,
+          SAMPLE_RATE: 4,
+          OCTAVES: 3,
+          PERSISTENCE: 0.5,
+          LACUNARITY: 2.0,
+        },
+        TOUCH_WALK_THRESHOLD: 0.25,
+        TOUCH_SPRINT_THRESHOLD: 0.8,
+
+        // Mouse configuration
+        MOUSE: {
+          COUNT: 15,
+          SCALE: 0.3,
+          IDLE_SPEED: 0,
+          WANDER_SPEED: 2.5,
+          FLEE_SPEED: 8,
+          DETECTION_RANGE: 10, // How far mice can see the snake
+          DETECTION_RANGE_SQ: 100, // 10 * 10
+          DETECTION_FOV_COS: Math.cos(Math.PI * 0.3), // cos(0.6π / 2)
+          EAT_RADIUS_SQ: 0.64, // 0.8 * 0.8
+          EAT_RADIUS: 0.8, // How close snake needs to be to eat
+          WANDER_CHANGE_TIME: 2.0, // Seconds between direction changes
+          LOOK_AROUND_TIME: 3.0, // Seconds between look-arounds in idle
+          FLEE_DURATION: 3.0, // How long mice flee before calming
+          SPAWN_MARGIN: 50, // Distance from terrain edge for spawning
+        },
+      };
+      const FACE_ASPECT = CONFIG.FACECAM_HEIGHT / CONFIG.FACECAM_WIDTH;
+
+      // ==========================================================================
+      // GAME STATE
+      // ==========================================================================
+      let score = 0;
+      const scoreDisplay = document.getElementById("scoreDisplay");
+      const miceCountDisplay = document.getElementById("miceCount");
+
+      function updateScore(points) {
+        score += points;
+        scoreDisplay.textContent = score;
+      }
+
+      function updateMiceCount(count) {
+        miceCountDisplay.textContent = count;
+      }
+
+      function showScorePopup(screenX, screenY, points) {
+        const popup = document.createElement("div");
+        popup.className = "score-popup";
+        popup.textContent = `+${points}`;
+        popup.style.left = screenX + "px";
+        popup.style.top = screenY + "px";
+        document.body.appendChild(popup);
+        setTimeout(() => popup.remove(), 1200);
+      }
+
+      // ==========================================================================
+      // DOM
+      // ==========================================================================
+      const container = document.getElementById("container");
+      const uiEl = document.getElementById("ui");
+      const uiHeader = document.getElementById("uiHeader");
+      const facecam = document.getElementById("facecam");
+      const mobileControls = document.getElementById("mobileControls");
+      const keyMappings = document.getElementById("keyMappings");
+      const touchControls = document.getElementById("touchControls");
+      const statsContainer = document.getElementById("performanceStats");
+
+      document.documentElement.style.setProperty(
+        "--facecam-width",
+        CONFIG.FACECAM_WIDTH + "px"
+      );
+      document.documentElement.style.setProperty(
+        "--facecam-height",
+        CONFIG.FACECAM_HEIGHT + "px"
+      );
+
+      uiHeader.addEventListener("click", (e) => {
+        e.stopPropagation();
+        uiEl.classList.toggle("collapsed");
+      });
+      uiEl.addEventListener("mousedown", (e) => e.stopPropagation());
+
+      // ==========================================================================
+      // DEVICE
+      // ==========================================================================
+      const hasMouse = matchMedia("(pointer:fine)").matches;
+      const isTouchDevice =
+        "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      const isTouchOnly = isTouchDevice && !hasMouse;
+      let cameraMode = isTouchOnly ? "touch" : "thirdperson";
+
+      // ==========================================================================
+      // RENDERER
+      // ==========================================================================
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        precision: "highp",
+        powerPreference: "high-performance",
+      });
+      const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = CONFIG.EXPOSURE;
+      container.appendChild(renderer.domElement);
+
+      const faceCamRenderer = new THREE.WebGLRenderer({ antialias: true });
+      faceCamRenderer.setSize(CONFIG.FACECAM_WIDTH, CONFIG.FACECAM_HEIGHT);
+      faceCamRenderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+      faceCamRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      faceCamRenderer.shadowMap.enabled = true;
+      faceCamRenderer.shadowMap.type = THREE.PCFShadowMap;
+      faceCamRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      faceCamRenderer.toneMappingExposure = CONFIG.EXPOSURE;
+
+      // Stats
+      const statsGL = new StatsGL({ trackGPU: true, trackHz: true });
+      statsContainer.classList.add("gl");
+      statsContainer.appendChild(statsGL.dom);
+      statsGL.init(renderer);
+
+      // ==========================================================================
+      // SCENES & CAMERAS
+      // ==========================================================================
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
+      scene.fog = new THREE.Fog(0x87ceeb, 50, 200);
+
+      let mainZoom = CONFIG.DEFAULT_ZOOM;
+      const camera = new THREE.PerspectiveCamera(
+        CONFIG.DEFAULT_FOV,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      camera.zoom = mainZoom;
+      camera.updateProjectionMatrix();
+      camera.position.set(0, 20, 25);
+
+      let faceZoom = CONFIG.FACECAM_ZOOM;
+      const faceCamera = new THREE.PerspectiveCamera(
+        CONFIG.FACECAM_FOV,
+        CONFIG.FACECAM_WIDTH / CONFIG.FACECAM_HEIGHT,
+        0.1,
+        100
+      );
+      facecam.appendChild(faceCamRenderer.domElement);
+      faceCamera.zoom = faceZoom;
+      faceCamera.updateProjectionMatrix();
+
+      let controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
+      controls.maxDistance = 130;
+      controls.maxPolarAngle = Math.PI / 2;
+      controls.enabled = CONFIG.ORBIT;
+
+      // ==========================================================================
+      // LIGHTING
+      // ==========================================================================
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+      const SUN_DIR = new THREE.Vector3(0.5, 1.0, 1.0).normalize();
+      const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+      sun.position.copy(SUN_DIR).multiplyScalar(100);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(4096, 4096);
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = 300;
+      sun.shadow.camera.left = sun.shadow.camera.bottom = -50;
+      sun.shadow.camera.right = sun.shadow.camera.top = 50;
+      sun.shadow.normalBias = 0.005;
+      sun.shadow.bias = -0.0001;
+      scene.add(sun);
+      sun.target = new THREE.Object3D();
+      scene.add(sun.target);
+
+      // ==========================================================================
+      // POOLED VECTORS - Zero allocations in loops
+      // ==========================================================================
+      const _v1 = new THREE.Vector3();
+      const _v2 = new THREE.Vector3();
+      const _v3 = new THREE.Vector3();
+      const _v4 = new THREE.Vector3();
+      const _forward = new THREE.Vector3();
+      const _right = new THREE.Vector3();
+      const _tangent = new THREE.Vector3();
+      const _normal = new THREE.Vector3();
+      const _binormal = new THREE.Vector3();
+      const _vertex = new THREE.Vector3();
+      const _spinePos = new THREE.Vector3();
+      const _terrainNormal = new THREE.Vector3();
+      const _collisionPush = new THREE.Vector3();
+      const _toObs = new THREE.Vector3();
+      const _axisY = new THREE.Vector3(0, 1, 0);
+
+      // Mouse-specific pooled vectors
+      const _mouseToSnake = new THREE.Vector3();
+      const _mouseForward = new THREE.Vector3();
+      const _mouseFleeDir = new THREE.Vector3();
+      const _mouseWanderDir = new THREE.Vector3();
+
+      // Frustum culling
+      const _frustum = new THREE.Frustum();
+      const _frustum2 = new THREE.Frustum();
+      const _projScreenMatrix = new THREE.Matrix4();
+      const _projScreenMatrix2 = new THREE.Matrix4();
+
+      function updateSunShadow(target) {
+        sun.position.copy(SUN_DIR).multiplyScalar(200).add(target);
+        sun.target.position.copy(target);
+        sun.target.updateMatrixWorld();
+      }
+
+      // ==========================================================================
+      // INPUT
+      // ==========================================================================
+      const input = {
+        forward: false,
+        backward: false,
+        left: false,
+        right: false,
+        rotateLeft: false,
+        rotateRight: false,
+        sprint: false,
+        slow: false,
+      };
+
+      function resetAllInput() {
+        input.forward = false;
+        input.backward = false;
+        input.left = false;
+        input.right = false;
+        input.rotateLeft = false;
+        input.rotateRight = false;
+        input.sprint = false;
+        input.slow = false;
+        joystickMove.x = 0;
+        joystickMove.y = 0;
+        joystickLook.x = 0;
+        joystickLook.y = 0;
+      }
+
+      window.addEventListener("blur", resetAllInput);
+      window.addEventListener("visibilitychange", () => {
+        if (document.hidden) resetAllInput();
+      });
+      const joystickMove = { x: 0, y: 0 };
+      const joystickLook = { x: 0, y: 0 };
+      let leftJoystick = null;
+      let rightJoystick = null;
+
+      // Main camera pinch zoom
+      let isPinching = false,
+        pinchStart = null,
+        pinchZoom = null;
+
+      // Facecam pinch zoom
+      let facecamPinching = false,
+        facecamPinchStart = null,
+        facecamPinchZoom = null;
+
+      function initJoysticks() {
+        const lz = document.createElement("div");
+        lz.id = "joystick-left";
+        mobileControls.append(lz);
+        const rz = document.createElement("div");
+        rz.id = "joystick-right";
+        mobileControls.append(rz);
+        const unit = parseFloat(
+          getComputedStyle(mobileControls).getPropertyValue("--unit")
+        );
+
+        leftJoystick = nipplejs.create({
+          zone: lz,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          size: unit * 10,
+          lockY: true, // Lock to vertical axis only
+        });
+        leftJoystick.on("move", (e, d) => {
+          // Apply deadzone below walk threshold
+          if (d.force < CONFIG.TOUCH_WALK_THRESHOLD) {
+            joystickMove.y = 0;
+            input.sprint = false;
+            input.slow = true;
+          } else {
+            joystickMove.y = d.vector.y;
+            input.sprint = d.force > CONFIG.TOUCH_SPRINT_THRESHOLD;
+            input.slow = false;
+          }
+        });
+        leftJoystick.on("end", () => {
+          joystickMove.y = 0;
+          input.sprint = false;
+          input.slow = false;
+        });
+
+        // Right joystick (turning) - locked to X axis
+        rightJoystick = nipplejs.create({
+          zone: rz,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          size: unit * 10,
+          lockX: true, // Lock to horizontal axis only
+        });
+
+        rightJoystick.on("move", (e, d) => {
+          joystickLook.x = d.vector.x;
+        });
+
+        rightJoystick.on("end", () => {
+          joystickLook.x = 0;
+        });
+
+        container.addEventListener(
+          "touchstart",
+          (e) => {
+            if (e.touches.length === 2) {
+              isPinching = true;
+              pinchStart = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+              );
+              pinchZoom = mainZoom;
+            }
+          },
+          { passive: true }
+        );
+        container.addEventListener(
+          "touchmove",
+          (e) => {
+            if (isPinching && e.touches.length === 2) {
+              e.preventDefault();
+              const d = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+              );
+              mainZoom = THREE.MathUtils.clamp(
+                pinchZoom * (d / pinchStart),
+                CONFIG.MIN_ZOOM,
+                CONFIG.MAX_ZOOM
+              );
+              camera.zoom = mainZoom;
+              camera.updateProjectionMatrix();
+            }
+          },
+          { passive: false }
+        );
+        container.addEventListener(
+          "touchend",
+          (e) => {
+            if (e.touches.length < 2) isPinching = false;
+          },
+          { passive: true }
+        );
+
+        facecam.addEventListener(
+          "touchstart",
+          (e) => {
+            if (e.touches.length === 2) {
+              e.stopPropagation();
+              facecamPinching = true;
+              facecamPinchStart = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+              );
+              facecamPinchZoom = faceZoom;
+            }
+          },
+          { passive: true }
+        );
+
+        facecam.addEventListener(
+          "touchmove",
+          (e) => {
+            if (facecamPinching && e.touches.length === 2) {
+              e.preventDefault();
+              e.stopPropagation();
+              const d = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+              );
+              faceZoom = THREE.MathUtils.clamp(
+                facecamPinchZoom * (d / facecamPinchStart),
+                CONFIG.MIN_ZOOM,
+                CONFIG.MAX_ZOOM
+              );
+              faceCamera.zoom = faceZoom;
+              faceCamera.updateProjectionMatrix();
+            }
+          },
+          { passive: false }
+        );
+
+        facecam.addEventListener(
+          "touchend",
+          (e) => {
+            if (e.touches.length < 2) facecamPinching = false;
+          },
+          { passive: true }
+        );
+      }
+
+      function ensureMobileControls() {
+        if (cameraMode === "touch") {
+          keyMappings.style.display = "none";
+          touchControls.style.display = "block";
+          mobileControls.style.display = "block";
+          if (!leftJoystick) initJoysticks();
+        } else {
+          keyMappings.style.display = "block";
+          touchControls.style.display = "none";
+          mobileControls.style.display = "none";
+        }
+      }
+      ensureMobileControls();
+
+      window.addEventListener("keydown", (e) => {
+        const k = e.key.toLowerCase();
+        if (k === "w" || k === "arrowup") input.forward = true;
+        if (k === "s" || k === "arrowdown") input.backward = true;
+        if (k === "a" || k === "arrowleft") input.left = true;
+        if (k === "d" || k === "arrowright") input.right = true;
+        if (k === "q") input.rotateLeft = true;
+        if (k === "e") input.rotateRight = true;
+        if (k === "shift") input.sprint = true;
+        if (k === "z") input.slow = true;
+      });
+      window.addEventListener("keyup", (e) => {
+        const k = e.key.toLowerCase();
+        if (k === "w" || k === "arrowup") input.forward = false;
+        if (k === "s" || k === "arrowdown") input.backward = false;
+        if (k === "a" || k === "arrowleft") input.left = false;
+        if (k === "d" || k === "arrowright") input.right = false;
+        if (k === "q") input.rotateLeft = false;
+        if (k === "e") input.rotateRight = false;
+        if (k === "shift") input.sprint = false;
+        if (k === "z") input.slow = false;
+      });
+
+      // ==========================================================================
+      // GUI
+      // ==========================================================================
+      const gui = new GUI({ title: "Options" });
+      gui
+        .add(CONFIG, "STATS")
+        .name("Show Stats")
+        .onChange((v) => (statsContainer.style.display = v ? "flex" : "none"));
+      if (!isTouchOnly)
+        gui
+          .add({ touch: false }, "touch")
+          .name("Touch Controls")
+          .onChange((v) => {
+            cameraMode = v ? "touch" : "thirdperson";
+            ensureMobileControls();
+          });
+      gui
+        .add({ q: "high" }, "q", ["none", "low", "medium", "high"])
+        .name("Shadows")
+        .onChange((q) => {
+          if (q === "none") {
+            sun.castShadow = false;
+            renderer.shadowMap.enabled = false;
+            return;
+          }
+          renderer.shadowMap.enabled = true;
+          sun.castShadow = true;
+          const sz = q === "low" ? 1024 : q === "medium" ? 2048 : 4096;
+          if (sun.shadow.mapSize.width !== sz) {
+            sun.shadow.map?.dispose();
+            sun.shadow.map = null;
+            sun.shadow.mapSize.set(sz, sz);
+          }
+        });
+
+      const cameraFolder = gui.addFolder("Camera");
+      cameraFolder
+        .add(CONFIG, "ORBIT")
+        .name("Orbit Controls")
+        .onChange((v) => (controls.enabled = v));
+      cameraFolder
+        .add(CONFIG, "DEFAULT_FOV", 60, 120, 1)
+        .name("Main Cam FOV")
+        .onChange((value) => {
+          camera.fov = value;
+          camera.updateProjectionMatrix();
+        });
+
+      const snakeCamFolder = gui.addFolder("Snake Cam");
+      snakeCamFolder
+        .add(CONFIG, "FACECAM_SHOW")
+        .name("Snake Cam")
+        .onChange((v) => (facecam.style.display = v ? "block" : "none"));
+      snakeCamFolder
+        .add(CONFIG, "FACECAM_FOV", 50, 120, 1)
+        .name("FOV")
+        .onChange((value) => {
+          faceCamera.fov = value;
+          faceCamera.updateProjectionMatrix();
+        });
+      snakeCamFolder
+        .add(CONFIG, "FACECAM_WIDTH", 150, 350, 1)
+        .name("Size")
+        .onChange((value) => {
+          // Maintain original aspect ratio
+          const height = value * FACE_ASPECT;
+
+          // Update CSS
+          document.documentElement.style.setProperty(
+            "--facecam-width",
+            value + "px"
+          );
+          document.documentElement.style.setProperty(
+            "--facecam-height",
+            height + "px"
+          );
+
+          // Update camera aspect
+          faceCamera.aspect = value / height;
+          faceCamera.updateProjectionMatrix();
+
+          // Update renderer size
+          faceCamRenderer.setSize(value, height);
+        });
+      gui.close();
+      gui.domElement.addEventListener("mousedown", (e) => e.stopPropagation());
+
+      // ==========================================================================
+      // TERRAIN
+      // ==========================================================================
+      let terrainHeightMap, terrainNormalMap;
+      const tw = CONFIG.TERRAIN.WIDTH,
+        th = CONFIG.TERRAIN.HEIGHT;
+      const sampleRate = CONFIG.TERRAIN.SAMPLE_RATE;
+      const gridW = Math.ceil(tw / sampleRate) + 1,
+        gridH = Math.ceil(th / sampleRate) + 1;
+
+      function generateTerrain() {
+        const noise2D = createNoise2D();
+        const noiseGrid = new Float32Array(gridW * gridH);
+
+        const baseAmplitude = CONFIG.TERRAIN.MAX_HEIGHT;
+        const frequency = CONFIG.TERRAIN.FREQUENCY;
+        const octaves = CONFIG.TERRAIN.OCTAVES;
+        const persistence = CONFIG.TERRAIN.PERSISTENCE;
+        const lacunarity = CONFIG.TERRAIN.LACUNARITY;
+
+        // Generate noise at sample points
+        for (let gz = 0; gz < gridH; gz++) {
+          for (let gx = 0; gx < gridW; gx++) {
+            const worldX = gx * sampleRate;
+            const worldZ = gz * sampleRate;
+
+            let noiseVal = 0;
+            let amplitude = 1.0;
+            let maxAmplitude = 0;
+            let freq = frequency;
+
+            for (let octave = 0; octave < octaves; octave++) {
+              noiseVal += amplitude * noise2D(worldX / freq, worldZ / freq);
+              maxAmplitude += amplitude;
+              amplitude *= persistence;
+              freq /= lacunarity;
+            }
+
+            noiseVal /= maxAmplitude;
+            noiseGrid[gz * gridW + gx] = Number.isFinite(noiseVal)
+              ? noiseVal
+              : 0;
+          }
+        }
+
+        // Interpolate heightmap
+        terrainHeightMap = new Float32Array(tw * th);
+        for (let i = 0; i < tw * th; i++) {
+          const x = i % tw;
+          const z = Math.floor(i / tw);
+          const fx = x / sampleRate;
+          const fz = z / sampleRate;
+          const x0 = Math.floor(fx);
+          const z0 = Math.floor(fz);
+          const x1 = Math.min(x0 + 1, gridW - 1);
+          const z1 = Math.min(z0 + 1, gridH - 1);
+          const tx = fx - x0;
+          const tz = fz - z0;
+
+          const n00 = noiseGrid[z0 * gridW + x0];
+          const n10 = noiseGrid[z0 * gridW + x1];
+          const n01 = noiseGrid[z1 * gridW + x0];
+          const n11 = noiseGrid[z1 * gridW + x1];
+
+          const n0 = n00 * (1 - tx) + n10 * tx;
+          const n1 = n01 * (1 - tx) + n11 * tx;
+          const noiseValue = n0 * (1 - tz) + n1 * tz;
+
+          terrainHeightMap[i] = Math.max(0, noiseValue * baseAmplitude);
+        }
+
+        // Generate normal map
+        terrainNormalMap = new Float32Array(tw * th * 3);
+        for (let z = 0; z < th; z++) {
+          for (let x = 0; x < tw; x++) {
+            const i = z * tw + x;
+            const h0 = terrainHeightMap[i];
+            const hx = x < tw - 1 ? terrainHeightMap[i + 1] : h0;
+            const hz = z < th - 1 ? terrainHeightMap[i + tw] : h0;
+            const dx = hx - h0;
+            const dz = hz - h0;
+            const len = Math.sqrt(1 + dx * dx + dz * dz);
+            terrainNormalMap[i * 3] = -dx / len;
+            terrainNormalMap[i * 3 + 1] = 1 / len;
+            terrainNormalMap[i * 3 + 2] = -dz / len;
+          }
+        }
+      }
+      generateTerrain();
+
+      function getTerrainHeight(wx, wz) {
+        const ex = wx + tw / 2,
+          ez = wz + th / 2;
+        const x0 = Math.floor(ex),
+          z0 = Math.floor(ez);
+        if (x0 < 0 || x0 + 1 >= tw || z0 < 0 || z0 + 1 >= th) return 0;
+        const fx = ex - x0,
+          fz = ez - z0;
+        const i00 = z0 * tw + x0,
+          i10 = i00 + 1,
+          i01 = i00 + tw,
+          i11 = i01 + 1;
+        return (
+          (terrainHeightMap[i00] * (1 - fx) + terrainHeightMap[i10] * fx) *
+            (1 - fz) +
+          (terrainHeightMap[i01] * (1 - fx) + terrainHeightMap[i11] * fx) * fz
+        );
+      }
+
+      function getTerrainNormal(wx, wz, out) {
+        const ex = wx + tw / 2,
+          ez = wz + th / 2;
+        const x0 = Math.floor(ex),
+          z0 = Math.floor(ez);
+        if (x0 < 0 || x0 + 1 >= tw || z0 < 0 || z0 + 1 >= th)
+          return out.set(0, 1, 0);
+        const fx = ex - x0,
+          fz = ez - z0;
+        const i00 = (z0 * tw + x0) * 3,
+          i10 = i00 + 3,
+          i01 = i00 + tw * 3,
+          i11 = i01 + 3;
+        const nx =
+          terrainNormalMap[i00] * (1 - fx) * (1 - fz) +
+          terrainNormalMap[i10] * fx * (1 - fz) +
+          terrainNormalMap[i01] * (1 - fx) * fz +
+          terrainNormalMap[i11] * fx * fz;
+        const ny =
+          terrainNormalMap[i00 + 1] * (1 - fx) * (1 - fz) +
+          terrainNormalMap[i10 + 1] * fx * (1 - fz) +
+          terrainNormalMap[i01 + 1] * (1 - fx) * fz +
+          terrainNormalMap[i11 + 1] * fx * fz;
+        const nz =
+          terrainNormalMap[i00 + 2] * (1 - fx) * (1 - fz) +
+          terrainNormalMap[i10 + 2] * fx * (1 - fz) +
+          terrainNormalMap[i01 + 2] * (1 - fx) * fz +
+          terrainNormalMap[i11 + 2] * fx * fz;
+        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        return out.set(nx / len, ny / len, nz / len);
+      }
+
+      // Create ground mesh
+      const groundGeo = new THREE.BufferGeometry();
+      const gPos = new Float32Array(tw * th * 3);
+      let pi = 0;
+      for (let z = 0; z < th; z++)
+        for (let x = 0; x < tw; x++) {
+          gPos[pi++] = x - tw / 2;
+          gPos[pi++] = terrainHeightMap[z * tw + x];
+          gPos[pi++] = z - th / 2;
+        }
+      const gIdx = new Uint32Array((tw - 1) * (th - 1) * 6);
+      let ii = 0;
+      for (let z = 0; z < th - 1; z++)
+        for (let x = 0; x < tw - 1; x++) {
+          const i = z * tw + x;
+          gIdx[ii++] = i;
+          gIdx[ii++] = i + tw;
+          gIdx[ii++] = i + 1;
+          gIdx[ii++] = i + 1;
+          gIdx[ii++] = i + tw;
+          gIdx[ii++] = i + tw + 1;
+        }
+      groundGeo.setAttribute("position", new THREE.BufferAttribute(gPos, 3));
+      groundGeo.setIndex(new THREE.BufferAttribute(gIdx, 1));
+      groundGeo.computeVertexNormals();
+
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0x4a7c59,
+        roughness: 0.8,
+      });
+
+      groundMat.onBeforeCompile = (shader) => {
+        shader.uniforms.uTime = { value: 0 };
+
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <common>",
+          `#include <common>
+    varying vec2 vWorldPos;
+    varying float vSlope;`
+        );
+
+        shader.vertexShader = shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+    vWorldPos = (modelMatrix * vec4(position, 1.0)).xz;
+    vSlope = 1.0 - abs(normal.y);`
+        );
+
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <common>",
+          `#include <common>
+    varying vec2 vWorldPos;
+    varying float vSlope;
+    uniform float uTime;
+    
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+    
+    float noise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      float a = hash(i);
+      float b = hash(i + vec2(1.0, 0.0));
+      float c = hash(i + vec2(0.0, 1.0));
+      float d = hash(i + vec2(1.0, 1.0));
+      return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
+    
+    float fbm(vec2 p) {
+      float v = 0.0;
+      float a = 0.5;
+      vec2 shift = vec2(100.0);
+      for (int i = 0; i < 4; i++) {
+        v += a * noise(p);
+        p = p * 2.0 + shift;
+        a *= 0.5;
+      }
+      return v;
+    }`
+        );
+
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "vec4 diffuseColor = vec4( diffuse, opacity );",
+          `
+    // Layered grass variation
+    float n1 = fbm(vWorldPos * 0.15);
+    float n2 = fbm(vWorldPos * 0.4 + 50.0);
+    float detail = noise(vWorldPos * 1.5);
+    
+    // Gentle sway
+    float sway = sin(uTime * 0.8 + vWorldPos.x * 0.2 + n1 * 3.0) * 0.02;
+    
+    // Combine for final variation
+    float grass = n1 * 0.6 + n2 * 0.3 + detail * 0.1 + sway;
+    
+    // Slopes get more brown/dirt
+    float dirt = smoothstep(0.2, 0.5, vSlope);
+    
+    // Rich grass palette
+    vec3 grassBase = vec3(0.25, 0.38, 0.15);
+    vec3 grassLight = vec3(0.35, 0.50, 0.20);
+    vec3 grassYellow = vec3(0.40, 0.45, 0.18);
+    vec3 dirtColor = vec3(0.35, 0.28, 0.18);
+    
+    vec3 grassMix = mix(grassBase, grassLight, grass);
+    grassMix = mix(grassMix, grassYellow, n2 * 0.3);
+    grassMix = mix(grassMix, dirtColor, dirt);
+    
+    vec4 diffuseColor = vec4(grassMix, opacity);`
+        );
+
+        groundMat.userData.shader = shader;
+      };
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // ==========================================================================
+      // OBSTACLES
+      // ==========================================================================
+      const obsGeo = new THREE.DodecahedronGeometry(1, 0);
+      const obsMat = new THREE.MeshStandardMaterial({
+        color: 0x6b5d4f,
+        roughness: 0.9,
+        flatShading: true,
+      });
+      const obsCount = 50;
+      const obsData = []; // { x, z, r }
+
+      const obstacles = new THREE.InstancedMesh(obsGeo, obsMat, obsCount);
+      obstacles.castShadow = true;
+      obstacles.receiveShadow = true;
+
+      const _dm = new THREE.Object3D();
+      for (let i = 0; i < obsCount; i++) {
+        const x = (Math.random() - 0.5) * tw * 0.8;
+        const z = (Math.random() - 0.5) * th * 0.8;
+        const h = getTerrainHeight(x, z);
+        const s = 0.8 + Math.random() * 2.5;
+        _dm.position.set(x, h - s * 0.3, z);
+        _dm.rotation.set(
+          Math.random() * Math.PI,
+          Math.random() * Math.PI * 2,
+          Math.random() * Math.PI
+        );
+        _dm.scale.setScalar(s);
+        _dm.updateMatrix();
+        obstacles.setMatrixAt(i, _dm.matrix);
+        obsData.push({ x, z, r: s * 0.8 });
+      }
+      scene.add(obstacles);
+
+      // ==========================================================================
+      // SNAKE
+      // ==========================================================================
+      // Helper: create procedural snakeskin texture
+      function createSnakeskinTexture(size = 512) {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext("2d");
+
+        // Base colors
+        const base = "#4d3c2a"; // main back
+        const highlight = "#c9b59c"; // lighter scale edges
+        const belly = "#e0d6c2"; // belly
+
+        // Fill base
+        ctx.fillStyle = base;
+        ctx.fillRect(0, 0, size, size);
+
+        // Draw scales as small hexes / diamonds
+        const scaleSize = size / 32;
+        for (let y = 0; y < size; y += scaleSize) {
+          for (let x = 0; x < size; x += scaleSize) {
+            if (Math.random() > 0.5) continue; // add variation
+            const offset = (y / scaleSize) % 2 === 0 ? 0 : scaleSize / 2;
+            const xpos = x + offset;
+            ctx.beginPath();
+            ctx.moveTo(xpos, y);
+            ctx.lineTo(xpos + scaleSize / 2, y + scaleSize / 2);
+            ctx.lineTo(xpos, y + scaleSize);
+            ctx.lineTo(xpos - scaleSize / 2, y + scaleSize / 2);
+            ctx.closePath();
+            ctx.fillStyle = highlight;
+            ctx.fill();
+          }
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(4, 2); // stretch along body
+        texture.anisotropy = Math.min(4, maxAnisotropy);
+        return texture;
+      }
+
+      class Snake {
+        constructor() {
+          this.segCount = 30;
+          this.segLen = 0.35;
+          this.headRadius = 0.22;
+          this.tailTaper = 0.0; // closed at tail
+          this.tubeSegs = 80;
+          this.radialSegs = 12;
+
+          this.speed = 7.2; // units per second
+          this.yaw = 0;
+
+          this.time = 0;
+          this.slitherSpeed = 5;
+          this.slitherAmp = 5;
+          this.slitherWave = 1.75;
+          this.movingBackward = false;
+
+          // Current lerped values for smooth transitions
+          this.currentSpeed = this.speed;
+          this.currentAmp = this.slitherAmp;
+          this.currentWave = this.slitherWave;
+
+          // Radii
+          this.radii = new Float32Array(this.segCount);
+          for (let i = 0; i < this.segCount; i++) {
+            this.radii[i] = THREE.MathUtils.lerp(
+              this.headRadius,
+              this.headRadius * this.tailTaper,
+              i / (this.segCount - 1)
+            );
+          }
+
+          // Pooled position/normal arrays
+          this.pos = [];
+          this.nrm = [];
+          // FINAL positions after slither - these persist!
+          this.finalPos = [];
+          for (let i = 0; i < this.segCount; i++) {
+            this.pos.push(new THREE.Vector3());
+            this.nrm.push(new THREE.Vector3(0, 1, 0));
+            this.finalPos.push(new THREE.Vector3());
+          }
+
+          this.headPos = this.pos[0];
+
+          this.createMesh();
+          this.initOnTerrain();
+        }
+
+        updateBellyGroups(bellyFraction = 0.3, bellyColor = 0xe0d6c2) {
+          const colors = this._colors;
+          const rB = ((bellyColor >> 16) & 0xff) / 255;
+          const gB = ((bellyColor >> 8) & 0xff) / 255;
+          const bB = (bellyColor & 0xff) / 255;
+
+          // base color for top/back (green)
+          const rT = 0x22 / 255;
+          const gT = 0x8b / 255;
+          const bT = 0x22 / 255;
+
+          for (let i = 0; i <= this.tubeSegs; i++) {
+            for (let j = 0; j <= this.radialSegs; j++) {
+              const vi = (i * (this.radialSegs + 1) + j) * 3;
+
+              // map _bellyWeights to 0..1 using bellyFraction
+              let w =
+                (this._bellyWeights[j] - (1 - bellyFraction)) / bellyFraction;
+              w = THREE.MathUtils.clamp(w, 0, 1);
+
+              // blend top/back (green) with belly
+              colors[vi] = rT * (1 - w) + rB * w;
+              colors[vi + 1] = gT * (1 - w) + gB * w;
+              colors[vi + 2] = bT * (1 - w) + bB * w;
+            }
+          }
+
+          this.geo.attributes.color.needsUpdate = true;
+        }
+
+        createMesh() {
+          const vCount = (this.tubeSegs + 1) * (this.radialSegs + 1);
+          const positions = new Float32Array(vCount * 3);
+          const normals = new Float32Array(vCount * 3);
+          const uvs = new Float32Array(vCount * 2);
+
+          const idxCount = this.tubeSegs * this.radialSegs * 6;
+          const indices = new Uint32Array(idxCount);
+
+          // Indices
+          let idx = 0;
+          for (let i = 0; i < this.tubeSegs; i++) {
+            for (let j = 0; j < this.radialSegs; j++) {
+              const a = i * (this.radialSegs + 1) + j;
+              const b = a + this.radialSegs + 1;
+              indices[idx++] = a;
+              indices[idx++] = b;
+              indices[idx++] = a + 1;
+              indices[idx++] = b;
+              indices[idx++] = b + 1;
+              indices[idx++] = a + 1;
+            }
+          }
+
+          // UVs
+          for (let i = 0; i <= this.tubeSegs; i++) {
+            for (let j = 0; j <= this.radialSegs; j++) {
+              const vi = i * (this.radialSegs + 1) + j;
+              uvs[vi * 2] = i / this.tubeSegs;
+              uvs[vi * 2 + 1] = j / this.radialSegs;
+            }
+          }
+
+          this.geo = new THREE.BufferGeometry();
+          this.geo.setAttribute(
+            "position",
+            new THREE.BufferAttribute(positions, 3)
+          );
+          this.geo.setAttribute(
+            "normal",
+            new THREE.BufferAttribute(normals, 3)
+          );
+          this.geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+          this.geo.setIndex(new THREE.BufferAttribute(indices, 1));
+
+          // --- textures ---
+          const snakeTexture = createSnakeskinTexture(512);
+          snakeTexture.wrapS = snakeTexture.wrapT = THREE.RepeatWrapping;
+          snakeTexture.repeat.set(4, 2);
+          snakeTexture.anisotropy = Math.min(4, maxAnisotropy);
+
+          const bumpTexture = snakeTexture.clone();
+          bumpTexture.needsUpdate = true;
+          const normalTexture = new THREE.CanvasTexture(snakeTexture.image);
+          normalTexture.wrapS = normalTexture.wrapT = THREE.RepeatWrapping;
+          normalTexture.repeat.set(4, 2);
+          normalTexture.anisotropy = Math.min(4, maxAnisotropy);
+
+          // Precompute per-radial vertex belly weights (0 = top, 1 = bottom)
+          this._bellyWeights = new Float32Array(this.radialSegs + 1);
+          for (let j = 0; j <= this.radialSegs; j++) {
+            const theta = (j / this.radialSegs) * Math.PI * 2;
+            const localY = Math.cos(theta); // 1 = top, -1 = bottom
+            this._bellyWeights[j] = (1 - localY) / 2; // 0 = top, 1 = bottom
+          }
+
+          // Create a vertex color attribute
+          const colors = new Float32Array(
+            (this.tubeSegs + 1) * (this.radialSegs + 1) * 3
+          );
+          this.geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+          this._colors = colors;
+
+          // Single material with vertex colors
+          const mat = new THREE.MeshStandardMaterial({
+            map: snakeTexture,
+            bumpMap: bumpTexture,
+            bumpScale: 0.02,
+            normalMap: normalTexture,
+            normalScale: new THREE.Vector2(0.05, 0.05),
+            color: 0xffffff,
+            roughness: 0.5,
+            metalness: 0.1,
+            vertexColors: true,
+            side: THREE.DoubleSide,
+          });
+          this.mesh = new THREE.Mesh(this.geo, mat);
+          this.mesh.castShadow = true;
+          this.mesh.receiveShadow = true;
+          this.mesh.frustumCulled = false;
+          scene.add(this.mesh);
+        }
+
+        initOnTerrain() {
+          // Find a spawn position that doesn't overlap rocks
+          let spawnX = 0,
+            spawnZ = 0;
+          let attempts = 0;
+          const maxAttempts = 50;
+          const snakeLength = this.segCount * this.segLen;
+
+          while (attempts < maxAttempts) {
+            let valid = true;
+            // Check all segment positions along the spawn line
+            for (let i = 0; i < this.segCount && valid; i++) {
+              const testZ = spawnZ + i * this.segLen;
+              for (const obs of obsData) {
+                const dx = spawnX - obs.x;
+                const dz = testZ - obs.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < obs.r + this.headRadius + 0.5) {
+                  valid = false;
+                  break;
+                }
+              }
+            }
+            if (valid) break;
+            // Try a new random position
+            spawnX = (Math.random() - 0.5) * 50;
+            spawnZ = (Math.random() - 0.5) * 50;
+            attempts++;
+          }
+
+          for (let i = 0; i < this.segCount; i++) {
+            const z = spawnZ + i * this.segLen;
+            const h = getTerrainHeight(spawnX, z);
+            this.pos[i].set(spawnX, h + this.radii[i], z);
+            this.finalPos[i].copy(this.pos[i]);
+            getTerrainNormal(spawnX, z, this.nrm[i]);
+          }
+        }
+
+        checkCollision(px, pz, r) {
+          _collisionPush.set(0, 0, 0);
+          for (let i = 0; i < obsData.length; i++) {
+            const o = obsData[i];
+            const dx = px - o.x,
+              dz = pz - o.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            const minD = r + o.r;
+            if (dist < minD && dist > 0.001) {
+              const pen = minD - dist;
+              _collisionPush.x += (dx / dist) * pen;
+              _collisionPush.z += (dz / dist) * pen;
+            }
+          }
+          return _collisionPush;
+        }
+
+        update(dt) {
+          const moving =
+            input.forward ||
+            input.backward ||
+            input.left ||
+            input.right ||
+            input.rotateLeft ||
+            input.rotateRight ||
+            Math.abs(joystickMove.x) > 0.01 ||
+            Math.abs(joystickMove.y) > 0.01 ||
+            Math.abs(joystickLook.x) > 0.01;
+
+          // Always advance time for smooth animation
+          this.time += dt;
+
+          // Calculate target values
+          let targetSpd = this.speed;
+          let targetAmp = this.slitherAmp;
+          let targetWave = this.slitherWave;
+
+          if (input.sprint) {
+            targetSpd *= 2;
+            targetAmp *= 1.5;
+            targetWave *= 1.2;
+          }
+          if (input.slow) {
+            targetSpd *= 0.5;
+            targetAmp *= 0.8;
+            targetWave *= 0.7;
+          }
+
+          // Lerp toward targets for smooth transitions
+          const lerpFactor = 1 - Math.pow(0.05, dt); // ~5% per frame at 60fps
+          this.currentSpeed = THREE.MathUtils.lerp(
+            this.currentSpeed,
+            targetSpd,
+            lerpFactor
+          );
+          this.currentAmp = THREE.MathUtils.lerp(
+            this.currentAmp,
+            targetAmp,
+            lerpFactor
+          );
+          this.currentWave = THREE.MathUtils.lerp(
+            this.currentWave,
+            targetWave,
+            lerpFactor
+          );
+
+          const spd = this.currentSpeed;
+          const amp = this.currentAmp;
+          const wave = this.currentWave;
+
+          // Rotation (disabled during backward movement)
+          const isJoystickBackward = joystickMove.y < -0.3;
+          if (!this.movingBackward && !isJoystickBackward) {
+            if (input.rotateLeft) this.yaw += 2.5 * dt;
+            if (input.rotateRight) this.yaw -= 2.5 * dt;
+            this.yaw -= joystickLook.x * 3 * dt;
+          }
+
+          const sinY = Math.sin(this.yaw),
+            cosY = Math.cos(this.yaw);
+          _forward.set(-sinY, 0, -cosY);
+          _right.set(-cosY, 0, sinY);
+
+          // Movement
+          _v1.set(0, 0, 0);
+
+          let forwardMove = 0;
+          if (input.forward) forwardMove += spd;
+
+          // Track backward state (keyboard or joystick)
+          this.movingBackward =
+            (input.backward || joystickMove.y < -0.3) &&
+            !input.forward &&
+            joystickMove.y <= 0;
+
+          // pivot move for rotation
+          if (
+            forwardMove === 0 &&
+            !this.movingBackward &&
+            (input.rotateLeft ||
+              input.rotateRight ||
+              Math.abs(joystickLook.x) > 0.1)
+          ) {
+            forwardMove = spd * 0.85;
+          }
+
+          // pivot move for strafing (smaller than rotation)
+          if (
+            forwardMove === 0 &&
+            !this.movingBackward &&
+            (input.left || input.right)
+          ) {
+            forwardMove = spd * 0.7; // forwardMove will be scaled by dt when we multiply _v1 at the end
+            // Add slight rotation toward strafe direction
+            if (input.left) this.yaw += 0.8 * dt;
+            if (input.right) this.yaw -= 0.8 * dt;
+          }
+
+          _v1.addScaledVector(_forward, forwardMove);
+
+          if (!this.movingBackward) {
+            if (input.left) _v1.addScaledVector(_right, spd * 0.15); // _v1 will be multiplied by dt at the end.
+            if (input.right) _v1.addScaledVector(_right, -spd * 0.15); // _v1 will be multiplied by dt at the end.
+          }
+          // Joystick - left stick is forward/back only, right stick is turning only
+          if (Math.abs(joystickMove.y) > 0.1) {
+            _v1.addScaledVector(_forward, joystickMove.y * spd);
+          }
+
+          // === TAIL-LEAD BACKWARD MOVEMENT ===
+          if (this.movingBackward) {
+            const tailIdx = this.segCount - 1;
+            const tail = this.pos[tailIdx];
+            const secondLast = this.pos[tailIdx - 1];
+
+            // Simply continue in the direction the tail is already pointing
+            const tailDir = _v4.subVectors(tail, secondLast).normalize();
+
+            // Move the tail
+            tail.addScaledVector(tailDir, spd * dt * 0.6);
+
+            // Collision for tail
+            const tailRadius = this.radii[tailIdx] + 0.05;
+            const tailPen = this.checkCollision(tail.x, tail.z, tailRadius);
+            tail.x += tailPen.x;
+            tail.z += tailPen.z;
+
+            // Clamp tail to terrain bounds
+            const halfW = tw / 2 - 2;
+            const halfH = th / 2 - 2;
+            tail.x = Math.max(-halfW, Math.min(halfW, tail.x));
+            tail.z = Math.max(-halfH, Math.min(halfH, tail.z));
+
+            // Terrain for tail
+            const tailH = getTerrainHeight(tail.x, tail.z);
+            const tailTgtY = tailH + this.radii[tailIdx];
+            tail.y = THREE.MathUtils.lerp(tail.y, tailTgtY, 0.25);
+            getTerrainNormal(tail.x, tail.z, this.nrm[tailIdx]);
+
+            // Body follows from tail to head (reverse chain)
+            for (let i = tailIdx - 1; i >= 0; i--) {
+              const next = this.pos[i + 1];
+              const curr = this.pos[i];
+
+              _v3.subVectors(curr, next);
+              const d = _v3.length();
+              if (d > 0.0001) {
+                _v3.multiplyScalar(this.segLen / d);
+                curr.copy(next).add(_v3);
+              }
+
+              // Obstacle collision
+              const safeRadius = this.radii[i] + 0.05;
+              for (let k = 0; k < 2; k++) {
+                const pen = this.checkCollision(curr.x, curr.z, safeRadius);
+                curr.x += pen.x;
+                curr.z += pen.z;
+              }
+
+              // Y adjustment
+              const h = getTerrainHeight(curr.x, curr.z);
+              const tgtY = h + this.radii[i];
+              curr.y = Math.max(curr.y, tgtY);
+              curr.y = THREE.MathUtils.lerp(curr.y, tgtY, 0.2);
+
+              getTerrainNormal(curr.x, curr.z, this.nrm[i]);
+            }
+          } else {
+            // === NORMAL FORWARD MOVEMENT ===
+
+            // New head pos
+            _v1.multiplyScalar(dt);
+            _v2.copy(this.headPos).add(_v1);
+
+            // Collision
+            _v3.copy(this.checkCollision(_v2.x, _v2.z, this.headRadius));
+            _v2.x += _v3.x;
+            _v2.z += _v3.z;
+
+            // Clamp to terrain bounds
+            const halfW = tw / 2 - 2;
+            const halfH = th / 2 - 2;
+            _v2.x = Math.max(-halfW, Math.min(halfW, _v2.x));
+            _v2.z = Math.max(-halfH, Math.min(halfH, _v2.z));
+
+            // Terrain
+            const hH = getTerrainHeight(_v2.x, _v2.z);
+            const wantY = hH + this.headRadius;
+            // Instant Y positioning - no lerp
+            _v2.y = wantY;
+
+            this.headPos.copy(_v2);
+            getTerrainNormal(_v2.x, _v2.z, this.nrm[0]);
+
+            // Body follows (chain) - head to tail
+            for (let i = 1; i < this.segCount; i++) {
+              const prev = this.pos[i - 1],
+                curr = this.pos[i];
+
+              _v3.subVectors(curr, prev);
+              const d = _v3.length();
+              if (d > 0.0001) {
+                _v3.multiplyScalar(this.segLen / d);
+                curr.copy(prev).add(_v3);
+              }
+
+              const safeRadius = this.radii[i] + 0.05;
+              for (let k = 0; k < 2; k++) {
+                const pen = this.checkCollision(curr.x, curr.z, safeRadius);
+                curr.x += pen.x;
+                curr.z += pen.z;
+              }
+
+              const h = getTerrainHeight(curr.x, curr.z);
+              const tgtY = h + this.radii[i];
+              curr.y = Math.max(curr.y, tgtY);
+              curr.y = tgtY;
+
+              getTerrainNormal(curr.x, curr.z, this.nrm[i]);
+            }
+          }
+
+          // === SLITHER ===
+          for (let i = 0; i < this.segCount; i++) {
+            const base = this.pos[i];
+
+            // Head segments (first 3) are always stiff for pivoting, regardless of direction
+            const stiffSegments = i <= 2;
+
+            if (stiffSegments) {
+              // Stiff segments follow base position
+              this.finalPos[i].lerp(base, moving ? 1.0 : 0.05);
+            } else if (moving) {
+              // Apply slither wave only when moving
+              const t = i / this.segCount;
+              const phase =
+                this.time * this.slitherSpeed - t * wave * Math.PI * 2;
+              const envelope = Math.sin(t * Math.PI); // Max in middle, zero at ends
+
+              const offset = Math.sin(phase) * amp * this.segLen * envelope;
+
+              // Tangent from adjacent segments (safe for both directions)
+              const prevIdx = Math.max(0, i - 1);
+              const nextIdx = Math.min(this.segCount - 1, i + 1);
+              _tangent
+                .subVectors(this.pos[prevIdx], this.pos[nextIdx])
+                .normalize();
+              // Binormal = tangent x normal
+              _binormal.crossVectors(_tangent, this.nrm[i]).normalize();
+
+              // Apply offset to final position
+              this.finalPos[i].copy(base).addScaledVector(_binormal, offset);
+
+              // --- Clamp slithered position to avoid rocks ---
+              const safeRadius = this.radii[i] + 0.05;
+              for (let k = 0; k < 2; k++) {
+                const pen = this.checkCollision(
+                  this.finalPos[i].x,
+                  this.finalPos[i].z,
+                  safeRadius
+                );
+                this.finalPos[i].x += pen.x;
+                this.finalPos[i].z += pen.z;
+              }
+            }
+            // Else: !moving && i > 2 â†’ do nothing, keep finalPos frozen
+          }
+
+          this.updateGeometry();
+          this.updateBellyGroups(0.6);
+        }
+
+        updateGeometry(bellyFraction = 0.3) {
+          const posArr = this.geo.attributes.position.array;
+          const colorArr = this._colors;
+
+          for (let i = 0; i <= this.tubeSegs; i++) {
+            const t = i / this.tubeSegs;
+            const segF = t * (this.segCount - 1);
+            const s0 = Math.min(Math.floor(segF), this.segCount - 2);
+            const s1 = s0 + 1;
+            const alpha = segF - s0;
+
+            // Interpolate final positions (with slither baked in)
+            _spinePos.lerpVectors(this.finalPos[s0], this.finalPos[s1], alpha);
+
+            // Interpolate normal
+            _terrainNormal
+              .lerpVectors(this.nrm[s0], this.nrm[s1], alpha)
+              .normalize();
+
+            // Tangent along spine
+            _tangent.subVectors(this.finalPos[s1], this.finalPos[s0]);
+            if (_tangent.lengthSq() < 0.0001) _tangent.set(0, 0, 1);
+            _tangent.normalize();
+
+            // === KEY FIX: Proper basis for full cylinder ===
+            // We want the tube to wrap around the spine correctly
+            // binormal = tangent Ã— terrainNormal (sideways)
+            // normal = binormal Ã— tangent (up relative to spine)
+
+            _binormal.crossVectors(_tangent, _terrainNormal);
+            if (_binormal.lengthSq() < 0.0001) {
+              // Fallback if tangent parallel to terrain normal
+              _v4.set(1, 0, 0);
+              if (Math.abs(_tangent.dot(_v4)) > 0.9) _v4.set(0, 0, 1);
+              _binormal.crossVectors(_tangent, _v4);
+            }
+            _binormal.normalize();
+
+            _normal.crossVectors(_binormal, _tangent).normalize();
+
+            // Radius
+            const r = THREE.MathUtils.lerp(
+              this.headRadius,
+              this.headRadius * this.tailTaper,
+              t
+            );
+
+            // Ring vertices
+            for (let j = 0; j <= this.radialSegs; j++) {
+              const theta = (j / this.radialSegs) * Math.PI * 2;
+              const ct = Math.cos(theta),
+                st = Math.sin(theta);
+
+              // vertex = spine + cos*normal + sin*binormal
+              _vertex
+                .copy(_spinePos)
+                .addScaledVector(_normal, ct * r)
+                .addScaledVector(_binormal, st * r);
+
+              const vi = (i * (this.radialSegs + 1) + j) * 3;
+              posArr[vi] = _vertex.x;
+              posArr[vi + 1] = _vertex.y;
+              posArr[vi + 2] = _vertex.z;
+            }
+          }
+
+          this.geo.attributes.position.needsUpdate = true;
+          this.geo.computeVertexNormals();
+
+          // Update colors for belly fraction
+          this.updateBellyGroups(bellyFraction);
+        }
+      }
+
+      const snake = new Snake();
+
+      // ==========================================================================
+      // PROCEDURAL SNAKE HEAD
+      // ==========================================================================
+      class SnakeHead {
+        constructor() {
+          this.group = new THREE.Group();
+          this.jawOpen = 0; // 0 = closed, 1 = fully open
+          this.tongueOut = 0; // 0 = retracted, 1 = fully out
+          this.tongueFlick = 0;
+          this.blinkLeft = 0;
+          this.blinkRight = 0;
+
+          // Animation state
+          this.tongueTimer = 0;
+          this.tongueState = "idle"; // 'idle', 'out', 'flick', 'in'
+          this.blinkTimer = Math.random() * 3;
+
+          // Pupil look direction
+          this.lookTimer = 0;
+          this.lookTargetX = 0;
+          this.lookTargetY = 0;
+          this.lookCurrentX = 0;
+          this.lookCurrentY = 0;
+
+          // LOCAL COORDINATE SYSTEM:
+          // +Z = forward (snout direction)
+          // +Y = up
+          // +X = right side of snake
+
+          this.createHead();
+          this.createEyes();
+          this.createJaw();
+          this.createTongue();
+
+          scene.add(this.group);
+        }
+
+        createHead() {
+          // Create snakeskin texture (same as body)
+          const snakeTexture = createSnakeskinTexture(512);
+          snakeTexture.wrapS = snakeTexture.wrapT = THREE.RepeatWrapping;
+          snakeTexture.repeat.set(2, 1.5);
+          snakeTexture.anisotropy = Math.min(4, maxAnisotropy);
+
+          const bumpTexture = snakeTexture.clone();
+          bumpTexture.needsUpdate = true;
+
+          // Create two materials - back (green) and belly (light)
+          this.skinMatBack = new THREE.MeshStandardMaterial({
+            map: snakeTexture,
+            bumpMap: bumpTexture,
+            bumpScale: 0.015,
+            color: 0x228b22,
+            roughness: 0.5,
+            metalness: 0.1,
+          });
+
+          this.skinMatBelly = new THREE.MeshStandardMaterial({
+            map: snakeTexture.clone(),
+            bumpMap: bumpTexture,
+            bumpScale: 0.01,
+            color: 0xe0d6c2,
+            roughness: 0.6,
+            metalness: 0.05,
+          });
+
+          // For parts that need single material, use back
+          this.skinMat = this.skinMatBack;
+
+          // Main skull - flattened ellipsoid pointing +Z
+          const skullGeo = new THREE.SphereGeometry(1, 32, 24);
+          const positions = skullGeo.attributes.position;
+
+          for (let i = 0; i < positions.count; i++) {
+            let x = positions.getX(i);
+            let y = positions.getY(i);
+            let z = positions.getZ(i);
+
+            // Base scale: width, height, length
+            let sx = x * 0.4;
+            let sy = y * 0.32;
+            let sz = z * 0.7;
+
+            // Taper toward snout (+Z is front)
+            if (z > 0) {
+              const taper = 1 - Math.pow(z, 1.3) * 0.3;
+              sx *= taper;
+              sy *= taper * 0.6;
+              sz *= 1.3; // longer snout
+            }
+
+            // Flatten bottom for jaw area
+            if (y < 0) {
+              sy *= 0.7;
+            }
+
+            // Round the top instead of flat - use smooth power curve
+            if (y > 0) {
+              // Compress Y more at the very top to round it off
+              const yNorm = y; // y goes 0 to 1 on top half
+              sy *= 0.85 + 0.15 * (1 - yNorm * yNorm); // reduces height at top
+            }
+
+            // Slight bulge for eye sockets
+            if (
+              Math.abs(x) > 0.3 &&
+              Math.abs(x) < 0.6 &&
+              y > 0 &&
+              z > 0.1 &&
+              z < 0.5
+            ) {
+              const bulge = 0.03;
+              sx += Math.sign(x) * bulge;
+              sy += bulge * 0.5;
+            }
+
+            positions.setXYZ(i, sx, sy, sz);
+          }
+
+          skullGeo.computeVertexNormals();
+
+          // Add vertex colors for belly blend
+          const colors = new Float32Array(positions.count * 3);
+          const backColor = { r: 0x22 / 255, g: 0x8b / 255, b: 0x22 / 255 };
+          const bellyColor = { r: 0xe0 / 255, g: 0xd6 / 255, b: 0xc2 / 255 };
+
+          for (let i = 0; i < positions.count; i++) {
+            const y = positions.getY(i);
+            // Blend based on Y position - bottom is belly
+            const bellyWeight = Math.max(0, Math.min(1, (-y + 0.1) * 3));
+
+            colors[i * 3] =
+              backColor.r * (1 - bellyWeight) + bellyColor.r * bellyWeight;
+            colors[i * 3 + 1] =
+              backColor.g * (1 - bellyWeight) + bellyColor.g * bellyWeight;
+            colors[i * 3 + 2] =
+              backColor.b * (1 - bellyWeight) + bellyColor.b * bellyWeight;
+          }
+
+          skullGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+          // Material with vertex colors
+          const skullMat = new THREE.MeshStandardMaterial({
+            map: snakeTexture,
+            bumpMap: bumpTexture,
+            bumpScale: 0.015,
+            vertexColors: true,
+            roughness: 0.5,
+            metalness: 0.1,
+          });
+
+          this.skull = new THREE.Mesh(skullGeo, skullMat);
+          this.skull.castShadow = true;
+          this.skull.receiveShadow = true;
+          this.group.add(this.skull);
+
+          // Nostrils - simple small oval indentations
+          const nostrilGeo = new THREE.SphereGeometry(0.018, 12, 8);
+          const nostrilMat = new THREE.MeshStandardMaterial({
+            color: 0x000000,
+          });
+          const nostrilL = new THREE.Mesh(nostrilGeo, nostrilMat);
+          nostrilL.position.set(-0.08, 0.04, 0.808);
+          nostrilL.rotation.set(-2.48, -0.65, -0.5); // tilt downward & slightly sideways
+          this.group.add(nostrilL);
+
+          const nostrilR = nostrilL.clone();
+          nostrilR.position.x = 0.08;
+          nostrilR.rotation.y = 0.65;
+          nostrilR.rotation.z = 0.5;
+          this.group.add(nostrilR);
+        }
+
+        createEyes() {
+          const eyeGroup = () => {
+            const group = new THREE.Group();
+
+            // Eyeball - glossy
+            const eyeGeo = new THREE.SphereGeometry(0.07, 20, 16);
+            const eyeMat = new THREE.MeshStandardMaterial({
+              color: 0xddaa00,
+              roughness: 0.1,
+              metalness: 0.1,
+            });
+            const eyeball = new THREE.Mesh(eyeGeo, eyeMat);
+            group.add(eyeball);
+            group.userData.eyeball = eyeball;
+
+            // Pupil - vertical slit curved along eye surface
+            const eyeRadius = 0.07;
+            const pupilHeight = 0.08;
+            const pupilWidth = 0.025;
+            const pupilSegsV = 12;
+            const pupilSegsH = 5;
+
+            const pupilGeo = new THREE.BufferGeometry();
+            const pupilVerts = [];
+            const pupilIndices = [];
+
+            // Create curved slit shape on sphere surface
+            for (let v = 0; v <= pupilSegsV; v++) {
+              const vt = v / pupilSegsV;
+              const y = (vt - 0.5) * pupilHeight;
+
+              // Slit width varies - widest in middle, pointed at ends
+              const widthAtY = pupilWidth * Math.sin(vt * Math.PI);
+
+              for (let h = 0; h <= pupilSegsH; h++) {
+                const ht = h / pupilSegsH;
+                const x = (ht - 0.5) * widthAtY;
+
+                // Project onto sphere surface
+                const z = Math.sqrt(
+                  Math.max(0, eyeRadius * eyeRadius - x * x - y * y)
+                );
+
+                pupilVerts.push(x, y, z + 0.003); // slight offset to prevent z-fighting
+              }
+            }
+
+            // Create faces
+            for (let v = 0; v < pupilSegsV; v++) {
+              for (let h = 0; h < pupilSegsH; h++) {
+                const a = v * (pupilSegsH + 1) + h;
+                const b = a + 1;
+                const c = a + pupilSegsH + 1;
+                const d = c + 1;
+
+                pupilIndices.push(a, c, b);
+                pupilIndices.push(b, c, d);
+              }
+            }
+
+            pupilGeo.setAttribute(
+              "position",
+              new THREE.Float32BufferAttribute(pupilVerts, 3)
+            );
+            pupilGeo.setIndex(pupilIndices);
+            pupilGeo.computeVertexNormals();
+
+            const pupilMat = new THREE.MeshBasicMaterial({
+              color: 0x000000,
+              side: THREE.DoubleSide,
+            });
+            const pupil = new THREE.Mesh(pupilGeo, pupilMat);
+            group.add(pupil);
+            group.userData.pupil = pupil;
+
+            // Eyelid - rotates around eye axis to close
+            // Create a half-sphere that hugs the back of the eye
+            const lidGeo = new THREE.SphereGeometry(
+              0.088, // slightly larger than eye
+              16,
+              12,
+              0,
+              Math.PI * 2,
+              0,
+              Math.PI * 0.5 // hemisphere
+            );
+            const lidMat = new THREE.MeshStandardMaterial({
+              color: 0x4a6b35,
+              roughness: 0.7,
+              side: THREE.DoubleSide,
+              depthWrite: true,
+            });
+            const lid = new THREE.Mesh(lidGeo, lidMat);
+            // Position lid at eye center, rotated so it starts behind/above the eye
+            lid.position.set(0, 0, 0); // centered on eye
+            lid.rotation.x = -Math.PI * 0.5; // start position: lid is "open" (rotated up/back)
+            group.add(lid);
+            group.userData.lid = lid;
+            group.userData.lidOpenRotation = -Math.PI * 0.5; // open position
+            group.userData.lidClosedRotation = Math.PI * 0.15; // closed position (rotated forward over eye)
+
+            return group;
+          };
+
+          this.eyeLeft = eyeGroup();
+          this.eyeLeft.position.set(-0.28, 0.12, 0.18);
+          this.eyeLeft.rotation.y = -0.7;
+          this.group.add(this.eyeLeft);
+
+          this.eyeRight = eyeGroup();
+          this.eyeRight.position.set(0.28, 0.12, 0.18);
+          this.eyeRight.rotation.y = 0.7;
+          this.group.add(this.eyeRight);
+        }
+
+        createJaw() {
+          // Lower jaw - hinges at BACK, opens at front
+          // Pivot point is at -Z (back of jaw, near neck)
+
+          this.jawPivot = new THREE.Group();
+          this.jawPivot.position.set(0, -0.15, -0.2); // hinge at back of head
+          this.group.add(this.jawPivot);
+
+          const jawGeo = new THREE.SphereGeometry(1, 20, 12);
+          const jawPos = jawGeo.attributes.position;
+
+          for (let i = 0; i < jawPos.count; i++) {
+            let x = jawPos.getX(i);
+            let y = jawPos.getY(i);
+            let z = jawPos.getZ(i);
+
+            // Only bottom half
+            if (y > 0.05) y = 0.05;
+
+            x *= 0.3;
+            z *= 0.6;
+
+            // Taper toward front (+Z) - thinner at snout
+            if (z > 0) {
+              const taper = 1 - Math.pow(z, 1.1) * 0.35;
+              x *= taper;
+              // Y gets thinner at front, thicker at back
+              y *= 0.095 + (1 - z) * 0.08;
+            } else {
+              // Back of jaw - taller/thicker
+              y *= 0.175;
+            }
+
+            // Shift forward so pivot is at back
+            z += 0.4;
+
+            jawPos.setXYZ(i, x, y, z);
+          }
+
+          jawGeo.computeVertexNormals();
+
+          // Add vertex colors for belly (jaw is mostly belly)
+          const jawColors = new Float32Array(jawPos.count * 3);
+          const bellyColor = { r: 0xe0 / 255, g: 0xd6 / 255, b: 0xc2 / 255 };
+
+          for (let i = 0; i < jawPos.count; i++) {
+            jawColors[i * 3] = bellyColor.r;
+            jawColors[i * 3 + 1] = bellyColor.g;
+            jawColors[i * 3 + 2] = bellyColor.b;
+          }
+
+          jawGeo.setAttribute("color", new THREE.BufferAttribute(jawColors, 3));
+
+          const jawMat = new THREE.MeshStandardMaterial({
+            map: this.skinMatBack.map.clone(),
+            bumpMap: this.skinMatBack.bumpMap,
+            bumpScale: 0.01,
+            vertexColors: true,
+            roughness: 0.6,
+            metalness: 0.05,
+          });
+
+          this.jaw = new THREE.Mesh(jawGeo, jawMat);
+          this.jaw.castShadow = true;
+          this.jawPivot.add(this.jaw);
+
+          // Mouth interior - pink fleshy color, no texture
+          const mouthMat = new THREE.MeshStandardMaterial({
+            color: 0xcc6666,
+            roughness: 0.9,
+            metalness: 0,
+            side: THREE.DoubleSide,
+          });
+
+          // Upper palate / roof of mouth (oval, follows upper jaw)
+          const palateGeo = new THREE.CircleGeometry(1, 40);
+
+          const pPos = palateGeo.attributes.position;
+
+          for (let i = 0; i < pPos.count; i++) {
+            let x = pPos.getX(i);
+            let y = pPos.getY(i);
+            let z = pPos.getZ(i); // 0 initially
+
+            // Oval shape (same proportions as floor)
+            x *= 0.18; // width
+            y *= 0.6; // length
+
+            // Side-to-side arch
+            const nx = Math.min(1, Math.abs(x) / 0.36); // normalize width
+            const archX = (1 - Math.cos(nx * Math.PI * 0.5)) * 0.1;
+
+            // Front-to-back arch (peaks just behind teeth)
+            const archCenter = 0.35; // move arch forward
+            const archWidth = 0.6; // how wide the curve spreads
+
+            const t = THREE.MathUtils.clamp(
+              (y - archCenter) / archWidth + 0.5,
+              0,
+              1
+            );
+
+            const archY = -Math.cos(t * Math.PI) * 0.082;
+
+            // Final convex shape
+            z = -(archX + archY);
+
+            // Taper toward snout
+            const taper = 1 - y * 0.7;
+            x *= taper;
+
+            // Orient so +Z is forward
+            pPos.setXYZ(i, x, z, y);
+          }
+
+          palateGeo.computeVertexNormals();
+
+          this.palate = new THREE.Mesh(palateGeo, mouthMat);
+
+          // Position just under skull interior
+          this.palate.position.set(0, -0.062, 0.2728);
+
+          // Flip so it faces downward
+          this.palate.rotation.x = Math.PI - 0.179;
+
+          this.palate.visible = false;
+
+          // IMPORTANT: palate belongs to skull
+          this.group.add(this.palate);
+
+          // Tongue floor / mouth floor (oval, follows lower jaw)
+          const tongueFloorGeo = new THREE.CircleGeometry(1, 40);
+
+          // Reshape circle into an oval + slight bowl
+          const tfPos = tongueFloorGeo.attributes.position;
+
+          for (let i = 0; i < tfPos.count; i++) {
+            let x = tfPos.getX(i);
+            let y = tfPos.getY(i);
+            let z = tfPos.getZ(i); // should be 0 initially
+
+            // Oval shape
+            x *= 0.22; // width
+            y *= 0.35; // length (forward/back)
+
+            // Bowl curvature (concave)
+            const r = Math.sqrt(x * x + y * y);
+            z = -r * 0.02;
+
+            // Taper toward snout (+Y becomes +Z later)
+            const taper = 1 - y * 0.9;
+            x *= taper;
+
+            tfPos.setXYZ(i, x, z, y);
+          }
+
+          tongueFloorGeo.computeVertexNormals();
+
+          this.tongueFloor = new THREE.Mesh(tongueFloorGeo, mouthMat);
+
+          // Position inside lower jaw
+          this.tongueFloor.position.set(0, 0.015, 0.6);
+
+          this.tongueFloor.visible = false;
+
+          // IMPORTANT: floor belongs to jaw
+          this.jawPivot.add(this.tongueFloor);
+
+          // Back of throat
+          const throatGeo = new THREE.PlaneGeometry(0.22, 0.15);
+          this.throat = new THREE.Mesh(throatGeo, mouthMat);
+          this.throat.position.set(0, -0.15, 0.02);
+          this.throat.visible = false;
+          this.group.add(this.throat);
+
+          // Upper teeth (attached to skull, point down)
+          this.upperTeeth = this.createTeethRow(false);
+          this.upperTeeth.position.set(0, -0.07, 0.78);
+          this.upperTeeth.visible = false;
+          this.group.add(this.upperTeeth);
+
+          // Lower teeth (attached to jaw, point up)
+          this.lowerTeeth = this.createTeethRow(true);
+          this.lowerTeeth.position.set(0, 0.02, 0.92);
+          this.lowerTeeth.visible = false;
+          this.jawPivot.add(this.lowerTeeth);
+
+          // Fangs (upper, attached to skull)
+          this.createFangs();
+        }
+
+        createTeethRow(pointUp) {
+          const teethGroup = new THREE.Group();
+          const toothMat = new THREE.MeshStandardMaterial({
+            color: 0xfffff0,
+            roughness: 0.4,
+          });
+
+          const toothCount = 8;
+          for (let i = 0; i < toothCount; i++) {
+            const toothGeo = new THREE.ConeGeometry(0.012, 0.04, 6);
+            const tooth = new THREE.Mesh(toothGeo, toothMat);
+
+            // Arrange in arc across mouth
+            const t = i / (toothCount - 1) - 0.5; // -0.5 to 0.5
+            const spread = 0.22;
+
+            tooth.position.x = t * spread;
+            tooth.position.z = -Math.abs(t) * 0.2; // slight arc back at sides
+
+            // Point down or up
+            tooth.rotation.x = pointUp ? 0 : Math.PI;
+            tooth.scale.y = 0.6 + Math.random() * 0.4;
+
+            teethGroup.add(tooth);
+          }
+
+          return teethGroup;
+        }
+
+        createFangs() {
+          const fangMat = new THREE.MeshStandardMaterial({
+            color: 0xfefef0,
+            roughness: 0.2,
+            metalness: 0.05,
+          });
+
+          const createFang = (side) => {
+            // Curved fang shape
+            const fangGeo = new THREE.ConeGeometry(0.015, 0.12, 8);
+
+            // Bend the fang slightly
+            const fangPos = fangGeo.attributes.position;
+            for (let i = 0; i < fangPos.count; i++) {
+              let y = fangPos.getY(i);
+              let z = fangPos.getZ(i);
+              // Curve backward as it goes down
+              const curve = (y + 0.06) * 0.15;
+              z -= curve;
+              fangPos.setZ(i, z);
+            }
+            fangGeo.computeVertexNormals();
+            const fang = new THREE.Mesh(fangGeo, fangMat);
+            fang.position.set(side * 0.08, -0.1, 0.8);
+            fang.rotation.x = Math.PI; // point down
+            fang.rotation.z = side * -0.1; // angle outward slightly
+            fang.visible = false;
+            return fang;
+          };
+
+          this.fangLeft = createFang(-1);
+          this.fangRight = createFang(1);
+          this.group.add(this.fangLeft);
+          this.group.add(this.fangRight);
+        }
+
+        createTongue() {
+          const tongueGroup = new THREE.Group();
+
+          // Main tongue body
+          const tongueGeo = new THREE.BoxGeometry(0.05, 0.012, 1.0);
+          const tongueMat = new THREE.MeshStandardMaterial({
+            color: 0x4a1a4a, // dark purple
+            roughness: 0.6,
+          });
+
+          // Taper the tongue toward tip (+Z)
+          const tonguePos = tongueGeo.attributes.position;
+          for (let i = 0; i < tonguePos.count; i++) {
+            let x = tonguePos.getX(i);
+            let z = tonguePos.getZ(i);
+
+            if (z > 0) {
+              const taper = 1 - z * 2;
+              x *= Math.max(0.3, taper);
+            }
+
+            tonguePos.setXYZ(i, x, tonguePos.getY(i), z);
+          }
+          tongueGeo.computeVertexNormals();
+
+          const tongueBody = new THREE.Mesh(tongueGeo, tongueMat);
+          tongueBody.position.z = 0.5; // shift so base is at z=0, tip at z=1
+          tongueGroup.add(tongueBody);
+
+          // Forked tips
+          const forkGeo = new THREE.BoxGeometry(0.015, 0.008, 0.18);
+
+          const forkLeft = new THREE.Mesh(forkGeo, tongueMat);
+          forkLeft.position.set(-0.028, 0, 1.08);
+          forkLeft.rotation.y = 0.25;
+          forkLeft.rotation.x = Math.PI;
+          tongueGroup.add(forkLeft);
+          this.tongueForkLeft = forkLeft;
+
+          const forkRight = new THREE.Mesh(forkGeo, tongueMat);
+          forkRight.position.set(0.028, 0, 1.08);
+          forkRight.rotation.y = -0.25;
+          forkRight.rotation.x = Math.PI;
+          tongueGroup.add(forkRight);
+          this.tongueForkRight = forkRight;
+
+          this.tongueGroup = tongueGroup;
+          this.tongueGroup.position.set(0, -0.13, 0.1);
+          this.tongueGroup.visible = false;
+          this.group.add(this.tongueGroup);
+        }
+
+        update(dt, snakePos, snakeYaw, isMoving) {
+          // Head position and orientation directly from first two segments
+          const p0 = snakePos[0];
+          const p1 = snakePos[1];
+
+          // Position at head
+          this.group.position.copy(p0);
+
+          // Direction from neck to head (forward direction)
+          _v3.subVectors(p0, p1).normalize();
+
+          // Build rotation matrix from direction
+          // Forward = _v3 (along spine)
+          // Up = world Y (will be adjusted)
+          // Right = forward x up
+
+          const forward = _v3;
+          const up = _v4.set(0, 1, 0);
+          const right = _tangent.crossVectors(up, forward).normalize();
+
+          // Recalculate up to be perpendicular to forward and right
+          up.crossVectors(forward, right).normalize();
+
+          // Create rotation matrix
+          const m = new THREE.Matrix4();
+          m.makeBasis(right, up, forward);
+
+          // Apply rotation from matrix
+          this.group.quaternion.setFromRotationMatrix(m);
+
+          // Update animations
+          this.updateTongue(dt, isMoving);
+          this.updateBlink(dt);
+          this.updatePupils(dt, this.externalLookTarget);
+          this.externalLookTarget = null; // Clear after use
+          this.updateJaw(dt);
+        }
+
+        updateTongue(dt, isMoving) {
+          this.tongueTimer += dt;
+
+          if (
+            this.tongueState === "idle" &&
+            Math.random() < (isMoving ? 0.02 : 0.008)
+          ) {
+            this.tongueState = "out";
+            this.tongueTimer = 0;
+          }
+
+          if (this.tongueState === "out") {
+            this.tongueOut = Math.min(1, this.tongueOut + dt * 8);
+            if (this.tongueOut >= 1) this.tongueState = "flick";
+          }
+
+          if (this.tongueState === "flick") {
+            const flickAmount = Math.sin(this.tongueTimer * 25) * 0.15;
+            this.tongueFlick = flickAmount;
+            if (this.tongueTimer > 0.3) this.tongueState = "in";
+          }
+
+          if (this.tongueState === "in") {
+            this.tongueOut = Math.max(0, this.tongueOut - dt * 6);
+            this.tongueFlick *= 0.9;
+            if (this.tongueOut <= 0) this.tongueState = "idle";
+          }
+
+          // Apply 3D tongue animation
+          this.tongueGroup.visible = this.tongueOut > 0;
+          if (this.tongueGroup.visible) {
+            this.tongueGroup.position.z = -0.2 + this.tongueOut * 0.25;
+
+            // 3D flick
+            this.tongueGroup.rotation.y = this.tongueFlick; // left/right
+            this.tongueGroup.rotation.x =
+              Math.sin(this.tongueTimer * 10) * 0.06; // up/down
+            this.tongueGroup.rotation.z = Math.sin(this.tongueTimer * 12) * 0.1; // slight roll
+
+            // Fork wiggle
+            this.tongueForkLeft.rotation.y =
+              0.25 + Math.sin(this.tongueTimer * 30) * 0.15;
+            this.tongueForkRight.rotation.y =
+              -0.25 - Math.sin(this.tongueTimer * 30) * 0.15;
+          }
+        }
+
+        updateBlink(dt) {
+          this.blinkTimer -= dt;
+
+          if (
+            this.blinkTimer <= 0 &&
+            this.blinkLeft === 0 &&
+            this.blinkRight === 0
+          ) {
+            this.blinkTimer = 5 + Math.random() * 8;
+            this.blinkLeft = 1;
+            this.blinkRight = 1;
+          }
+
+          // Slow blink down then up
+          if (this.blinkLeft > 0) {
+            this.blinkLeft = Math.max(0, this.blinkLeft - dt * 1.5);
+          }
+          if (this.blinkRight > 0) {
+            this.blinkRight = Math.max(0, this.blinkRight - dt * 1.5);
+          }
+
+          // Apply - rotate lid from open to closed
+          const leftLid = this.eyeLeft.userData.lid;
+          const rightLid = this.eyeRight.userData.lid;
+          const leftOpen = this.eyeLeft.userData.lidOpenRotation;
+          const leftClosed = this.eyeLeft.userData.lidClosedRotation;
+          const rightOpen = this.eyeRight.userData.lidOpenRotation;
+          const rightClosed = this.eyeRight.userData.lidClosedRotation;
+
+          // Blink curve: quick close, slow open
+          const blinkCurve = (t) => (t > 0.5 ? (1 - t) * 2 : t * 2);
+
+          const leftAmount = blinkCurve(this.blinkLeft);
+          const rightAmount = blinkCurve(this.blinkRight);
+
+          // Lids are always visible, just rotated to open/closed position
+          leftLid.visible = true;
+          rightLid.visible = true;
+
+          // Rotate lid around X axis to close over the eye
+          leftLid.rotation.x = THREE.MathUtils.lerp(
+            leftOpen,
+            leftClosed,
+            leftAmount
+          );
+          rightLid.rotation.x = THREE.MathUtils.lerp(
+            rightOpen,
+            rightClosed,
+            rightAmount
+          );
+        }
+
+        updatePupils(dt, externalTarget = null) {
+          if (externalTarget) {
+            // External target overrides random look - convert world pos to look direction
+            [this.eyeLeft, this.eyeRight].forEach((eye) => {
+              const pupil = eye.userData.pupil;
+              if (pupil) {
+                // Get eye's world position
+                const eyeWorldPos = _v1.setFromMatrixPosition(eye.matrixWorld);
+                // Direction from eye to target
+                _v2.subVectors(externalTarget, eyeWorldPos);
+                // Convert to eye's local space
+                eye.worldToLocal(_v2.add(eyeWorldPos));
+                _v2.normalize();
+
+                // Map direction to rotation (limited range)
+                const maxRot = 0.4;
+                pupil.rotation.y = THREE.MathUtils.clamp(
+                  _v2.x * 2,
+                  -maxRot,
+                  maxRot
+                );
+                pupil.rotation.x = THREE.MathUtils.clamp(
+                  -_v2.y * 2,
+                  -maxRot,
+                  maxRot
+                );
+              }
+            });
+            // Reset timer so random look resumes smoothly after external tracking stops
+            this.lookTimer = 0.5;
+            return;
+          }
+
+          this.lookTimer -= dt;
+
+          // Pick new random look target periodically
+          if (this.lookTimer <= 0) {
+            this.lookTimer = 1 + Math.random() * 3;
+            this.lookTargetX = (Math.random() - 0.5) * 0.3;
+            this.lookTargetY = (Math.random() - 0.5) * 0.2;
+            if (Math.random() < 0.3) {
+              this.lookTargetX = 0;
+              this.lookTargetY = 0;
+            }
+          }
+
+          // Smoothly move toward target
+          this.lookCurrentX += (this.lookTargetX - this.lookCurrentX) * dt * 5;
+          this.lookCurrentY += (this.lookTargetY - this.lookCurrentY) * dt * 5;
+
+          const leftPupil = this.eyeLeft.userData.pupil;
+          const rightPupil = this.eyeRight.userData.pupil;
+
+          if (leftPupil) {
+            leftPupil.rotation.y = this.lookCurrentX;
+            leftPupil.rotation.x = this.lookCurrentY;
+          }
+          if (rightPupil) {
+            rightPupil.rotation.y = this.lookCurrentX;
+            rightPupil.rotation.x = this.lookCurrentY;
+          }
+        }
+
+        updateJaw(dt) {
+          // Smooth jaw movement
+          const targetJaw = this.tongueOut > 0 ? 0.25 : -0.2;
+          this.jawOpen = THREE.MathUtils.lerp(this.jawOpen, targetJaw, dt * 5);
+
+          // Rotate jaw pivot (opens at front, hinges at back)
+          this.jawPivot.rotation.x = this.jawOpen * 0.4;
+
+          // Show teeth and fangs when mouth open
+          const showTeeth = this.jawOpen > 0.1;
+          this.upperTeeth.visible = showTeeth;
+          this.lowerTeeth.visible = showTeeth;
+          this.fangLeft.visible = showTeeth;
+          this.fangRight.visible = showTeeth;
+          this.palate.visible = showTeeth;
+          this.tongueFloor.visible = showTeeth;
+          this.throat.visible = showTeeth;
+        }
+
+        // Manual controls
+        openMouth(amount) {
+          this.jawOpen = THREE.MathUtils.clamp(amount, 0, 1);
+        }
+
+        flickTongue() {
+          if (this.tongueState === "idle") {
+            this.tongueState = "out";
+            this.tongueTimer = 0;
+          }
+        }
+
+        lookAt(worldPos) {
+          this.externalLookTarget = worldPos;
+        }
+      }
+
+      const snakeHead = new SnakeHead();
+
+      // ==========================================================================
+      // MOUSE PREY SYSTEM
+      // ==========================================================================
+      const MOUSE_STATE = {
+        IDLE: 0,
+        WANDERING: 1,
+        FLEEING: 2,
+        EATEN: 3,
+      };
+
+      let baseMouseModel = null;
+      let baseMouseAnims = null;
+      let mouseMixer = null; // ONE shared mixer for all mice
+      let mouseIdleAnim = null;
+      let mouseRunAnim = null;
+      const mice = [];
+
+      // Particle system for eating effect - object pool
+      const eatParticleGeo = new THREE.SphereGeometry(0.05, 6, 6);
+      const eatParticleMat = new THREE.MeshBasicMaterial({ color: 0xff6666 });
+      const maxEatParticles = 100;
+      const eatParticleMesh = new THREE.InstancedMesh(
+        eatParticleGeo,
+        eatParticleMat,
+        maxEatParticles
+      );
+      eatParticleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      eatParticleMesh.count = 0;
+      eatParticleMesh.frustumCulled = false;
+      scene.add(eatParticleMesh);
+
+      // Pre-allocated pool
+      const eatParticlePool = [];
+      for (let i = 0; i < maxEatParticles; i++) {
+        eatParticlePool.push({
+          pos: new THREE.Vector3(),
+          vel: new THREE.Vector3(),
+          life: 0,
+          scale: 1,
+          active: false,
+        });
+      }
+      let activeEatParticleCount = 0;
+
+      const _eatMat = new THREE.Matrix4();
+      const _eatPos = new THREE.Vector3();
+      const _eatScale = new THREE.Vector3();
+      const _eatQuat = new THREE.Quaternion();
+
+      // Fear indicator (exclamation mark sprite)
+      function createFearIndicator() {
+        const canvas = document.createElement("canvas");
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext("2d");
+
+        // Draw exclamation mark
+        ctx.fillStyle = "#ff4444";
+        ctx.font = "bold 48px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("!", 32, 32);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          depthTest: false,
+        });
+        const sprite = new THREE.Sprite(material);
+        sprite.scale.set(0.5, 0.5, 1);
+        sprite.visible = false;
+        return sprite;
+      }
+
+      function createMouseData(mesh) {
+        const data = {
+          mesh,
+          state: MOUSE_STATE.IDLE,
+          heading: Math.random() * Math.PI * 2,
+          targetHeading: Math.random() * Math.PI * 2,
+          speed: 0,
+
+          // Timers
+          stateTimer: 1 + Math.random() * 2,
+          wanderTimer: 0,
+          lookTimer: Math.random() * CONFIG.MOUSE.LOOK_AROUND_TIME,
+          fleeTimer: 0,
+
+          // Animation
+          idleAction: null,
+          runAction: null,
+          currentAction: null,
+
+          // Fear indicator
+          fearIndicator: createFearIndicator(),
+          showFear: false,
+          fearAlpha: 0,
+        };
+
+        // Add fear indicator to mesh
+        mesh.add(data.fearIndicator);
+        data.fearIndicator.position.set(0, 4, 0);
+        // Counter parent scale so sprite stays readable
+        const invScale = 1 / CONFIG.MOUSE.SCALE;
+        data.fearIndicator.scale.set(invScale, invScale, 1);
+
+        return data;
+      }
+
+      function getRandomSpawnPosition() {
+        const margin = CONFIG.MOUSE.SPAWN_MARGIN;
+        const maxX = tw / 2 - margin;
+        const maxZ = th / 2 - margin;
+
+        let x, z, valid;
+        let attempts = 0;
+
+        do {
+          x = (Math.random() - 0.5) * 2 * maxX;
+          z = (Math.random() - 0.5) * 2 * maxZ;
+          valid = true;
+
+          // Check distance from obstacles
+          for (const obs of obsData) {
+            const dx = x - obs.x;
+            const dz = z - obs.z;
+            if (Math.sqrt(dx * dx + dz * dz) < obs.r + 2) {
+              valid = false;
+              break;
+            }
+          }
+
+          // Check distance from snake head
+          const dsx = x - snake.headPos.x;
+          const dsz = z - snake.headPos.z;
+          if (Math.sqrt(dsx * dsx + dsz * dsz) < 15) {
+            valid = false;
+          }
+
+          attempts++;
+        } while (!valid && attempts < 50);
+
+        return { x, z };
+      }
+
+      function spawnMouse() {
+        if (!baseMouseModel || !baseMouseAnims || !mouseMixer) return null;
+
+        const mesh = SkeletonUtils.clone(baseMouseModel);
+        mesh.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+          }
+        });
+
+        const pos = getRandomSpawnPosition();
+        const h = getTerrainHeight(pos.x, pos.z);
+        mesh.position.set(pos.x, h, pos.z);
+        mesh.scale.setScalar(CONFIG.MOUSE.SCALE);
+
+        scene.add(mesh);
+
+        const mouseData = createMouseData(mesh);
+
+        // Setup animations using SHARED mixer, but bound to THIS mesh
+        if (mouseIdleAnim) {
+          mouseData.idleAction = mouseMixer.clipAction(mouseIdleAnim, mesh);
+          mouseData.idleAction.play();
+          mouseData.currentAction = mouseData.idleAction;
+        }
+        if (mouseRunAnim) {
+          mouseData.runAction = mouseMixer.clipAction(mouseRunAnim, mesh);
+        }
+
+        mice.push(mouseData);
+        updateMiceCount(mice.length);
+
+        return mouseData;
+      }
+
+      function respawnMouse(mouse) {
+        const pos = getRandomSpawnPosition();
+        const h = getTerrainHeight(pos.x, pos.z);
+
+        mouse.mesh.position.set(pos.x, h, pos.z);
+
+        mouse.state = MOUSE_STATE.IDLE;
+        mouse.stateTimer = 1 + Math.random() * 2;
+        mouse.heading = Math.random() * Math.PI * 2;
+        mouse.mesh.rotation.y = mouse.heading;
+        mouse.showFear = false;
+        mouse.fearAlpha = 0;
+
+        // Switch to idle animation
+        if (mouse.idleAction && mouse.currentAction !== mouse.idleAction) {
+          mouse.currentAction?.fadeOut(0.2);
+          mouse.idleAction.reset().fadeIn(0.2).play();
+          mouse.currentAction = mouse.idleAction;
+        }
+
+        mouse.mesh.visible = true;
+      }
+
+      function spawnEatParticles(position, count = 15) {
+        for (let i = 0; i < maxEatParticles && count > 0; i++) {
+          const p = eatParticlePool[i];
+          if (!p.active) {
+            p.pos.copy(position);
+            p.vel.set(
+              (Math.random() - 0.5) * 8,
+              Math.random() * 6 + 3,
+              (Math.random() - 0.5) * 8
+            );
+            p.life = 1.0 + Math.random() * 0.5;
+            p.scale = 0.5 + Math.random() * 0.5;
+            p.active = true;
+            activeEatParticleCount++;
+            count--;
+          }
+        }
+      }
+
+      function updateEatParticles(dt) {
+        let visibleCount = 0;
+
+        for (let i = 0; i < maxEatParticles; i++) {
+          const p = eatParticlePool[i];
+          if (!p.active) continue;
+
+          p.vel.y -= 20 * dt;
+          p.pos.addScaledVector(p.vel, dt);
+          p.life -= dt;
+
+          if (p.life <= 0 || p.pos.y < getTerrainHeight(p.pos.x, p.pos.z)) {
+            p.active = false;
+            activeEatParticleCount--;
+            continue;
+          }
+
+          _eatPos.copy(p.pos);
+          const s = p.scale * Math.min(1, p.life * 2);
+          _eatScale.set(s, s, s);
+          _eatMat.compose(_eatPos, _eatQuat, _eatScale);
+          eatParticleMesh.setMatrixAt(visibleCount, _eatMat);
+          visibleCount++;
+        }
+
+        eatParticleMesh.count = visibleCount;
+        if (visibleCount > 0) {
+          eatParticleMesh.instanceMatrix.needsUpdate = true;
+        }
+      }
+
+      function canMouseSeeSnake(mouse) {
+        _mouseToSnake.subVectors(snake.headPos, mouse.mesh.position);
+        _mouseToSnake.y = 0;
+
+        const distSq = _mouseToSnake.lengthSq();
+        if (distSq > CONFIG.MOUSE.DETECTION_RANGE_SQ) return false;
+
+        _mouseForward.set(0, 0, 1).applyAxisAngle(_axisY, mouse.heading);
+
+        // Normalize using cached length
+        const dist = Math.sqrt(distSq);
+        _mouseToSnake.x /= dist;
+        _mouseToSnake.z /= dist;
+
+        const dot = _mouseForward.dot(_mouseToSnake);
+        // Use cos comparison
+        return dot > CONFIG.MOUSE.DETECTION_FOV_COS;
+      }
+
+      function updateMouse(mouse, dt, time, inView) {
+        if (mouse.state === MOUSE_STATE.EATEN) return;
+
+        // Check for snake proximity and visibility
+        const distToSnake = mouse.mesh.position.distanceTo(snake.headPos);
+
+        // Transition to fleeing if mouse can see the snake
+        if (mouse.state !== MOUSE_STATE.FLEEING && canMouseSeeSnake(mouse)) {
+          mouse.state = MOUSE_STATE.FLEEING;
+          mouse.fleeTimer = CONFIG.MOUSE.FLEE_DURATION;
+          mouse.showFear = true;
+
+          // Switch to run animation
+          if (mouse.runAction && mouse.currentAction !== mouse.runAction) {
+            mouse.currentAction?.fadeOut(0.15);
+            mouse.runAction.reset().fadeIn(0.15).play();
+            mouse.currentAction = mouse.runAction;
+          }
+        }
+
+        // Update fear indicator
+        if (mouse.showFear) {
+          mouse.fearAlpha = Math.min(1, mouse.fearAlpha + dt * 5);
+        } else {
+          mouse.fearAlpha = Math.max(0, mouse.fearAlpha - dt * 3);
+        }
+        mouse.fearIndicator.visible = mouse.fearAlpha > 0.01 && inView;
+        if (mouse.fearIndicator.visible) {
+          mouse.fearIndicator.material.opacity = mouse.fearAlpha;
+          // Bob up and down
+          const bob = Math.sin(time * 3) * 0.3;
+          mouse.fearIndicator.position.y = 4 + bob;
+        }
+
+        switch (mouse.state) {
+          case MOUSE_STATE.IDLE: {
+            mouse.speed = 0;
+            mouse.stateTimer -= dt;
+            mouse.lookTimer -= dt;
+
+            // Occasionally look around
+            if (mouse.lookTimer <= 0) {
+              mouse.lookTimer =
+                CONFIG.MOUSE.LOOK_AROUND_TIME * (0.5 + Math.random());
+              mouse.targetHeading =
+                mouse.heading + (Math.random() - 0.5) * Math.PI * 0.5;
+            }
+
+            // Smoothly turn toward target heading
+            const headingDiff = mouse.targetHeading - mouse.heading;
+            const normalizedDiff = Math.atan2(
+              Math.sin(headingDiff),
+              Math.cos(headingDiff)
+            );
+            mouse.heading += normalizedDiff * 2 * dt;
+
+            // Transition to wandering
+            if (mouse.stateTimer <= 0) {
+              mouse.state = MOUSE_STATE.WANDERING;
+              mouse.stateTimer = 2 + Math.random() * 3;
+              mouse.targetHeading =
+                mouse.heading + (Math.random() - 0.5) * Math.PI;
+
+              // Switch to run animation (slow)
+              if (mouse.runAction && mouse.currentAction !== mouse.runAction) {
+                mouse.currentAction?.fadeOut(0.3);
+                mouse.runAction.reset().fadeIn(0.3).play();
+                mouse.runAction.timeScale = 1.0;
+                mouse.currentAction = mouse.runAction;
+              }
+            }
+            break;
+          }
+
+          case MOUSE_STATE.WANDERING: {
+            mouse.speed = CONFIG.MOUSE.WANDER_SPEED;
+            mouse.stateTimer -= dt;
+            mouse.wanderTimer -= dt;
+
+            // Change direction occasionally
+            if (mouse.wanderTimer <= 0) {
+              mouse.wanderTimer =
+                CONFIG.MOUSE.WANDER_CHANGE_TIME * (0.5 + Math.random());
+              mouse.targetHeading =
+                mouse.heading + (Math.random() - 0.5) * Math.PI * 0.8;
+            }
+
+            // Smoothly turn toward target heading
+            const headingDiff = mouse.targetHeading - mouse.heading;
+            const normalizedDiff = Math.atan2(
+              Math.sin(headingDiff),
+              Math.cos(headingDiff)
+            );
+            mouse.heading += normalizedDiff * 3 * dt;
+
+            // Set animation speed
+            if (mouse.runAction) {
+              mouse.runAction.timeScale = 1.0;
+            }
+
+            // Transition back to idle
+            if (mouse.stateTimer <= 0) {
+              mouse.state = MOUSE_STATE.IDLE;
+              mouse.stateTimer = 1 + Math.random() * 2;
+
+              // Switch to idle animation
+              if (
+                mouse.idleAction &&
+                mouse.currentAction !== mouse.idleAction
+              ) {
+                mouse.currentAction?.fadeOut(0.3);
+                mouse.idleAction.reset().fadeIn(0.3).play();
+                mouse.currentAction = mouse.idleAction;
+              }
+            }
+            break;
+          }
+
+          case MOUSE_STATE.FLEEING: {
+            mouse.speed = CONFIG.MOUSE.FLEE_SPEED;
+            mouse.fleeTimer -= dt;
+
+            // Run directly away from snake
+            _mouseFleeDir.subVectors(mouse.mesh.position, snake.headPos);
+            _mouseFleeDir.y = 0;
+            _mouseFleeDir.normalize();
+
+            mouse.targetHeading = Math.atan2(_mouseFleeDir.x, _mouseFleeDir.z);
+
+            // Fast turning when fleeing
+            const headingDiff = mouse.targetHeading - mouse.heading;
+            const normalizedDiff = Math.atan2(
+              Math.sin(headingDiff),
+              Math.cos(headingDiff)
+            );
+            mouse.heading += normalizedDiff * 8 * dt;
+
+            // Set animation speed (fast)
+            if (mouse.runAction) {
+              mouse.runAction.timeScale = 2.5;
+            }
+
+            // Check if still can see snake or if timer expired
+            if (mouse.fleeTimer <= 0 && !canMouseSeeSnake(mouse)) {
+              mouse.state = MOUSE_STATE.WANDERING;
+              mouse.stateTimer = 2 + Math.random() * 2;
+              mouse.showFear = false;
+
+              if (mouse.runAction) {
+                mouse.runAction.timeScale = 1.0;
+              }
+            } else if (canMouseSeeSnake(mouse)) {
+              // Reset flee timer if still can see snake
+              mouse.fleeTimer = Math.max(mouse.fleeTimer, 1.0);
+            }
+            break;
+          }
+        }
+
+        // Apply movement
+        if (mouse.speed > 0) {
+          const moveX = Math.sin(mouse.heading) * mouse.speed * dt;
+          const moveZ = Math.cos(mouse.heading) * mouse.speed * dt;
+
+          let newX = mouse.mesh.position.x + moveX;
+          let newZ = mouse.mesh.position.z + moveZ;
+
+          // Boundary check
+          const margin = CONFIG.MOUSE.SPAWN_MARGIN;
+          const maxX = tw / 2 - margin;
+          const maxZ = th / 2 - margin;
+
+          if (Math.abs(newX) > maxX || Math.abs(newZ) > maxZ) {
+            // Turn around
+            mouse.targetHeading = mouse.heading + Math.PI;
+            newX = THREE.MathUtils.clamp(newX, -maxX, maxX);
+            newZ = THREE.MathUtils.clamp(newZ, -maxZ, maxZ);
+          }
+
+          // Obstacle avoidance with sliding
+          for (let oi = 0; oi < obsData.length; oi++) {
+            const obs = obsData[oi];
+            const dx = newX - obs.x;
+            const dz = newZ - obs.z;
+            const minDist = obs.r + 0.5;
+            const minDistSq = minDist * minDist;
+            const distSq = dx * dx + dz * dz;
+
+            if (distSq < minDistSq && distSq > 0.000001) {
+              const dist = Math.sqrt(distSq);
+              // Push out of collision
+              const nx = dx / dist;
+              const nz = dz / dist;
+              const pen = minDist - dist;
+              newX += nx * pen;
+              newZ += nz * pen;
+
+              // Slide along the collision normal instead of stopping
+              // Project velocity onto tangent (perpendicular to normal)
+              const velX = Math.sin(mouse.heading) * mouse.speed * dt;
+              const velZ = Math.cos(mouse.heading) * mouse.speed * dt;
+              const dot = velX * nx + velZ * nz;
+              const slideX = velX - dot * nx;
+              const slideZ = velZ - dot * nz;
+
+              // Apply sliding motion
+              newX += slideX * 0.8;
+              newZ += slideZ * 0.8;
+
+              // Gradually turn away from obstacle (smoother than instant)
+              const awayAngle = Math.atan2(dx, dz);
+              const angleDiff = awayAngle - mouse.targetHeading;
+              const normalizedDiff = Math.atan2(
+                Math.sin(angleDiff),
+                Math.cos(angleDiff)
+              );
+              mouse.targetHeading += normalizedDiff * 0.3;
+            }
+          }
+
+          mouse.mesh.position.x = newX;
+          mouse.mesh.position.z = newZ;
+        }
+
+        // Update Y position to terrain
+        const terrainY = getTerrainHeight(
+          mouse.mesh.position.x,
+          mouse.mesh.position.z
+        );
+        mouse.mesh.position.y = terrainY;
+
+        // Update rotation
+        mouse.mesh.rotation.y = mouse.heading;
+      }
+
+      function updateMice(dt, time) {
+        // Update shared mixer ONCE
+        if (mouseMixer) {
+          mouseMixer.update(dt);
+        }
+
+        // Update frustums from both cameras
+        _projScreenMatrix.multiplyMatrices(
+          camera.projectionMatrix,
+          camera.matrixWorldInverse
+        );
+        _frustum.setFromProjectionMatrix(_projScreenMatrix);
+        _projScreenMatrix2.multiplyMatrices(
+          faceCamera.projectionMatrix,
+          faceCamera.matrixWorldInverse
+        );
+        _frustum2.setFromProjectionMatrix(_projScreenMatrix2);
+
+        const detectionRangeSq = CONFIG.MOUSE.DETECTION_RANGE_SQ;
+        const eatRadiusSq = CONFIG.MOUSE.EAT_RADIUS_SQ;
+
+        for (const mouse of mice) {
+          if (mouse.state === MOUSE_STATE.EATEN) continue;
+
+          const distSq = mouse.mesh.position.distanceToSquared(snake.headPos);
+
+          // Eating check first - very cheap
+          if (distSq < eatRadiusSq) {
+            // Eaten!
+            mouse.state = MOUSE_STATE.EATEN;
+            mouse.mesh.visible = false;
+            mouse.fearIndicator.visible = false;
+            spawnEatParticles(mouse.mesh.position);
+
+            // Score popup
+            const screenPos = mouse.mesh.position.clone().project(camera);
+            const screenX = ((screenPos.x + 1) / 2) * window.innerWidth;
+            const screenY = ((-screenPos.y + 1) / 2) * window.innerHeight;
+            showScorePopup(screenX, screenY, 1);
+            updateScore(1);
+
+            setTimeout(() => respawnMouse(mouse), 2000);
+            continue;
+          }
+
+          const nearSnake = distSq < detectionRangeSq;
+          const inView =
+            _frustum.containsPoint(mouse.mesh.position) ||
+            _frustum2.containsPoint(mouse.mesh.position);
+
+          // Only update if visible OR near snake
+          if (inView || nearSnake) {
+            updateMouse(mouse, dt, time, inView);
+          }
+        }
+
+        updateEatParticles(dt);
+      }
+
+      // Load mouse model
+      async function loadMouseModel() {
+        const loader = new GLTFLoader();
+        try {
+          // from https://sketchfab.com/3d-models/mouse-bf516bd5a93341b194976f6f391d1e30
+          const gltf = await loader.loadAsync(
+            "https://raw.githubusercontent.com/red-reddington/public-assets/main/mouse.glb"
+          );
+
+          baseMouseModel = gltf.scene;
+          baseMouseAnims = gltf.animations;
+
+          // Scale and setup base model
+          const box = new THREE.Box3().setFromObject(baseMouseModel);
+          const size = box.getSize(new THREE.Vector3());
+          const scale = 1.0 / Math.max(size.x, size.y, size.z);
+          baseMouseModel.scale.setScalar(scale);
+
+          baseMouseModel.traverse((node) => {
+            if (node.isMesh) {
+              node.castShadow = true;
+              node.receiveShadow = true;
+            }
+          });
+
+          // Create ONE shared mixer for all mice
+          mouseMixer = new THREE.AnimationMixer(baseMouseModel);
+
+          // Find and cache animations
+          for (const anim of baseMouseAnims) {
+            const name = anim.name.toLowerCase();
+            if (name.includes("idle")) mouseIdleAnim = anim;
+            else if (name.includes("run")) mouseRunAnim = anim;
+          }
+          // Fallback
+          if (!mouseIdleAnim) mouseIdleAnim = baseMouseAnims[0];
+          if (!mouseRunAnim)
+            mouseRunAnim =
+              baseMouseAnims.length > 1 ? baseMouseAnims[1] : baseMouseAnims[0];
+
+          console.log(
+            "Mouse model loaded with",
+            baseMouseAnims.length,
+            "animations:"
+          );
+          baseMouseAnims.forEach((anim, i) =>
+            console.log(`  ${i}: ${anim.name}`)
+          );
+
+          // Spawn initial mice
+          for (let i = 0; i < CONFIG.MOUSE.COUNT; i++) {
+            spawnMouse();
+          }
+
+          // Enable click-to-start on splash
+          const splash = document.getElementById("splash");
+          if (splash) {
+            splash.style.cursor = "pointer";
+            splash.addEventListener(
+              "click",
+              () => {
+                splash.classList.add("hidden");
+                setTimeout(() => splash.remove(), 500);
+              },
+              { once: true }
+            );
+          }
+        } catch (e) {
+          console.error("Could not load mouse.glb:", e);
+        }
+      }
+
+      // Start loading mice
+      loadMouseModel();
+
+      // Move forward one frame to create natural starting curve
+      input.forward = true;
+      snake.update(0.5);
+      input.forward = false;
+
+      // ==========================================================================
+      // EVENTS
+      // ==========================================================================
+      function resize() {
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+      }
+      addEventListener("resize", resize);
+      addEventListener("contextmenu", (e) => e.preventDefault());
+
+      container.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          mainZoom = THREE.MathUtils.clamp(
+            mainZoom - e.deltaY * CONFIG.ZOOM_PER_SCROLL_TICK,
+            CONFIG.MIN_ZOOM,
+            CONFIG.MAX_ZOOM
+          );
+          camera.zoom = mainZoom;
+          camera.updateProjectionMatrix();
+        },
+        { passive: false }
+      );
+
+      facecam.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          faceZoom = THREE.MathUtils.clamp(
+            faceZoom - e.deltaY * CONFIG.ZOOM_PER_SCROLL_TICK,
+            CONFIG.MIN_ZOOM,
+            CONFIG.MAX_ZOOM
+          );
+          faceCamera.zoom = faceZoom;
+          faceCamera.updateProjectionMatrix();
+        },
+        { passive: false }
+      );
+
+      // ==========================================================================
+      // RENDER LOOP
+      // ==========================================================================
+      let lastTime = 0;
+
+      function animate(time) {
+        requestAnimationFrame(animate);
+        const dt = Math.min((time - lastTime) / 1000, 0.1);
+        lastTime = time;
+
+        snake.update(dt);
+
+        // Calculate actual head facing direction from head-to-neck
+        const head = snake.pos[0];
+        const neck = snake.pos[1];
+        const actualYaw = Math.atan2(neck.x - head.x, neck.z - head.z);
+
+        // Smoothly blend toward actual head orientation
+        const yawDiff = actualYaw - snake.yaw;
+        // Normalize angle difference to -PI to PI
+        const normalizedDiff = Math.atan2(Math.sin(yawDiff), Math.cos(yawDiff));
+
+        // Always sync snake.yaw to actual head direction (smoothly)
+        snake.yaw += normalizedDiff * 0.1;
+
+        const camYaw = snake.yaw;
+
+        // Main camera - behind snake's head
+        const camDist = 12,
+          camH = 6;
+        _v1.set(
+          snake.headPos.x + Math.sin(camYaw) * camDist,
+          snake.headPos.y + camH,
+          snake.headPos.z + Math.cos(camYaw) * camDist
+        );
+
+        if (!controls.enabled) {
+          camera.position.copy(_v1);
+          camera.lookAt(snake.headPos);
+        }
+
+        // Update snake head
+        const isMoving =
+          input.forward ||
+          input.backward ||
+          input.left ||
+          input.right ||
+          Math.abs(joystickMove.x) > 0.01 ||
+          Math.abs(joystickMove.y) > 0.01;
+        snakeHead.update(dt, snake.pos, snake.yaw, isMoving);
+
+        // Eyes track camera when orbit is enabled
+        if (controls.enabled) {
+          snakeHead.lookAt(camera.position);
+        }
+
+        // Update mice
+        updateMice(dt, time);
+
+        // Face camera - IN FRONT of snake looking AT head
+        const faceDist = 2.5;
+        _v2.set(
+          snake.headPos.x - Math.sin(camYaw) * faceDist,
+          snake.headPos.y + 0.3,
+          snake.headPos.z - Math.cos(camYaw) * faceDist
+        );
+        faceCamera.position.copy(_v2);
+        faceCamera.lookAt(snake.headPos);
+
+        updateSunShadow(snake.headPos);
+
+        renderer.render(scene, camera);
+        if (CONFIG.FACECAM_SHOW) faceCamRenderer.render(scene, faceCamera);
+
+        if (CONFIG.STATS) statsGL.update();
+      }
+
+      animate(0);
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+    </script>
+  </body>
+</html>

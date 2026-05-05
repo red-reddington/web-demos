@@ -1,0 +1,619 @@
+<!-- https://codepen.io/the-red-reddington/full/LENppmY -->
+<!-- Builds on Masatatsu Nakamura's THREE.Fire (MIT) 
+https://github.com/mattatz/THREE.Fire/tree/master?tab=readme-ov-file -->
+<!-- https://discourse.threejs.org/t/high-performance-instanced-volumetric-fire-for-games/88112 -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>High-Performance Instanced Volumetric Fire with Dynamic LOD</title>
+  <style>
+    html,body { background:#111; overflow:hidden; }
+    #info { position:absolute; left:12px; top:12px; color:#ddd; font-family:monospace;
+      background:rgba(0,0,0,0.35); padding:8px 10px; border-radius:8px; z-index:10; }
+    #performanceStats {
+      position: fixed;
+      bottom: 70px;
+      right: 300px;
+      z-index: 10;
+    }
+    #performanceStats div {
+      visibility: visible !important;
+      position: relative !important;
+      cursor: pointer !important;
+      opacity: 0.9 !important;
+    }
+  </style>
+</head>
+<body>
+  <script async src="https://cdn.jsdelivr.net/npm/es-module-shims@2.6.2/dist/es-module-shims.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/",
+        "stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@3.6.0/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="info">Realistic Volumetric Fire — drag rotate · dblclick pause<br>
+    <span id="debugCull">Visible: 0/2000</span>
+  </div>
+  <div id="performanceStats"></div>
+
+  <script type="module">
+  import * as THREE from "three";
+  import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+  import StatsGL from "stats-gl";
+
+  // ==================== CONFIGURATION ====================
+  // Scene & Layout
+  const INSTANCE_COUNT = 2000;           // number of fire locations
+  const WORLD_SIZE = 300;                // area fires are spread across
+  const BOX_SIZE = 1.0;                 // size of each fire volume
+  
+  // Fire Appearance
+  const FIRE_COLOR = new THREE.Color(1.0, 0.35, 0.05);  // orange tint (R, G, B)
+  const FIRE_INTENSITY = 1.0;           // overall brightness
+  const FIRE_SCALE_MIN = 0.6;           // minimum fire scale
+  const FIRE_SCALE_MAX = 1.4;           // maximum fire scale
+  const FIRE_OPACITY_MULTIPLIER = 3000.0;  // increase for more opaque fire
+  
+  // Animation
+  const ANIM_SPEED_BASE = 1.7;          // base animation speed (texture scroll)
+  const ANIM_SPEED_VARIANCE = 0.3;      // speed variation per instance (0-0.3)
+  const NOISE_FREQ_BASE = 1.0;          // noise frequency
+  const NOISE_FREQ_VARIANCE = 0.2;      // frequency variation per instance
+  
+  // Fire Physics
+  const ITERATIONS = 30;                // raymarching steps (quality vs performance)
+  const OCTAVES = 3;                    // noise octaves (detail)
+  const MAGNITUDE = 1.3;                // turbulence strength
+  const LACUNARITY = 2.0;               // noise frequency multiplier
+  const GAIN = 0.5;                     // noise amplitude multiplier
+  const NOISE_SCALE = new THREE.Vector4(1.0, 2.0, 1.0, 0.3);  // XYZ freq, W = time scale
+    
+  // Performance Optimizations
+  const ITERATIONS_NEAR = 20;          // iterations for close fires
+  const ITERATIONS_FAR = 8;            // iterations for distant fires
+  const LOD_DISTANCE = 30.0;           // distance where we start reducing quality
+  const ANIM_FREEZE_DISTANCE = 50.0;  // distance where we freeze animation
+    
+  // =======================================================
+
+  // Load fire texture
+  const textureLoader = new THREE.TextureLoader();
+  const fireTexture = textureLoader.load('https://mattatz.github.io/THREE.Fire/assets/textures/firetex.png');
+  fireTexture.magFilter = THREE.LinearFilter;
+  fireTexture.minFilter = THREE.LinearFilter;
+  fireTexture.wrapS = THREE.ClampToEdgeWrapping;
+  fireTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+  // renderer + scene
+  const renderer = new THREE.WebGLRenderer({ 
+    antialias: true,
+    alpha: false,
+    precision: "highp",
+    powerPreference: "high-performance"
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+  renderer.sortObjects = true;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.autoUpdate = true;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.debug.checkShaderErrors = true;
+
+  // --- Stats ---
+  const stats = new StatsGL({
+    trackGPU: true,
+    trackHz: true,
+  });
+  document.getElementById("performanceStats").appendChild(stats.dom);
+  stats.init(renderer);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1510);
+
+  const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 5000);
+  camera.position.set(0,6,18);
+
+  // Frustum culling setup
+  const frustum = new THREE.Frustum();
+  const projScreenMatrix = new THREE.Matrix4();    
+    
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = false;
+  controls.target.set(0,2,0);
+
+  scene.add(new THREE.GridHelper(500, 500, 0x222222, 0x111111));
+  scene.add(new THREE.AmbientLight(0x442200, 0.3));
+    
+  // Add solid floor
+  const floorGeometry = new THREE.PlaneGeometry(5000, 5000);
+  const floorMaterial = new THREE.MeshStandardMaterial({ 
+    color: 0x2a2a2a,
+    roughness: 0.9,
+    metalness: 0.1
+  });
+  const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.y = -0.01; // slightly below grid
+  floor.receiveShadow = true;
+  scene.add(floor);
+    
+  // --- Sunset directional light (shining toward camera) ---
+  const sunsetLight = new THREE.DirectionalLight(0xff8844, 2.0);
+
+  // Position the light so it comes from behind the scene toward the camera
+  sunsetLight.position.set(0, 15, -20);  // behind the island
+  scene.add(sunsetLight);
+
+  // Make it shine toward where the camera is
+  const lightTarget = new THREE.Object3D();
+  lightTarget.position.set(0, 6, 18);  // roughly camera position
+  scene.add(lightTarget);
+  sunsetLight.target = lightTarget;
+
+  // Enable shadows
+  sunsetLight.castShadow = true;
+  sunsetLight.shadow.camera.left = -60;
+  sunsetLight.shadow.camera.right = 60;
+  sunsetLight.shadow.camera.top = 60;
+  sunsetLight.shadow.camera.bottom = -60;
+  sunsetLight.shadow.camera.near = 0.5;
+  sunsetLight.shadow.camera.far = 150;
+  sunsetLight.shadow.mapSize.set(2048, 2048);
+
+  scene.add(sunsetLight);
+
+  // ---------- SHADERS ----------
+  const vertex = /* glsl */`
+  attribute vec3 instanceOffset;
+    attribute float instanceScale;
+    attribute float instanceSeed;
+    attribute vec4 invMatrix0;
+    attribute vec4 invMatrix1;
+    attribute vec4 invMatrix2;
+    attribute vec4 invMatrix3;
+    attribute float visibility;
+    
+    varying vec3 vWorldPos;
+    varying vec3 vWorldCenter;
+    varying vec3 vPosition;
+    varying float vScale;
+    varying float vSeed;
+    varying mat4 vInvModelMatrix;
+
+    void main(){
+      if(visibility < 0.5) {
+        gl_Position = vec4(0.0); // hide outside frustum
+        return;
+      }
+  
+      vPosition = position;
+      vScale = instanceScale;
+      vSeed = instanceSeed;
+
+      vec3 localPos = position * instanceScale;
+      vec4 worldPos = modelMatrix * vec4(localPos + instanceOffset, 1.0);
+      vWorldPos = worldPos.xyz;
+      vWorldCenter = (modelMatrix * vec4(instanceOffset, 1.0)).xyz;
+
+      // Use precomputed inverse matrix
+      vInvModelMatrix = mat4(invMatrix0, invMatrix1, invMatrix2, invMatrix3);
+
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(localPos + instanceOffset, 1.0);
+    }
+  `;
+
+  const fragment = /* glsl */`
+    precision highp float;
+    
+    #define ITERATIONS ${ITERATIONS}
+    #define OCTAVES ${OCTAVES}
+    
+    varying vec3 vWorldPos;
+    varying vec3 vPosition;
+    varying float vScale;
+    varying float vSeed;
+    varying mat4 vInvModelMatrix;
+    varying vec3 vWorldCenter;
+    
+    uniform vec3 cameraPos;
+    uniform float time;
+    uniform float intensity;
+    uniform vec3 color;
+    uniform sampler2D fireTex;
+    uniform vec4 noiseScale;
+    uniform float magnitude;
+    uniform float lacunarity;
+    uniform float gain;
+    uniform float animSpeedBase;
+    uniform float animSpeedVariance;
+    uniform float noiseFreqBase;
+    uniform float noiseFreqVariance;
+    uniform float lodDistance;
+    uniform float animFreezeDistance;
+    uniform float opacityMultiplier;
+
+    // ---- 3D snoise ----
+    vec3 mod289(vec3 x) {
+      return x - floor(x * (1.0 / 289.0)) * 289.0;
+    }
+
+    vec4 mod289(vec4 x) {
+      return x - floor(x * (1.0 / 289.0)) * 289.0;
+    }
+
+    vec4 permute(vec4 x) {
+      return mod289(((x * 34.0) + 1.0) * x);
+    }
+
+    vec4 taylorInvSqrt(vec4 r) {
+      return 1.79284291400159 - 0.85373472095314 * r;
+    }
+
+    float snoise(vec3 v) {
+      const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+      const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+      vec3 i  = floor(v + dot(v, C.yyy));
+      vec3 x0 = v - i + dot(i, C.xxx);
+
+      vec3 g = step(x0.yzx, x0.xyz);
+      vec3 l = 1.0 - g;
+      vec3 i1 = min(g.xyz, l.zxy);
+      vec3 i2 = max(g.xyz, l.zxy);
+
+      vec3 x1 = x0 - i1 + C.xxx;
+      vec3 x2 = x0 - i2 + C.yyy;
+      vec3 x3 = x0 - D.yyy;
+
+      i = mod289(i);
+      vec4 p = permute(permute(permute(
+        i.z + vec4(0.0, i1.z, i2.z, 1.0))
+        + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+        + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+
+      float n_ = 0.142857142857;
+      vec3 ns = n_ * D.wyz - D.xzx;
+
+      vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+
+      vec4 x_ = floor(j * ns.z);
+      vec4 y_ = floor(j - 7.0 * x_);
+
+      vec4 x = x_ * ns.x + ns.yyyy;
+      vec4 y = y_ * ns.x + ns.yyyy;
+      vec4 h = 1.0 - abs(x) - abs(y);
+
+      vec4 b0 = vec4(x.xy, y.xy);
+      vec4 b1 = vec4(x.zw, y.zw);
+
+      vec4 s0 = floor(b0) * 2.0 + 1.0;
+      vec4 s1 = floor(b1) * 2.0 + 1.0;
+      vec4 sh = -step(h, vec4(0.0));
+
+      vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+      vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+
+      vec3 p0 = vec3(a0.xy, h.x);
+      vec3 p1 = vec3(a0.zw, h.y);
+      vec3 p2 = vec3(a1.xy, h.z);
+      vec3 p3 = vec3(a1.zw, h.w);
+
+      vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+      p0 *= norm.x;
+      p1 *= norm.y;
+      p2 *= norm.z;
+      p3 *= norm.w;
+
+      vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+      m = m * m;
+      return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+    }
+
+    float turbulence(vec3 p) {
+      float sum = 0.0;
+      float freq = 1.0;
+      float amp = 1.0;
+
+      for(int i = 0; i < OCTAVES; i++) {
+        sum += abs(snoise(p * freq)) * amp;
+        freq *= lacunarity;
+        amp *= gain;
+      }
+
+      return sum;
+    }
+
+    vec4 samplerFire(vec3 p, vec4 nScale, float distToCamera) {
+      vec2 st = vec2(sqrt(dot(p.xz, p.xz)), p.y);
+      if(st.x <= 0.0 || st.x >= 1.0 || st.y <= 0.0 || st.y >= 1.0) return vec4(0.0);
+
+      // Freeze animation for distant fires
+      float timeMultiplier = smoothstep(animFreezeDistance + 10.0, animFreezeDistance - 10.0, distToCamera);
+
+      float instanceAnimSpeed = animSpeedBase + vSeed * animSpeedVariance;
+      vec3 animatedP = p;
+      animatedP.y -= (vSeed + time * instanceAnimSpeed * timeMultiplier) * nScale.w;
+
+
+      // Scale position for noise lookup with per-instance frequency variation
+      float instanceNoiseFreq = noiseFreqBase + vSeed * noiseFreqVariance;
+      vec3 noisePos = animatedP * nScale.xyz * instanceNoiseFreq;
+
+      // Generate turbulence
+      float turbFactor = turbulence(noisePos);
+
+      // Apply turbulence to fire shape
+      st.y += sqrt(st.y) * magnitude * turbFactor;
+
+      // Subtle x-distortion with per-instance variation
+      st.x += sin(noisePos.y * 4.0 + noisePos.x * noisePos.z * 0.1 + vSeed * 6.28) * 0.015;
+
+      // Bounds check after distortion
+      if(st.y <= 0.0 || st.y >= 1.0) return vec4(0.0);
+
+      // Sample fire texture
+      vec4 result = texture2D(fireTex, st);
+
+      // Subtle brightness variation per instance
+      float brightness = 1.0 + sin(p.x * 2.0 + vSeed) * cos(p.z * 2.0 + vSeed) * 0.05;
+      result.rgb *= brightness;
+
+      return result;
+    }
+
+    vec3 localize(vec3 p) {
+      return (vInvModelMatrix * vec4(p, 1.0)).xyz;
+    }
+
+    void main() {
+  vec3 rayPos = vWorldPos;
+  vec3 rayDir = normalize(rayPos - cameraPos);
+
+  // Calculate distance for LOD
+  float dist = length(vWorldCenter - cameraPos);
+
+  // Dynamic iteration count based on distance
+  int dynSteps = int(mix(float(ITERATIONS), float(ITERATIONS) * 0.4, 
+                         smoothstep(10.0, lodDistance, dist)));
+  dynSteps = max(dynSteps, 6);  // minimum 6 steps
+
+  float rayLen = 0.0288 * vScale;
+  vec4 col = vec4(0.0);
+
+  // Simple additive accumulation
+  for(int i = 0; i < ITERATIONS; i++) {
+    if(i >= dynSteps) break;
+
+    rayPos += rayDir * rayLen;
+    vec3 lp = localize(rayPos);
+    if(abs(lp.x) > 0.5 || abs(lp.y) > 0.5 || abs(lp.z) > 0.5) continue;
+
+    lp.y += 0.5;
+    lp.xz *= 2.0;
+
+    vec4 fireSample = samplerFire(lp, noiseScale, dist);
+    
+    // Accumulate color AND alpha
+    col.rgb += fireSample.rgb;
+    col.a += fireSample.a;
+  }
+
+  col.rgb *= color;
+  col.rgb *= intensity;
+  
+  // Apply opacity multiplier to accumulated alpha
+  col.a = clamp(col.a * opacityMultiplier, 0.0, 1.0);
+  
+  // === HARD FILTER OUT DARK/GREY FRAGMENTS ===
+  float brightness = max(max(col.r, col.g), col.b);
+
+  // smooth fade instead of hard cut
+  float edge = smoothstep(0.18, 0.25, brightness);
+  if (edge <= 0.001) discard;
+
+  // softly fade alpha near edge
+  col.a *= edge;
+  col.rgb *= mix(0.8, 1.0, edge);  // optional gentle color fade
+
+
+  // Boost brightness a bit to make fire more vivid
+  col.rgb *= 1.2;
+
+  gl_FragColor = col;
+}
+  `;
+
+  // ---------- Material ----------
+  const uniforms = {
+    cameraPos: { value: new THREE.Vector3() },
+    time: { value: 0.0 },
+    intensity: { value: FIRE_INTENSITY },
+    color: { value: FIRE_COLOR },
+    fireTex: { value: fireTexture },
+    noiseScale: { value: NOISE_SCALE },
+    magnitude: { value: MAGNITUDE },
+    lacunarity: { value: LACUNARITY },
+    gain: { value: GAIN },
+    animSpeedBase: { value: ANIM_SPEED_BASE },
+    animSpeedVariance: { value: ANIM_SPEED_VARIANCE },
+    noiseFreqBase: { value: NOISE_FREQ_BASE },
+    noiseFreqVariance: { value: NOISE_FREQ_VARIANCE },
+    lodDistance: { value: LOD_DISTANCE },
+    animFreezeDistance: { value: ANIM_FREEZE_DISTANCE },
+    opacityMultiplier: { value: FIRE_OPACITY_MULTIPLIER }
+  };
+
+  const mat = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: vertex,
+    fragmentShader: fragment,
+    transparent: true,
+    depthWrite: true,
+    depthTest: true,
+    //blending: THREE.NormalBlending,
+    blending: THREE.CustomBlending,
+    blendEquation: THREE.AddEquation,
+    blendSrc: THREE.SrcAlphaFactor,
+    blendDst: THREE.OneFactor,
+    blendEquationAlpha: THREE.AddEquation,
+    blendSrcAlpha: THREE.OneFactor,
+    blendDstAlpha: THREE.OneMinusSrcAlphaFactor,    
+    side: THREE.DoubleSide,
+  });
+
+  // ---------- Instanced mesh ----------
+  const geom = new THREE.BoxGeometry(BOX_SIZE, BOX_SIZE, BOX_SIZE, 4, 4, 4);
+  const inst = new THREE.InstancedMesh(geom, mat, INSTANCE_COUNT);
+  inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+  const offsets = new Float32Array(INSTANCE_COUNT * 3);
+  const scales = new Float32Array(INSTANCE_COUNT);
+  const seeds = new Float32Array(INSTANCE_COUNT);
+  const visibility = new Float32Array(INSTANCE_COUNT);  
+
+  const tmp = new THREE.Object3D();
+  const invMatrices = new Float32Array(INSTANCE_COUNT * 16);
+  const boundingSpheres = [];
+
+  for(let i=0; i<INSTANCE_COUNT; i++){
+    const ang = Math.random() * Math.PI * 2;
+    const rad = Math.sqrt(Math.random()) * (WORLD_SIZE*0.7);
+    const s = Math.random() * (FIRE_SCALE_MAX - FIRE_SCALE_MIN) + FIRE_SCALE_MIN;
+    const x = Math.cos(ang) * rad;
+    const z = Math.sin(ang) * rad;
+    const y = (BOX_SIZE * s) * 0.5;
+
+    offsets[i*3+0] = x;
+    offsets[i*3+1] = y;
+    offsets[i*3+2] = z;
+    scales[i] = s;
+    seeds[i] = Math.random();
+    visibility[i] = 1.0;
+    
+    // Create bounding sphere for this fire
+    const radius = s * Math.sqrt(3) * 0.5; // diagonal of box
+    boundingSpheres.push(new THREE.Sphere(new THREE.Vector3(x, y, z), radius));
+
+
+    tmp.position.set(x, y, z);
+    tmp.scale.set(s, s, s);
+    tmp.updateMatrix();
+    inst.setMatrixAt(i, tmp.matrix);
+
+    // Precompute inverse matrix on CPU
+    const instanceMatrix = new THREE.Matrix4();
+    instanceMatrix.makeTranslation(x, y, z);
+    instanceMatrix.scale(new THREE.Vector3(s, s, s));
+    const invMatrix = instanceMatrix.clone().invert();
+    invMatrix.toArray(invMatrices, i * 16);
+  }
+
+  // Create attributes for inverse matrix (as 4 vec4s)
+  const invMat0 = new Float32Array(INSTANCE_COUNT * 4);
+  const invMat1 = new Float32Array(INSTANCE_COUNT * 4);
+  const invMat2 = new Float32Array(INSTANCE_COUNT * 4);
+  const invMat3 = new Float32Array(INSTANCE_COUNT * 4);
+  for(let i=0; i<INSTANCE_COUNT; i++){
+    invMat0[i*4+0] = invMatrices[i*16+0];
+    invMat0[i*4+1] = invMatrices[i*16+1];
+    invMat0[i*4+2] = invMatrices[i*16+2];
+    invMat0[i*4+3] = invMatrices[i*16+3];
+
+    invMat1[i*4+0] = invMatrices[i*16+4];
+    invMat1[i*4+1] = invMatrices[i*16+5];
+    invMat1[i*4+2] = invMatrices[i*16+6];
+    invMat1[i*4+3] = invMatrices[i*16+7];
+
+    invMat2[i*4+0] = invMatrices[i*16+8];
+    invMat2[i*4+1] = invMatrices[i*16+9];
+    invMat2[i*4+2] = invMatrices[i*16+10];
+    invMat2[i*4+3] = invMatrices[i*16+11];
+
+    invMat3[i*4+0] = invMatrices[i*16+12];
+    invMat3[i*4+1] = invMatrices[i*16+13];
+    invMat3[i*4+2] = invMatrices[i*16+14];
+    invMat3[i*4+3] = invMatrices[i*16+15];
+  }
+
+  geom.setAttribute('instanceOffset', new THREE.InstancedBufferAttribute(offsets, 3));
+  geom.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(scales, 1));
+  geom.setAttribute('instanceSeed', new THREE.InstancedBufferAttribute(seeds, 1));
+  geom.setAttribute('invMatrix0', new THREE.InstancedBufferAttribute(invMat0, 4));
+  geom.setAttribute('invMatrix1', new THREE.InstancedBufferAttribute(invMat1, 4));
+  geom.setAttribute('invMatrix2', new THREE.InstancedBufferAttribute(invMat2, 4));
+  geom.setAttribute('invMatrix3', new THREE.InstancedBufferAttribute(invMat3, 4));
+  geom.setAttribute('visibility', new THREE.InstancedBufferAttribute(visibility, 1));
+  scene.add(inst);
+    
+  inst.castShadow = false;
+  inst.receiveShadow = false;
+  inst.renderOrder = 99999;
+    
+  // ---------- resize ----------
+  window.addEventListener('resize', ()=>{
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+
+  // ---------- loop ----------
+  const clock = new THREE.Clock();
+  let running = true;
+  window.addEventListener('dblclick', ()=> running = !running);
+
+  // Frustum culling throttling
+  let lastCameraPos = new THREE.Vector3();
+  let lastCameraQuat = new THREE.Quaternion();
+  const CAMERA_MOVE_THRESHOLD = 0.5;  // units
+  const CAMERA_ROTATE_THRESHOLD = 0.01;  // radians
+
+  renderer.setAnimationLoop(()=>{
+    if(!running) return;
+    const t = clock.getElapsedTime();
+    uniforms.time.value = t;
+    uniforms.cameraPos.value.copy(camera.position);
+
+    // Only update frustum culling when camera moves significantly
+    const cameraMoved = camera.position.distanceTo(lastCameraPos) > CAMERA_MOVE_THRESHOLD;
+    const cameraRotated = camera.quaternion.angleTo(lastCameraQuat) > CAMERA_ROTATE_THRESHOLD;
+
+    if(cameraMoved || cameraRotated) {
+      projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(projScreenMatrix);  
+
+      const visibilityAttr = geom.attributes.visibility;
+      let visibleCount = 0;
+      for(let i = 0; i < INSTANCE_COUNT; i++) {
+        const visible = frustum.intersectsSphere(boundingSpheres[i]) ? 1.0 : 0.0;
+        visibilityAttr.array[i] = visible;
+        if(visible > 0.5) visibleCount++;
+      }
+      visibilityAttr.needsUpdate = true;
+
+      document.getElementById('debugCull').textContent = `Visible: ${visibleCount}/${INSTANCE_COUNT}`;
+
+      // Update last camera state
+      lastCameraPos.copy(camera.position);
+      lastCameraQuat.copy(camera.quaternion);
+    }
+
+    renderer.render(scene, camera);
+    stats.update();
+  });
+    
+  ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas  
+  </script>
+</body>
+</html>

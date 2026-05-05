@@ -1,0 +1,689 @@
+<!-- https://codepen.io/the-red-reddington/full/JoGpydK -->
+<!-- https://discourse.threejs.org/t/xzfog-horizontal-distance-fog-for-three-js-top-down-isometric-games/87619 -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XZFog vs Standard Fog Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Arial", sans-serif;
+        background: #0a0e27;
+        color: #fff;
+        overflow: hidden;
+      }
+
+      #container {
+        width: 100%;
+        height: 100vh;
+        position: relative;
+      }
+
+      #controls {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        padding: 20px;
+        border-radius: 10px;
+        z-index: 100;
+        max-width: 300px;
+      }
+
+      h1 {
+        font-size: 24px;
+        margin-bottom: 10px;
+        color: #4fc3f7;
+      }
+
+      .control-group {
+        margin: 20px 0;
+      }
+
+      .control-group label {
+        display: block;
+        margin-bottom: 10px;
+        font-weight: bold;
+        color: #81c784;
+      }
+
+      button {
+        width: 100%;
+        padding: 12px;
+        margin: 5px 0;
+        border: none;
+        border-radius: 5px;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      button.active {
+        background: #4fc3f7;
+        color: #000;
+        transform: scale(1.05);
+      }
+
+      button:not(.active) {
+        background: #333;
+        color: #aaa;
+      }
+
+      button:hover:not(.active) {
+        background: #444;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        margin: 10px 0;
+      }
+
+      .value-display {
+        text-align: center;
+        font-size: 18px;
+        color: #4fc3f7;
+        margin: 5px 0;
+      }
+
+      .info {
+        margin-top: 20px;
+        padding: 15px;
+        background: rgba(79, 195, 247, 0.1);
+        border-left: 3px solid #4fc3f7;
+        border-radius: 5px;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+
+    <div id="controls">
+      <h1>XZFog Demo</h1>
+      <p style="font-size: 12px; color: #aaa; margin-bottom: 20px">
+        Compare XZ plane fog vs standard 3D fog
+      </p>
+
+      <div class="control-group">
+        <label>Fog Type</label>
+        <button id="xzBtn" class="active">XZ Fog (2D)</button>
+        <button id="standardBtn">Standard Fog (3D)</button>
+      </div>
+
+      <div class="control-group">
+        <label>Fog Mode (XZ Fog only)</label>
+        <button id="colorMode" class="active">Color Mode</button>
+        <button id="alphaMode">Alpha Mode</button>
+      </div>
+
+      <div class="control-group">
+        <label>Camera Height</label>
+        <div class="value-display" id="heightValue">50</div>
+        <input type="range" id="heightSlider" min="10" max="200" value="50" />
+      </div>
+
+      <div class="control-group">
+        <label>Fog Near</label>
+        <div class="value-display" id="nearValue">50</div>
+        <input type="range" id="nearSlider" min="10" max="100" value="50" />
+      </div>
+
+      <div class="control-group">
+        <label>Fog Far</label>
+        <div class="value-display" id="farValue">150</div>
+        <input type="range" id="farSlider" min="100" max="300" value="150" />
+      </div>
+
+      <div class="info">
+        <strong>XZ Fog:</strong> Distance calculated on XZ plane only (ignores
+        Y). Centered on player position (0,0). Perfect for top-down/isometric
+        games. <br /><br />
+        <strong>Standard Fog:</strong> Full 3D distance from camera. Camera
+        height affects fog density.
+      </div>
+    </div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+      // XZFog class
+      class XZFog extends THREE.Fog {
+  constructor(color, near = 1, far = 1000, mode = "color") {
+    super(color, near, far);
+    this.isXZFog = true;
+    this.mode = mode;
+
+    this.scene = null;
+
+    // Track patched/shared materials
+    this.patchedMaterials = new WeakSet();
+    this.materialCloneMap = new WeakMap();
+    this.materialUsageMap = new Map();
+
+    // Track shader uniforms for per-frame updates
+    this.uniformMap = new Map();
+
+    // Player position for fog center
+    this.playerX = 0;
+    this.playerZ = 0;
+  }
+
+  // --- Player position update (call every frame) ---
+  setPlayerPosition(x, z) {
+    this.playerX = x;
+    this.playerZ = z;
+    this.updateUniforms();
+  }
+
+  updateUniforms() {
+    for (const [mat, uniform] of this.uniformMap.entries()) {
+      uniform.value.set(this.playerX, this.playerZ);
+    }
+  }
+
+  // --- Scene attachment / material management ---
+  buildMaterialUsageMap(scene) {
+    this.materialUsageMap.clear();
+    scene.traverse((obj) => {
+      if (obj.isMesh || obj.isInstancedMesh) {
+        this.updateMaterialUsageMap(obj, 1);
+      }
+    });
+  }
+
+  updateMaterialUsageMap(obj, delta) {
+    if (!obj.material) return;
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const mat of mats) {
+      const count = this.materialUsageMap.get(mat) || 0;
+      this.materialUsageMap.set(mat, count + delta);
+    }
+  }
+
+  isMaterialShared(mat) {
+    return (this.materialUsageMap.get(mat) || 0) > 1;
+  }
+
+  attachScene(scene) {
+    if (this.scene) this.detachScene();
+    this.scene = scene;
+
+    // Count material usage
+    this.buildMaterialUsageMap(scene);
+
+    // Patch all existing meshes
+    this.patchSceneObjects();
+
+    // Override scene.add to patch newly added objects
+    const originalAdd = scene.add.bind(scene);
+    scene.add = (...objs) => {
+      const res = originalAdd(...objs);
+      for (const obj of objs) this.updateMaterialUsageMap(obj, 1);
+      queueMicrotask(() => this.patchSceneObjects());
+      return res;
+    };
+    this._originalAdd = originalAdd;
+  }
+
+  detachScene() {
+    if (!this.scene) return;
+    if (this._originalAdd) this.scene.add = this._originalAdd;
+    this.scene = null;
+    this.uniformMap = new Map();
+    this.materialUsageMap.clear();
+    this.patchedMaterials = new WeakSet();
+    this.materialCloneMap = new WeakMap();
+  }
+
+  patchSceneObjects() {
+    if (!this.scene) return;
+    this.scene.traverse((obj) => {
+      if ((obj.isMesh || obj.isInstancedMesh) && obj.material) {
+        this.patchMesh(obj);
+      }
+    });
+  }
+
+  patchMesh(mesh) {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const patchedMaterials = [];
+
+    for (let mat of mats) {
+      // Clone shared materials only once
+      if (this.isMaterialShared(mat)) {
+        if (!this.materialCloneMap.has(mat)) {
+          this.materialCloneMap.set(mat, mat.clone());
+        }
+        mat = this.materialCloneMap.get(mat);
+      }
+
+      // Patch material only once
+      if (!this.patchedMaterials.has(mat)) {
+        this.patchMaterial(mat);
+        this.patchedMaterials.add(mat);
+      }
+
+      patchedMaterials.push(mat);
+    }
+
+    mesh.material = Array.isArray(mesh.material)
+      ? patchedMaterials
+      : patchedMaterials[0];
+  }
+
+  patchMaterial(material) {
+    if (
+      material.type === "LineBasicMaterial" ||
+      material.type === "LineDashedMaterial"
+    ) return;
+    if (material.fog === false) return;
+    if (material.fog === undefined) material.fog = true;
+
+    const existingCompile = material.onBeforeCompile;
+    const hasExisting = existingCompile && typeof existingCompile === "function";
+
+    material.onBeforeCompile = (shader) => {
+      if (hasExisting) existingCompile.call(material, shader);
+
+      // Add player position uniform
+      const uniform = { value: new THREE.Vector2(this.playerX, this.playerZ) };
+      shader.uniforms.playerPositionXZ = uniform;
+      this.uniformMap.set(material, uniform);
+
+      // Inject uniforms/varyings
+      shader.vertexShader = shader.vertexShader.replace(
+        "void main() {",
+        `uniform vec2 playerPositionXZ;
+varying vec3 vWorldPos;
+void main() {`
+      );
+
+      shader.vertexShader = shader.vertexShader.replace(
+        /}\s*$/,
+        `\nvec4 worldPos = modelMatrix * vec4(position, 1.0);
+vWorldPos = worldPos.xyz;
+}`
+      );
+
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "void main() {",
+        `uniform vec2 playerPositionXZ;
+varying vec3 vWorldPos;
+void main() {`
+      );
+
+      // Inject fog computation in fragment shader
+      const fogCode =
+        this.mode === "alpha"
+          ? `#ifdef USE_FOG
+float dist = distance(vWorldPos.xz, playerPositionXZ);
+float xzAlphaFogFactor = smoothstep(${this.near.toFixed(1)}, ${this.far.toFixed(1)}, dist);
+gl_FragColor.a = gl_FragColor.a * (1.0 - xzAlphaFogFactor);
+#endif`
+          : `#ifdef USE_FOG
+float dist = length(vWorldPos.xz - playerPositionXZ);
+float fogFactor = smoothstep(${this.near.toFixed(1)}, ${this.far.toFixed(1)}, dist);
+gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);
+#endif`;
+
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <fog_fragment>",
+        fogCode
+      );
+    };
+
+    material.needsUpdate = true;
+  }
+
+  // --- Force material recompile if near/far changes ---
+  updateMaterials() {
+    if (!this.scene) return;
+
+    this.patchedMaterials = new WeakSet();
+    this.materialCloneMap = new WeakMap();
+    this.uniformMap = new Map();
+    this.buildMaterialUsageMap(this.scene);
+
+    this.patchSceneObjects();
+  }
+
+  setNear(near) {
+    this.near = near;
+    this.updateMaterials();
+  }
+  setFar(far) {
+    this.far = far;
+    this.updateMaterials();
+  }
+  setColor(color) {
+    this.color.set(color);
+  }
+}
+
+      let scene, camera, renderer, controls;
+      let fogType = "xz";
+      let xzFog, standardFog;
+      let objects = [];
+
+      function init() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb);
+
+        camera = new THREE.PerspectiveCamera(
+          75,
+          window.innerWidth / window.innerHeight,
+          0.1,
+          10000
+        );
+        camera.position.set(0, 50, 100);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.sortObjects = true;
+        renderer.setClearColor(0x202030);
+        renderer.setClearAlpha(0);
+        document.getElementById("container").appendChild(renderer.domElement);
+
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        scene.add(dirLight);
+
+        // Create objects in a larger grid
+        const colors = [
+          0xff6b6b, 0x4ecdc4, 0x45b7d1, 0xf7b731, 0x5f27cd, 0x00d2d3, 0xff9ff3,
+          0xfeca57, 0x48dbfb,
+        ];
+        let colorIndex = 0;
+
+        for (let x = -150; x <= 150; x += 30) {
+          for (let z = -150; z <= 150; z += 30) {
+            if (x === 0 && z === 0) continue;
+            const height = 15 + Math.random() * 25;
+            const geometry = new THREE.BoxGeometry(8, height, 8);
+            const material = new THREE.MeshStandardMaterial({
+              color: colors[colorIndex % colors.length],
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, height / 2, z);
+            scene.add(mesh);
+            objects.push(mesh);
+            colorIndex++;
+          }
+        }
+
+        const groundGeo = new THREE.PlaneGeometry(500, 500);
+        const groundMat = new THREE.MeshStandardMaterial({
+          color: 0x228b22,
+          transparent: false,
+          fog: true,
+        });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.name = "ground";
+        scene.add(ground);
+        objects.push(ground);
+
+        // Setup fogs
+        xzFog = new XZFog(0x87ceeb, 50, 150, "color");
+        standardFog = new THREE.Fog(0x87ceeb, 50, 150);
+
+        // Start with XZ fog
+        scene.fog = xzFog;
+        xzFog.attachScene(scene);
+
+        document.getElementById("xzBtn").addEventListener("click", () => {
+          fogType = "xz";
+          document.getElementById("xzBtn").classList.add("active");
+          document.getElementById("standardBtn").classList.remove("active");
+
+          // Detach previous fog if any
+          if (scene.fog) {
+            if (scene.fog.isXZFog) scene.fog.detachScene();
+            scene.fog = null;
+          }
+
+          // Recreate all materials CLEANLY before applying XZ fog
+          scene.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+              const color = obj.material.color.getHex();
+              const isGround = obj.name === "ground";
+
+              obj.material.dispose();
+              obj.material = new THREE.MeshStandardMaterial({
+                color,
+                transparent: isGround,
+                fog: true,
+              });
+
+              // Important: mark for recompilation
+              obj.material.onBeforeCompile = null;
+              obj.material.needsUpdate = true;
+            }
+          });
+
+          // Reattach new XZ fog
+          xzFog.detachScene();
+          scene.fog = xzFog;
+          xzFog.attachScene(scene);
+          xzFog.setPlayerPosition(0, 0);
+
+          // Force materials to recompile with the XZFog shader injection
+          scene.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+              renderer.initMaterial && renderer.initMaterial(obj.material);
+            }
+          });
+
+          // Force a single frame render update
+          renderer.render(scene, camera);
+        });
+
+        document.getElementById("standardBtn").addEventListener("click", () => {
+          fogType = "standard";
+          document.getElementById("standardBtn").classList.add("active");
+          document.getElementById("xzBtn").classList.remove("active");
+
+          // Fully detach XZ fog
+          xzFog.detachScene();
+          scene.fog = standardFog;
+
+          // Clear patched materials and rebuild new standard materials
+          scene.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+              const color = obj.material.color.getHex();
+              const isGround = obj.name === "ground";
+
+              // Dispose old fog-patched material
+              obj.material.dispose();
+
+              // Create a *fresh* standard material with fog
+              obj.material = new THREE.MeshStandardMaterial({
+                color: color,
+                fog: true, // re-enable 3D fog
+                transparent: isGround, // ground stays transparent
+              });
+
+              // Clear any old shader hooks just to be sure
+              obj.material.onBeforeCompile = null;
+              obj.material.needsUpdate = true;
+            }
+          });
+
+          // Force renderer to recompile shaders for all objects
+          renderer.initMaterial &&
+            scene.traverse((obj) => {
+              if (obj.isMesh && obj.material)
+                renderer.initMaterial(obj.material);
+            });
+        });
+
+        document.getElementById("colorMode").addEventListener("click", () => {
+          document.getElementById("colorMode").classList.add("active");
+          document.getElementById("alphaMode").classList.remove("active");
+          xzFog.detachScene();
+
+          // Recreate all materials for color mode
+          scene.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+              const color = obj.material.color.getHex();
+              const isGround = obj.name === "ground";
+              obj.material.dispose();
+              obj.material = new THREE.MeshStandardMaterial({
+                color: color,
+                transparent: isGround, // Ground always transparent, others not
+              });
+            }
+          });
+
+          xzFog = new XZFog(
+            0x87ceeb,
+            parseFloat(document.getElementById("nearSlider").value),
+            parseFloat(document.getElementById("farSlider").value),
+            "color"
+          );
+          scene.fog = xzFog;
+          xzFog.attachScene(scene);
+          xzFog.setPlayerPosition(0, 0);
+          scene.background = new THREE.Color(0x87ceeb);
+        });
+
+        document.getElementById("alphaMode").addEventListener("click", () => {
+          document.getElementById("alphaMode").classList.add("active");
+          document.getElementById("colorMode").classList.remove("active");
+          xzFog.detachScene();
+
+          // Recreate all materials for alpha mode - ALL transparent
+          scene.traverse((obj) => {
+            if (obj.isMesh && obj.material) {
+              const color = obj.material.color.getHex();
+              obj.material.dispose();
+              obj.material = new THREE.MeshStandardMaterial({
+                color: color,
+                transparent: true, // Everything transparent in alpha mode
+              });
+            }
+          });
+
+          xzFog = new XZFog(
+            0x87ceeb,
+            parseFloat(document.getElementById("nearSlider").value),
+            parseFloat(document.getElementById("farSlider").value),
+            "alpha"
+          );
+          scene.fog = xzFog;
+          xzFog.attachScene(scene);
+          xzFog.setPlayerPosition(0, 0);
+          scene.background = new THREE.Color(0x87ceeb);
+        });
+
+        document
+          .getElementById("heightSlider")
+          .addEventListener("input", (e) => {
+            const height = parseFloat(e.target.value);
+            document.getElementById("heightValue").textContent = height;
+            camera.position.y = height;
+          });
+
+        document.getElementById("nearSlider").addEventListener("input", (e) => {
+          const near = parseFloat(e.target.value);
+          document.getElementById("nearValue").textContent = near;
+          if (fogType === "xz") {
+            xzFog.near = near;
+            xzFog.detachScene();
+
+            // Recreate all materials to get new near/far baked in
+            scene.traverse((obj) => {
+              if (obj.isMesh && obj.material) {
+                const color = obj.material.color.getHex();
+                const transparent = obj.material.transparent;
+                obj.material.dispose();
+                obj.material = new THREE.MeshStandardMaterial({
+                  color: color,
+                  transparent: transparent,
+                  fog: true,
+                });
+              }
+            });
+
+            xzFog.attachScene(scene);
+          } else {
+            standardFog.near = near;
+          }
+        });
+
+        document.getElementById("farSlider").addEventListener("input", (e) => {
+          const far = parseFloat(e.target.value);
+          document.getElementById("farValue").textContent = far;
+          if (fogType === "xz") {
+            xzFog.far = far;
+            xzFog.detachScene();
+
+            // Recreate all materials to get new near/far baked in
+            scene.traverse((obj) => {
+              if (obj.isMesh && obj.material) {
+                const color = obj.material.color.getHex();
+                const transparent = obj.material.transparent;
+                obj.material.dispose();
+                obj.material = new THREE.MeshStandardMaterial({
+                  color: color,
+                  transparent: transparent,
+                  fog: true,
+                });
+              }
+            });
+
+            xzFog.attachScene(scene);
+          } else {
+            standardFog.far = far;
+          }
+        });
+
+        window.addEventListener("resize", () => {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        if (fogType === "xz") {
+          xzFog.updateUniforms();
+        }
+        renderer.render(scene, camera);
+      }
+
+      init();
+      animate();
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+    </script>
+  </body>
+</html>

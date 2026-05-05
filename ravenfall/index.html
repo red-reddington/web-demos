@@ -1,0 +1,3250 @@
+<!-- https://codepen.io/the-red-reddington/full/emZwajR -->
+<!-- https://discourse.threejs.org/t/ravenfall-bird-shooter-verlet-wire-physics-gpu-bullet-trails-bird-ai-mobile-controls/88726 -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🐦‍⬛ RAVENFALL</title>
+    <style>
+      .lil-gui.root {
+        --width: 170px;
+      }
+      .lil-gui.autoPlace {
+        right: 0;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100dvh;
+        width: 100dvw;
+        margin: 0;
+
+        font-family: system-ui, sans-serif;
+        cursor: none;
+        overflow: hidden;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-user-callout: none;
+      }
+      #container {
+        width: 100%;
+        height: 100%;
+        cursor: none;
+      }
+      #ui {
+        position: fixed;
+        top: 0;
+        left: 0;
+        color: #fff;
+        font: 600 13px/1.7 monospace;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 5px 7px;
+        border-radius: 8px;
+        pointer-events: none;
+        min-width: 180px;
+      }
+      /* =========================================
+      COLLAPSIBLE HEADER STYLES
+      ========================================= */
+      #ui h1 {
+        font-size: 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        cursor: pointer;
+        pointer-events: auto;
+        user-select: none;
+        transition: color 0.2s;
+      }
+      #ui h1:hover {
+        color: #4ecdc4;
+      }
+      #ui h1::after {
+        content: " ▼";
+        margin-left: 10px;
+        font-size: 10px;
+        opacity: 0.6;
+        display: inline-block;
+      }
+      #ui.collapsed h1::after {
+        content: " ▶";
+      }
+      #ui.collapsed #uiContent {
+        display: none;
+      }
+      .hits {
+        color: #4ecdc4;
+      }
+      .miss {
+        color: #ff6b6b;
+      }
+      .acc {
+        color: #f9a86f;
+      }
+      .birds {
+        color: #7fdbca;
+      }
+      .streak {
+        color: #ffd93d;
+      }
+      .best {
+        color: #c9b1ff;
+      }
+      .sniper {
+        color: #ff9ff3;
+      }
+      #crosshair {
+        position: fixed;
+        pointer-events: none;
+        z-index: 999;
+        transform: translate(-50%, -50%);
+      }
+      #crosshair .ring {
+        width: 30px;
+        height: 30px;
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+        border-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        transition: transform 0.08s, border-color 0.08s;
+      }
+      #crosshair .dot {
+        width: 4px;
+        height: 4px;
+        background: #fff;
+        box-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+        border-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+      #crosshair.shoot .ring {
+        border-color: #ff6b6b;
+        transform: translate(-50%, -50%) scale(0.7);
+      }
+      #crosshair.hit .ring {
+        border-color: #4ecdc4;
+        transform: translate(-50%, -50%) scale(1.3);
+      }
+      #flash {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 100;
+        opacity: 0;
+        transition: opacity 0.1s;
+      }
+      #flash.on {
+        background: radial-gradient(
+          circle,
+          rgba(78, 205, 196, 0.3) 0%,
+          transparent 50%
+        );
+        opacity: 1;
+      }
+      #flash.warning {
+        background: radial-gradient(
+          circle,
+          rgba(255, 100, 100, 0.4) 0%,
+          transparent 60%
+        );
+        opacity: 1;
+      }
+      .popup {
+        position: fixed;
+        pointer-events: none;
+        z-index: 1000;
+        color: #4ecdc4;
+        font: bold 24px monospace;
+        text-shadow: 0 0 10px rgba(78, 205, 196, 0.8);
+        animation: float 1s ease-out forwards;
+      }
+      @keyframes float {
+        0% {
+          opacity: 1;
+          transform: translate(-50%, 0) scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: translate(-50%, -60px) scale(1.5);
+        }
+      }
+      #loading {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        font: 1.2rem monospace;
+        letter-spacing: 0.2em;
+        text-shadow: 1px 1px 2px #000;
+      }
+      #warning {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #ff6b6b;
+        font: bold 18px monospace;
+        text-shadow: 0 0 20px rgba(255, 100, 100, 0.8);
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+      #warning.show {
+        opacity: 1;
+        animation: pulse 0.5s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: translateX(-50%) scale(1);
+        }
+        50% {
+          transform: translateX(-50%) scale(1.1);
+        }
+      }
+      /**************************************************************************
+      * PERFORMANCE STATS
+      **************************************************************************/
+      #performanceStats {
+        display: none;
+        position: fixed;
+        display: flex;
+        flex-direction: column;
+        bottom: 70px;
+        right: 10px;
+        gap: 10px;
+      }
+      #performanceStats.gl {
+        bottom: 60px !important;
+        right: 280px !important;
+      }
+      #performanceStats div {
+        visibility: visible !important;
+        position: relative !important;
+        top: unset !important;
+        left: unset !important;
+        cursor: pointer !important;
+        opacity: 0.9 !important;
+        z-index: 10000 !important;
+      }
+      /**************************************************************************
+      * MOBILE CONTROLS
+      **************************************************************************/
+
+      #mobileControls {
+        font-family: Monospace;
+        font-size: 13px;
+        line-height: 1.5;
+        pointer-events: auto;
+        --unit: 8px;
+        --glass-bg: rgba(0, 0, 0, 0.35);
+        --glass-border: rgba(255, 255, 255, 0.2);
+        --solid-border: rgba(255, 255, 255, 1);
+      }
+
+      /* Joystick container sizing */
+      #mobileControls #joystick-left,
+      #mobileControls #joystick-right {
+        width: calc(14 * var(--unit)) !important;
+        height: calc(14 * var(--unit)) !important;
+        position: fixed;
+        z-index: 1000;
+      }
+
+      #mobileControls #joystick-left {
+        bottom: calc(3 * var(--unit));
+        left: calc(0.5 * var(--unit));
+      }
+
+      #mobileControls #joystick-right {
+        bottom: calc(3 * var(--unit));
+        right: calc(0.5 * var(--unit));
+      }
+
+      /* Joystick outer ring (.back) */
+      #mobileControls #joystick-left #nipple_0_0 .back,
+      #mobileControls #joystick-right #nipple_1_1 .back {
+        width: calc(14 * var(--unit)) !important;
+        height: calc(14 * var(--unit)) !important;
+        margin-left: calc(-7 * var(--unit)) !important;
+        margin-top: calc(-7 * var(--unit)) !important;
+        background: var(--glass-bg) !important;
+        border: 1px solid var(--solid-border) !important;
+        opacity: 1 !important;
+      }
+
+      /* Joystick inner thumb (.front) */
+      #mobileControls #joystick-left #nipple_0_0 .front,
+      #mobileControls #joystick-right #nipple_1_1 .front {
+        width: calc(5 * var(--unit)) !important;
+        height: calc(5 * var(--unit)) !important;
+        margin-left: calc(-2.5 * var(--unit)) !important;
+        margin-top: calc(-2.5 * var(--unit)) !important;
+        background: rgba(255, 255, 255, 1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.5) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+        opacity: 1 !important;
+        text-align: center;
+        align-content: center;
+        color: black;
+        font-size: calc(1.8 * var(--unit));
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        overflow: hidden;
+      }
+
+      #mobileControls #joystick-left #nipple_0_0 .front::before {
+        content: "MOVE";
+      }
+      #mobileControls #joystick-right #nipple_1_1 .front::before {
+        content: "LOOK";
+      }
+
+      /* Touch buttons */
+      #mobileControls .touch-button {
+        position: fixed;
+        width: calc(6 * var(--unit));
+        height: calc(6 * var(--unit));
+        border-radius: 50%;
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        color: rgba(255, 255, 255, 0.9);
+        font-size: calc(1.5 * var(--unit));
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        line-height: 1.1;
+        overflow: hidden;
+        white-space: pre-wrap;
+        -webkit-user-select: none;
+        user-select: none;
+        touch-action: none;
+        z-index: 1001;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      #mobileControls .touch-button:active,
+      #mobileControls .touch-button.active {
+        background: rgba(255, 255, 255, 0.25);
+        transform: scale(0.95);
+      }
+
+      #mobileControls .touch-button.toggled {
+        background: rgba(80, 200, 120, 0.4);
+        border-color: rgba(80, 200, 120, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+    <div id="performanceStats"></div>
+    <div id="mobileControls"></div>
+    <div id="loading">Loading birds...</div>
+    <div id="ui" class="collapsed">
+      <h1 id="uiHeader">🐦‍⬛ RAVENFALL</h1>
+      <div id="uiContent">
+        Hits: <span class="hits" id="hits">0</span> · Misses:
+        <span class="miss" id="misses">0</span><br />
+        Shots: <span id="shots">0</span> · Accuracy:
+        <span class="acc" id="acc">0%</span><br />
+        Birds: <span class="birds" id="birds">0</span> · Swooping:
+        <span class="miss" id="swooping">0</span><br />
+        Streak: <span class="streak" id="streak">0</span> · Best:
+        <span class="best" id="best">0</span><br />
+        Longest: <span class="sniper" id="longest">0m</span><br />
+        <span style="color: #ffd93d; font-size: 15px"
+          >Points: <span id="points">0</span></span
+        >
+        <div id="keyMappings">
+          · <strong>WASD</strong> Move <br />· <strong>QE</strong> Rotate
+          <br />· <strong>SHIFT</strong> Sprint <br />·
+          <strong>CLICK</strong> Shoot<br />· <strong>CLICK+DRAG</strong> Look
+        </div>
+        <div id="touchControls">
+          · <strong>L Pad</strong> Move <br />· <strong>R Pad</strong> Rotate
+          <br />· <strong>Tap</strong> Shoot
+        </div>
+      </div>
+    </div>
+    <div id="crosshair">
+      <div class="ring"></div>
+      <div class="dot"></div>
+    </div>
+    <div id="flash"></div>
+    <div id="warning">⚠️ INCOMING! ⚠️</div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/",
+          "stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@3.8.0/+esm",
+          "nipplejs": "https://cdn.jsdelivr.net/npm/nipplejs@0.10.2/+esm"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+      import * as SkeletonUtils from "three/addons/utils/SkeletonUtils.js";
+      import GUI from "https://cdn.jsdelivr.net/npm/lil-gui@0.18.0/dist/lil-gui.esm.min.js";
+      import StatsGL from "stats-gl";
+      import nipplejs from "nipplejs";
+
+      // ============================================================================
+      // CONFIGURATION
+      // ============================================================================
+      // Camera pitch limits for touch controls (in radians)
+      const CAMERA_PITCH_MIN = -0.4; // Look down limit
+      const CAMERA_PITCH_MAX = 0.8; // Look up limit
+      const CAMERA_PITCH_SPEED = 1.2; // Radians per second at full joystick deflection
+      const DEADZONE = 0.05; // prevents unwanted movement
+
+      const CONFIG = {
+        // Birds
+        BIRD_COUNT: 40,
+        BIRD_SCALE: 2.5,
+        BIRD_SPEED_MIN: 8,
+        BIRD_SPEED_MAX: 22,
+
+        // Flock area (in front of camera)
+        FLOCK_CENTER_Z: 60, // How far in front the flock circles
+        FLOCK_RADIUS_MIN: 15,
+        FLOCK_RADIUS_MAX: 40,
+        FLOCK_HEIGHT_MIN: 15,
+        FLOCK_HEIGHT_MAX: 45,
+
+        // Power poles (arc in front of camera, concave toward camera)
+        NUM_POLES: 8,
+        POLE_ARC_RADIUS: 200, // Distance from camera to pole arc
+        POLE_ARC_SPREAD: Math.PI * 0.6, // How wide the arc spreads
+        POLE_HEIGHT: 30,
+        ARM_HEIGHTS: [28, 24],
+        WIRES_PER_ARM: 2,
+        POLE_ARM_WIDTH: 10,
+
+        // Respawn from poles
+        APPROACH_SPEED: 12,
+
+        // Swooping
+        SWOOP_CHANCE: 0.04,
+        SWOOP_SPEED: 45,
+        SWOOP_XZ_DISTANCE: 10, // only within 10m horizontally
+        SWOOP_HEIGHT: 2.5,
+        MAX_SWOOPING: 4,
+
+        // Physics
+        GRAVITY: -30,
+        TURN_RATE: 2.0,
+        WIRE_GRAVITY: 0.003,
+        WIRE_DAMPING: 0.99,
+        WIRE_STIFFNESS: 20,
+
+        // Particles
+        FEATHER_MAX: 500,
+        BLOOD_MAX: 400,
+
+        // Player
+        PLAYER_HEIGHT: 1.7,
+
+        // Scoring
+        SNIPER_DISTANCE: 100,
+        LONG_SHOT_DISTANCE: 180,
+
+        // Camera
+        EXPOSURE: 1.0,
+        DEFAULT_FOV: 90,
+
+        // World boundary
+        WORLD_RADIUS: 300,
+
+        // Movement
+        MOVE_SPEED: 15,
+        SPRINT_MULTIPLIER: 2.0,
+        ROTATE_SPEED: 2.0,
+
+        // Bird perching
+        PERCH_DURATION: 60.0, // seconds birds sit on wires
+        BIRD_WEIGHT: 0.015, // how much birds pull down the wire
+
+        // Graphics (for fog / bullet trails)
+        GRAPHICS: {
+          FOG_NEAR: 300,
+          FOG_FAR: 1200,
+        },
+
+        // Bullet Trails Configuration
+        BULLET_TRAILS: {
+          ENABLED: true,
+          MAX_TRAILS: 20,
+          SEGMENTS_PER_TRAIL: 20, // Quads per trail (more = smoother curve)
+          TRAIL_LENGTH: 20, // Total length in meters
+          LIFETIME_MS: 300, // Fade duration after hit
+          BULLET_SPEED: 200, // Visual travel speed m/s
+          WIDTH_HEAD: 0.03, // Width at head (meters)
+          WIDTH_TAIL: 0.12, // Width at tail (meters) - expands like smoke
+          // Muzzle offset
+          MUZZLE_OFFSET_FORWARD: 1.1,
+          MUZZLE_OFFSET_RIGHT: 0.2,
+          MUZZLE_OFFSET_DOWN: -0.1,
+          // Colors (RGBA - A controls opacity)
+          COLOR_HEAD: { r: 1.0, g: 0.95, b: 0.8, a: 1.0 }, // Bright yellow-white
+          COLOR_MID: { r: 1.0, g: 0.6, b: 0.2, a: 0.6 }, // Orange
+          COLOR_TAIL: { r: 0.3, g: 0.1, b: 0.05, a: 0.05 }, // Dark red, fades out
+        },
+
+        GUN: {
+          container: {
+            position: { x: 0.15, y: -0.25, z: -0.55 }, // Right, down, forward from camera
+            rotation: { x: 0, y: Math.PI, z: 0 }, // Face forward
+          },
+          model: {
+            //https://raw.githubusercontent.com/Data-Bee38/models/main/
+            url: "https://raw.githubusercontent.com/red-reddington/public-assets/main/trigger.glb",            
+            scale: { x: 0.075, y: 0.075, z: 0.075 },
+            baseRotationY: -Math.PI / 1.9,
+          },
+        },
+      };
+
+      // Touch controls
+      const TOUCH_SPRINT_THRESHOLD = 0.8;
+
+      // ============================================================================
+      // DOM
+      // ============================================================================
+      const container = document.getElementById("container");
+      const crosshair = document.getElementById("crosshair");
+      const flash = document.getElementById("flash");
+      const warningEl = document.getElementById("warning");
+      const loadingEl = document.getElementById("loading");
+      const uiEl = document.getElementById("ui");
+      const uiHeader = document.getElementById("uiHeader");
+
+      // ============================================================================
+      // UI COLLAPSE/EXPAND FUNCTIONALITY
+      // Clicking header toggles visibility; prevents shooting
+      // ============================================================================
+      uiHeader.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        uiEl.classList.toggle("collapsed");
+      });
+
+      // Prevent mousedown/mouseup on UI from triggering shoot
+      uiEl.addEventListener("mousedown", (e) => e.stopPropagation());
+      uiEl.addEventListener("mouseup", (e) => e.stopPropagation());
+
+      // ============================================================================
+      // GAME STATE
+      // ============================================================================
+      let hits = 0,
+        misses = 0,
+        shots = 0,
+        streak = 0,
+        bestStreak = 0,
+        longestShot = 0,
+        points = 0;
+
+      function updateStats() {
+        document.getElementById("hits").textContent = hits;
+        document.getElementById("misses").textContent = misses;
+        document.getElementById("shots").textContent = shots;
+        document.getElementById("acc").textContent =
+          shots > 0 ? Math.round((hits / shots) * 100) + "%" : "0%";
+        document.getElementById("streak").textContent = streak;
+        document.getElementById("best").textContent = bestStreak;
+        document.getElementById("longest").textContent =
+          longestShot.toFixed(1) + "m";
+        document.getElementById("points").textContent = points;
+      }
+
+      // ============================================================================
+      // DEVICE DETECTION
+      // Determines input mode based on available hardware
+      // ============================================================================
+      const hasMouse = matchMedia("(pointer:fine)").matches;
+      const hasKeyboard = !!navigator.keyboard;
+      const isTouchDevice =
+        "ontouchstart" in window ||
+        navigator.maxTouchPoints > 0 ||
+        navigator.msMaxTouchPoints > 0;
+      const isTouchOnly = isTouchDevice && !hasMouse && !hasKeyboard;
+
+      CONFIG.TOUCH = isTouchOnly;
+      let cameraMode = isTouchOnly ? "touch" : "firstperson";
+
+      const centerX = () => window.innerWidth / 2;
+
+      // ============================================================================
+      // RENDERER
+      // ============================================================================
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        precision: "highp",
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = CONFIG.EXPOSURE;
+      container.appendChild(renderer.domElement);
+
+      // ============================================================================
+      // INPUT STATE
+      // Centralized input tracking for both keyboard and touch
+      // ============================================================================
+      let mouseX = window.innerWidth / 2;
+      let mouseY = window.innerHeight / 2;
+      const keys = {};
+
+      // Joystick state
+      let leftJoystick = null;
+      let rightJoystick = null;
+      const joystickMove = { x: 0, y: 0 };
+      const joystickLook = { x: 0, y: 0 };
+
+      // ============================================================================
+      // STATS
+      // ============================================================================
+      const statsGL = new StatsGL({ trackGPU: true, trackHz: true });
+      const statsContainer = document.getElementById("performanceStats");
+      statsContainer.style.display = "none"; // hide initially
+      statsContainer.classList.add("gl");
+      statsContainer.appendChild(statsGL.dom);
+      statsGL.init(renderer);
+
+      // ============================================================================
+      // SCENE
+      // ============================================================================
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color().setHSL(0.6, 0, 1);
+      scene.fog = new THREE.Fog(
+        scene.background,
+        CONFIG.GRAPHICS.FOG_NEAR,
+        CONFIG.GRAPHICS.FOG_FAR
+      );
+
+      // ============================================================================
+      // CAMERA (grounded)
+      // ============================================================================
+      const camera = new THREE.PerspectiveCamera(
+        CONFIG.DEFAULT_FOV,
+        innerWidth / innerHeight,
+        0.1,
+        2000
+      );
+      camera.position.set(0, CONFIG.PLAYER_HEIGHT, 0);
+
+      /*
+      debug
+      const axes = new THREE.AxesHelper(2);
+      axes.position.set(
+        camera.position.x,
+        camera.position.y,
+        camera.position.z
+      );
+      scene.add(axes);*/
+
+      // ============================================================================
+      // CONTROLS (rotate only - movement handled separately)
+      // ============================================================================
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
+      controls.dampingFactor = 0.1;
+      controls.enablePan = false;
+      controls.enableZoom = false;
+      // Target is just in front of the camera
+      controls.target.set(0, CONFIG.PLAYER_HEIGHT, 10);
+      controls.minDistance = 0.01;
+      controls.maxDistance = 0.01;
+      controls.minPolarAngle = 0.3;
+      controls.maxPolarAngle = Math.PI * 0.85;
+      controls.rotateSpeed = 0.5;
+
+      // ============================================================================
+      // GUN MODEL (trigger.glb)
+      // ============================================================================
+      let gunModel = null;
+      let gunMixer = null;
+      let gunShootAction = null;
+
+      // Gun container attached to camera
+      const gunContainer = new THREE.Group();
+      gunContainer.position.set(
+        CONFIG.GUN.container.position.x,
+        CONFIG.GUN.container.position.y,
+        CONFIG.GUN.container.position.z
+      );
+      gunContainer.rotation.set(
+        CONFIG.GUN.container.rotation.x,
+        CONFIG.GUN.container.rotation.y,
+        CONFIG.GUN.container.rotation.z
+      );
+      camera.add(gunContainer);
+      scene.add(camera); // Camera must be in scene for children to render
+
+      const gunLoader = new GLTFLoader();
+      gunLoader.load(
+        CONFIG.GUN.model.url,
+        (gltf) => {
+          gunModel = gltf.scene;
+          gunModel.scale.set(
+            CONFIG.GUN.model.scale.x,
+            CONFIG.GUN.model.scale.y,
+            CONFIG.GUN.model.scale.z
+          );
+          gunModel.rotation.y = CONFIG.GUN.model.baseRotationY;
+
+          gunModel.traverse((node) => {
+            if (node.isMesh) {
+              node.castShadow = false;
+              node.receiveShadow = false;
+              node.material.side = THREE.FrontSide;
+            }
+          });
+
+          gunContainer.add(gunModel);
+
+          // Setup animation
+          if (gltf.animations && gltf.animations.length > 0) {
+            gunMixer = new THREE.AnimationMixer(gunModel);
+            // Listen for animation finished
+            gunMixer.addEventListener("finished", () => {
+              gunModel.rotation.y = CONFIG.GUN.model.baseRotationY;
+            });
+            // Use animation index 1 as per the reference code
+            const animIndex = gltf.animations.length > 1 ? 1 : 0;
+            gunShootAction = gunMixer.clipAction(gltf.animations[animIndex]);
+            gunShootAction.setLoop(THREE.LoopOnce);
+            gunShootAction.clampWhenFinished = true;
+            // Play at 2× speed
+            gunShootAction.setEffectiveTimeScale(2);
+          }
+
+          //console.log("Gun loaded with animations:", gltf.animations);
+        },
+        undefined,
+        (error) => {
+          console.error("Error loading gun model:", error);
+        }
+      );
+
+      /**
+       * Play gun shoot animation
+       */
+      function playGunAnimation() {
+        if (gunShootAction) {
+          gunShootAction.reset();
+          gunShootAction.play();
+        }
+      }
+
+      // ============================================================================
+      // LIGHTING
+      // ============================================================================
+      // Hemisphere light: brighter sky + warm ground
+      const hemiLight = new THREE.HemisphereLight(0x8090ff, 0xffa060, 1.2);
+      hemiLight.position.set(0, 50, 0);
+      scene.add(hemiLight);
+
+      // Ambient light: gentle fill, but stronger than before
+      const ambientLight = new THREE.AmbientLight(0x444444, 0.6);
+      scene.add(ambientLight);
+
+      // Moon direction: pointing where player looks at start (positive Z, slightly up)
+      const MOON_SIZE = 0.025;
+      // Directional light from moon position
+      const MOON_DIR = new THREE.Vector3(0.3, 0.45, 0.8).normalize();
+      const sun = new THREE.DirectionalLight(0xffc080, 1.8); // cool moonlight color
+      sun.position.set(MOON_DIR.x * 100, MOON_DIR.y * 100, MOON_DIR.z * 100);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(4096, 4096); // Higher resolution for sharper shadows; impacts performance!
+      sun.shadow.intensity = 1;
+      sun.shadow.normalBias = 0.005;
+      sun.shadow.bias = -0.0001;
+      sun.shadow.autoUpdate = true;
+      sun.shadowCameraVisible = true;
+      sun.shadow.camera.near = 1;
+      sun.shadow.camera.far = 300;
+
+      scene.add(sun);
+
+      sun.target = new THREE.Object3D();
+      scene.add(sun.target);
+
+      // ============================================================================
+      // SHADOW SYSTEM
+      // Optimized shadow frustum that follows the camera
+      // ============================================================================
+      const SHADOW_CONFIG = {
+        FRUSTUM_SIZE_DEFAULT: 50,
+        FORWARD_OFFSET: 10,
+        SHADOW_UPDATE_INTERVAL: 0.1,
+        MOVEMENT_THRESHOLD_SQ: 1,
+      };
+
+      // Pre-allocated vectors to avoid GC pressure in the update loop
+      const shadowCenter = new THREE.Vector3();
+      const _lastCameraPosition = new THREE.Vector3();
+      const _targetPosition = new THREE.Vector3();
+      const cameraForwardDir = new THREE.Vector3();
+      let shadowUpdateTimer = 0;
+
+      // Initialize shadow frustum
+      sun.shadow.camera.left = -SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+      sun.shadow.camera.right = SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+      sun.shadow.camera.top = SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+      sun.shadow.camera.bottom = -SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+      sun.shadow.camera.zoom = 0.5;
+      sun.shadow.camera.updateProjectionMatrix();
+
+      //const shadowHelper = new THREE.CameraHelper(sun.shadow.camera);
+      //scene.add(shadowHelper);
+
+      function updateShadowFrustum() {
+        const frustumSize = SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+        if (frustumSize !== sun.shadow.camera.left) {
+          sun.shadow.camera.left = -frustumSize;
+          sun.shadow.camera.right = frustumSize;
+          sun.shadow.camera.top = frustumSize;
+          sun.shadow.camera.bottom = -frustumSize;
+          sun.shadow.camera.zoom = 0.5;
+          sun.shadow.camera.updateProjectionMatrix();
+        }
+      }
+
+      function updateSunShadow(dt) {
+        if (!camera) return;
+        const cameraPosition = camera.position;
+
+        // Initialize on first run
+        if (_lastCameraPosition.lengthSq() === 0) {
+          _lastCameraPosition.copy(cameraPosition);
+          shadowCenter.copy(cameraPosition);
+        }
+
+        // Only update shadow center when camera moves significantly
+        if (
+          _lastCameraPosition.distanceToSquared(cameraPosition) >=
+          SHADOW_CONFIG.MOVEMENT_THRESHOLD_SQ
+        ) {
+          const isMovingForward = camera.userData.forwardInput > 0;
+
+          if (isMovingForward) {
+            camera.getWorldDirection(cameraForwardDir);
+            cameraForwardDir.y = 0;
+            cameraForwardDir.normalize();
+            _targetPosition
+              .copy(cameraForwardDir)
+              .multiplyScalar(SHADOW_CONFIG.FORWARD_OFFSET)
+              .add(cameraPosition);
+          } else {
+            _targetPosition.copy(cameraPosition);
+          }
+
+          shadowCenter.lerp(_targetPosition, 0.05);
+          _lastCameraPosition.copy(cameraPosition);
+        }
+
+        // Throttle expensive shadow map updates
+        shadowUpdateTimer += dt;
+        if (shadowUpdateTimer >= SHADOW_CONFIG.SHADOW_UPDATE_INTERVAL) {
+          sun.position.copy(MOON_DIR).multiplyScalar(200).add(shadowCenter);
+          sun.target.position.copy(shadowCenter);
+          sun.target.updateMatrixWorld();
+          shadowUpdateTimer = 0;
+        }
+      }
+
+      // ============================================================================
+      // TOUCH CONTROLS
+      // Mobile joysticks and buttons using nipplejs
+      // ============================================================================
+      const mobileControls = document.getElementById("mobileControls");
+      const keyMappings = document.getElementById("keyMappings");
+      const touchControls = document.getElementById("touchControls");
+
+      let tapCrosshairX = null;
+      let tapCrosshairY = null;
+
+      function initJoysticks() {
+        const leftZone = document.createElement("div");
+        leftZone.id = "joystick-left";
+        mobileControls.append(leftZone);
+
+        const rightZone = document.createElement("div");
+        rightZone.id = "joystick-right";
+        mobileControls.append(rightZone);
+
+        const unitValue = parseFloat(
+          getComputedStyle(mobileControls).getPropertyValue("--unit")
+        );
+
+        // Left joystick (movement)
+        leftJoystick = nipplejs.create({
+          zone: leftZone,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          restJoystick: true,
+          color: "blue",
+          size: unitValue * 10,
+        });
+
+        leftJoystick.on("move", (evt, data) => {
+          joystickMove.x = data.vector.x;
+          joystickMove.y = data.vector.y;
+
+          keys.ShiftLeft = false;
+          keys.ShiftRight = false;
+          if (data.force > TOUCH_SPRINT_THRESHOLD) {
+            keys.ShiftLeft = true;
+          }
+        });
+
+        leftJoystick.on("end", () => {
+          joystickMove.x = 0;
+          joystickMove.y = 0;
+          keys.ShiftLeft = false;
+          keys.ShiftRight = false;
+        });
+
+        // Right joystick (look/aim)
+        rightJoystick = nipplejs.create({
+          zone: rightZone,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          restJoystick: true,
+          color: "red",
+          size: unitValue * 10,
+        });
+
+        rightJoystick.on("move", (evt, data) => {
+          joystickLook.x = data.vector.x;
+          joystickLook.y = data.vector.y;
+        });
+
+        rightJoystick.on("end", () => {
+          joystickLook.x = 0;
+          joystickLook.y = 0;
+        });
+
+        container.addEventListener(
+          "touchend",
+          (e) => {
+            if (e.changedTouches.length === 1) {
+              const touch = e.changedTouches[0];
+              mouseX = touch.clientX;
+              mouseY = touch.clientY;
+              crosshair.style.left = mouseX + "px";
+              crosshair.style.top = mouseY + "px";
+              shoot();
+            }
+          },
+          { passive: false }
+        );
+      }
+
+      function ensureMobileControls() {
+        if (!mobileControls) return;
+
+        if (cameraMode === "touch") {
+          controls.enabled = false; // disable OrbitControls
+          keyMappings.style.display = "none";
+          touchControls.style.display = "block";
+          mobileControls.style.display = "block";
+          mobileControls.style.pointerEvents = "auto";
+          if (!leftJoystick && !rightJoystick) {
+            initJoysticks();
+          }
+        } else {
+          controls.enabled = true;
+          keyMappings.style.display = "block";
+          touchControls.style.display = "none";
+          mobileControls.style.display = "none";
+          mobileControls.style.pointerEvents = "none";
+        }
+      }
+
+      function createTouchButton(
+        id,
+        label,
+        onTap = null,
+        onPress = null,
+        onRelease = null,
+        getToggleState = null
+      ) {
+        const button = document.createElement("div");
+        button.id = `btn-${id}`;
+        button.textContent = label;
+        button.className = "touch-button";
+
+        function updateAppearance(isToggled) {
+          button.classList.toggle("toggled", isToggled);
+        }
+
+        if (onTap) {
+          button.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onTap();
+            updateAppearance(getToggleState?.() ?? false);
+          });
+        }
+
+        if (onPress && onRelease) {
+          button.addEventListener(
+            "touchstart",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.add("active");
+              onPress();
+            },
+            { passive: false }
+          );
+
+          button.addEventListener(
+            "touchend",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.remove("active");
+              updateAppearance(getToggleState?.() ?? false);
+              onRelease();
+            },
+            { passive: false }
+          );
+
+          button.addEventListener(
+            "touchcancel",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              updateAppearance(getToggleState?.() ?? false);
+              onRelease();
+            },
+            { passive: false }
+          );
+        } else if (onTap) {
+          button.addEventListener(
+            "touchstart",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.add("active");
+            },
+            { passive: false }
+          );
+
+          button.addEventListener(
+            "touchend",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.remove("active");
+              onTap();
+              updateAppearance(getToggleState?.() ?? false);
+            },
+            { passive: false }
+          );
+
+          button.addEventListener(
+            "touchcancel",
+            (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              button.classList.remove("active");
+              updateAppearance(getToggleState?.() ?? false);
+            },
+            { passive: false }
+          );
+        }
+
+        updateAppearance(getToggleState?.() ?? false);
+        mobileControls.append(button);
+        button.updateAppearance = () =>
+          updateAppearance(getToggleState?.() ?? false);
+        return button;
+      }
+
+      ensureMobileControls();
+
+      // ============================================================================
+      // GUI
+      // ============================================================================
+      const gui = new GUI({ title: "Options" });
+
+      const statsSettings = { show: false };
+      gui
+        .add(statsSettings, "show")
+        .name("Show Stats")
+        .onChange((v) => {
+          statsContainer.style.display = v ? "flex" : "none";
+        });
+
+      // hide toggle option for touch-only devices (makes no sense to disable)
+      if (!isTouchOnly) {
+        gui
+          .add(CONFIG, "TOUCH")
+          .name("Touch Controls")
+          .onChange((enabled) => {
+            cameraMode = enabled ? "touch" : "firstperson";
+            cameraPitch = 0; // Reset pitch when switching modes
+
+            // Recompute target relative to camera position while preserving distance
+            _dir.subVectors(controls.target, camera.position);
+            const distance = _dir.length(); // preserve current distance
+            _dir.y = 0; // flatten to horizontal
+            _dir.normalize();
+            _right.crossVectors(_dir, _up).normalize();
+            _dir.applyAxisAngle(_right, cameraPitch); // now pitch is zero
+            _dir.setLength(distance); // restore original distance
+            controls.target.copy(camera.position).add(_dir);
+
+            ensureMobileControls();
+          });
+      }
+
+      const shadowSettings = { quality: "high" };
+      gui
+        .add(shadowSettings, "quality", ["none", "low", "medium", "high"])
+        .name("Shadow Quality")
+        .onChange(updateShadowQuality);
+
+      // FOV slider
+      const cameraSettings = { fov: CONFIG.DEFAULT_FOV };
+      gui
+        .add(cameraSettings, "fov", 60, 120, 1)
+        .name("FOV")
+        .onChange((value) => {
+          camera.fov = value;
+          camera.updateProjectionMatrix();
+        });
+
+      gui.close();
+
+      // ============================================================================
+      // PREVENT GUI CLICKS FROM SHOOTING
+      // lil-gui should not trigger game actions
+      // ============================================================================
+      gui.domElement.addEventListener("mousedown", (e) => e.stopPropagation());
+      gui.domElement.addEventListener("mouseup", (e) => e.stopPropagation());
+      gui.domElement.addEventListener("click", (e) => e.stopPropagation());
+
+      function updateShadowQuality(quality) {
+        let newSize;
+        switch (quality) {
+          case "none":
+            sun.castShadow = false;
+            renderer.shadowMap.enabled = false;
+            renderer.shadowMap.needsUpdate = true;
+            return;
+          case "low":
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFShadowMap;
+            sun.castShadow = true;
+            newSize = 1024;
+            break;
+          case "medium":
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            sun.castShadow = true;
+            newSize = 2048;
+            break;
+          case "high":
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            sun.castShadow = true;
+            newSize = 4096;
+            break;
+        }
+
+        if (sun.shadow.mapSize.width !== newSize) {
+          sun.shadow.map?.dispose();
+          sun.shadow.map = null;
+          sun.shadow.mapSize.width = newSize;
+          sun.shadow.mapSize.height = newSize;
+          sun.shadow.needsUpdate = true;
+          renderer.shadowMap.needsUpdate = true;
+        }
+      }
+
+      // ============================================================================
+      // GROUND (circular)
+      // ============================================================================
+      const groundGeo = new THREE.CircleGeometry(CONFIG.WORLD_RADIUS, 64);
+      const groundMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.8, // higher = more matte
+        metalness: 0.0, // ground is non‑metallic
+      });
+      groundMat.color.setHSL(0.6, 0.2, 0.3);
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // ============================================================================
+      // SKY DOME
+      // ============================================================================
+      const darkSkyColor = new THREE.Color(0x0d1321).convertLinearToSRGB();
+      const nightSkyColor = new THREE.Color(0x1c2331).convertLinearToSRGB();
+
+      const uniforms = {
+        topColor: { value: darkSkyColor },
+        bottomColor: { value: nightSkyColor },
+        offset: { value: 33 },
+        exponent: { value: 0.6 },
+        moonDir: { value: MOON_DIR },
+        moonSize: { value: MOON_SIZE },
+      };
+      uniforms.topColor.value.copy(hemiLight.color);
+      scene.fog.color.copy(uniforms.bottomColor.value);
+
+      const skyMat = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: `
+                    varying vec3 vWorldPosition;
+                    void main() {
+                      vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                      vWorldPosition = worldPosition.xyz;
+                      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                  `,
+        fragmentShader: `
+                    uniform vec3 topColor;
+                    uniform vec3 bottomColor;
+                    uniform float offset;
+                    uniform float exponent;
+                    uniform vec3 moonDir;
+                    uniform float moonSize;
+                    varying vec3 vWorldPosition;
+
+                    float hash(vec2 p) {
+                      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+                    }
+
+                    float noise(vec2 p) {
+                      vec2 i = floor(p);
+                      vec2 f = fract(p);
+                      float a = hash(i);
+                      float b = hash(i + vec2(1.0, 0.0));
+                      float c = hash(i + vec2(0.0, 1.0));
+                      float d = hash(i + vec2(1.0, 1.0));
+                      vec2 u = f * f * (3.0 - 2.0 * f);
+                      return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+                    }
+
+                    float fbm(vec2 p) {
+                      float v = 0.0;
+                      float a = 0.5;
+                      for (int i = 0; i < 5; i++) {
+                        v += a * noise(p);
+                        p *= 2.0;
+                        a *= 0.5;
+                      }
+                      return v;
+                    }
+
+                    void main() {
+                      vec3 viewDir = normalize(vWorldPosition);
+                      float h = normalize(vWorldPosition + offset).y;
+                      vec3 sky = mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0));
+
+                      // Moon calculation
+                      float moonDot = dot(viewDir, moonDir);
+
+                      // Crisp moon disc
+                      float moonDisc = smoothstep(1.0 - moonSize, 1.0 - moonSize * 0.8, moonDot);
+
+                      // Soft outer glow
+                      float glow = smoothstep(1.0 - moonSize * 4.0, 1.0 - moonSize, moonDot) * 0.25;
+
+                      // Procedural crater texture
+                      vec2 uv = vec2(viewDir.x, viewDir.y) * 5.0;
+                      float craterPattern = fbm(uv);
+                      float craterMask = smoothstep(0.3, 0.7, craterPattern);
+
+                      vec3 moonColor = vec3(1.0, 0.98, 0.9);
+                      vec3 craterColor = moonColor * (0.6 + 0.4 * craterMask);
+                      vec3 moon = craterColor * moonDisc;
+                      float moonMask = moonDisc + glow;
+
+                      // Blend moon OVER sky instead of adding
+                      vec3 finalColor = mix(sky, moon, moonDisc) + moonColor * glow;
+
+                      gl_FragColor = vec4(finalColor, 1.0);
+                    }
+                  `,
+        side: THREE.BackSide,
+        depthWrite: false,
+      });
+      scene.add(new THREE.Mesh(new THREE.SphereGeometry(1000, 32, 15), skyMat));
+
+      // ============================================================================
+      // POWER POLES (Arc in front of camera, concave toward camera)
+      // ============================================================================
+      const poles = [];
+      const wires = [];
+      const wireAttachPoints = []; // For bird spawning
+
+      // Shared materials
+      const poleMaterial = new THREE.MeshLambertMaterial({ color: 0x5a4030 });
+      const armMaterial = new THREE.MeshLambertMaterial({ color: 0x4a3020 });
+      const insulatorMaterial = new THREE.MeshLambertMaterial({
+        color: 0xdddddd,
+      });
+      const wireMaterial = new THREE.MeshLambertMaterial({ color: 0x222222 });
+
+      // Shared geometries
+      const poleGeo = new THREE.CylinderGeometry(
+        0.3,
+        0.4,
+        CONFIG.POLE_HEIGHT,
+        8
+      );
+      const armGeo = new THREE.BoxGeometry(CONFIG.POLE_ARM_WIDTH, 0.3, 0.3);
+      const insulatorGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.4, 6);
+
+      function createPoles() {
+        // Wire X offsets
+        const wireOffsets = [];
+        const maxOff = CONFIG.POLE_ARM_WIDTH / 2 - 0.3;
+        for (let i = 0; i < CONFIG.WIRES_PER_ARM; i++) {
+          const t =
+            CONFIG.WIRES_PER_ARM > 1 ? i / (CONFIG.WIRES_PER_ARM - 1) : 0.5;
+          wireOffsets.push(-maxOff + maxOff * 2 * t);
+        }
+
+        // Create poles in an arc
+        for (let i = 0; i < CONFIG.NUM_POLES; i++) {
+          const t = i / (CONFIG.NUM_POLES - 1);
+          const angle =
+            -CONFIG.POLE_ARC_SPREAD / 2 + CONFIG.POLE_ARC_SPREAD * t;
+
+          const x = Math.sin(angle) * CONFIG.POLE_ARC_RADIUS;
+          const z = Math.cos(angle) * CONFIG.POLE_ARC_RADIUS;
+
+          const poleGroup = new THREE.Group();
+          poleGroup.position.set(x, 0, z);
+
+          // The arm extends in local X direction
+          // Wires connect poles along the arc (tangent direction)
+          // So we need the pole's local Z to point along the arc tangent
+          // That way local X (arm) is perpendicular to the wires
+
+          // Calculate direction to next pole (or from previous for last pole)
+          let targetAngle;
+          if (i < CONFIG.NUM_POLES - 1) {
+            const nextT = (i + 1) / (CONFIG.NUM_POLES - 1);
+            targetAngle =
+              -CONFIG.POLE_ARC_SPREAD / 2 + CONFIG.POLE_ARC_SPREAD * nextT;
+          } else {
+            const prevT = (i - 1) / (CONFIG.NUM_POLES - 1);
+            targetAngle =
+              -CONFIG.POLE_ARC_SPREAD / 2 + CONFIG.POLE_ARC_SPREAD * prevT;
+          }
+
+          const targetX = Math.sin(targetAngle) * CONFIG.POLE_ARC_RADIUS;
+          const targetZ = Math.cos(targetAngle) * CONFIG.POLE_ARC_RADIUS;
+
+          // Tangent direction at this pole (derivative of circle param)
+          const tangentX = Math.cos(angle);
+          const tangentZ = -Math.sin(angle);
+
+          // Rotation so local Z aligns with tangent
+          poleGroup.rotation.y = Math.atan2(tangentX, tangentZ);
+
+          const pole = new THREE.Mesh(poleGeo, poleMaterial);
+          pole.position.y = CONFIG.POLE_HEIGHT / 2;
+          pole.castShadow = true;
+          poleGroup.add(pole);
+
+          const poleAttachPoints = [];
+
+          CONFIG.ARM_HEIGHTS.forEach((h) => {
+            const arm = new THREE.Mesh(armGeo, armMaterial);
+            arm.position.y = h;
+            arm.castShadow = true;
+            poleGroup.add(arm);
+
+            const armPoints = [];
+            wireOffsets.forEach((localX) => {
+              const insulator = new THREE.Mesh(insulatorGeo, insulatorMaterial);
+              insulator.position.set(localX, h - 0.35, 0);
+              poleGroup.add(insulator);
+
+              // Store positions only
+              armPoints.push({
+                localX,
+                height: h,
+                poleIndex: i,
+                polePos: new THREE.Vector3(x, 0, z),
+                angle,
+              });
+            });
+            poleAttachPoints.push(armPoints);
+          });
+
+          scene.add(poleGroup);
+          poles.push({
+            group: poleGroup,
+            attachPoints: poleAttachPoints,
+            x,
+            z,
+            angle,
+          });
+        }
+
+        poles.forEach((p) => p.group.updateMatrixWorld(true));
+
+        // Create wires between adjacent poles
+        for (let i = 0; i < CONFIG.NUM_POLES - 1; i++) {
+          const poleA = poles[i];
+          const poleB = poles[i + 1];
+
+          for (let armIdx = 0; armIdx < CONFIG.ARM_HEIGHTS.length; armIdx++) {
+            for (let wireIdx = 0; wireIdx < CONFIG.WIRES_PER_ARM; wireIdx++) {
+              const ptA = poleA.attachPoints[armIdx][wireIdx];
+              const ptB = poleB.attachPoints[armIdx][wireIdx];
+
+              // Compute world positions
+              const start = new THREE.Vector3(
+                ptA.localX,
+                ptA.height - 0.15,
+                0
+              ).applyMatrix4(poleA.group.matrixWorld);
+              const end = new THREE.Vector3(
+                ptB.localX,
+                ptB.height - 0.15,
+                0
+              ).applyMatrix4(poleB.group.matrixWorld);
+
+              const wire = createWire(start, end);
+              wires.push(wire);
+
+              // Store only particle array in attach points for spawn
+              wireAttachPoints.push({
+                wire, // Particle-based wire
+                startIdx: 0,
+                endIdx: wire.segments,
+              });
+            }
+          }
+        }
+      }
+
+      // ============================================================================
+      // WIRE PHYSICS (Verlet)
+      // ============================================================================
+      class Particle {
+        constructor(pos) {
+          this.pos = pos.clone();
+          this.oldPos = pos.clone();
+          this.fixed = false;
+        }
+        integrate(dt) {
+          if (this.fixed) return;
+          const vel = this.pos
+            .clone()
+            .sub(this.oldPos)
+            .multiplyScalar(CONFIG.WIRE_DAMPING);
+          this.oldPos.copy(this.pos);
+          this.pos.add(vel);
+          this.pos.y -= CONFIG.WIRE_GRAVITY * dt * 60;
+        }
+      }
+
+      function createWire(start, end) {
+        const segments = 25;
+        const particles = [];
+        const dir = end.clone().sub(start);
+        const segLen = dir.length() / segments;
+
+        for (let i = 0; i <= segments; i++) {
+          const p = new Particle(
+            start.clone().add(dir.clone().multiplyScalar(i / segments))
+          );
+          particles.push(p);
+        }
+        particles[0].fixed = true;
+        particles[segments].fixed = true;
+
+        // ---- NEW: Pre-allocated BufferGeometry ----
+        const tubeVertices = [];
+        const tubeIndices = [];
+        const radialSegments = 5;
+        const radius = 0.06;
+
+        for (let i = 0; i <= segments; i++) {
+          const thetaStep = (Math.PI * 2) / radialSegments;
+          for (let j = 0; j <= radialSegments; j++) {
+            tubeVertices.push(0, 0, 0); // placeholder, will update
+          }
+        }
+
+        // Index buffer (static, can compute once)
+        for (let i = 0; i < segments; i++) {
+          for (let j = 0; j < radialSegments; j++) {
+            const a = i * (radialSegments + 1) + j;
+            const b = (i + 1) * (radialSegments + 1) + j;
+            const c = (i + 1) * (radialSegments + 1) + (j + 1);
+            const d = i * (radialSegments + 1) + (j + 1);
+            tubeIndices.push(a, b, d, b, c, d);
+          }
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(tubeVertices, 3)
+        );
+        geometry.setIndex(tubeIndices);
+        geometry.computeVertexNormals();
+
+        const mesh = new THREE.Mesh(geometry, wireMaterial);
+        mesh.castShadow = true;
+        scene.add(mesh);
+
+        return {
+          particles,
+          geometry,
+          mesh,
+          segments,
+          radialSegments,
+          radius,
+          restLength: segLen,
+        };
+      }
+
+      function updateWireGeometry(wire) {
+        const posAttr = wire.geometry.attributes.position;
+        const segments = wire.segments;
+        const radialSegments = wire.radialSegments;
+        const radius = wire.radius;
+
+        for (let i = 0; i <= segments; i++) {
+          const p = wire.particles[i];
+          // For each radial vertex
+          for (let j = 0; j <= radialSegments; j++) {
+            const theta = (j / radialSegments) * Math.PI * 2;
+            const x = p.pos.x + Math.cos(theta) * radius;
+            const y = p.pos.y;
+            const z = p.pos.z + Math.sin(theta) * radius;
+            const idx = i * (radialSegments + 1) + j;
+            posAttr.setXYZ(idx, x, y, z);
+          }
+        }
+
+        posAttr.needsUpdate = true;
+        wire.geometry.computeVertexNormals(); // optional, can skip for slightly better performance
+      }
+
+      function updateWires(dt) {
+        for (const wire of wires) {
+          // --- Verlet physics ---
+          for (const p of wire.particles) p.integrate(dt);
+          for (let iter = 0; iter < CONFIG.WIRE_STIFFNESS; iter++) {
+            for (let i = 0; i < wire.particles.length - 1; i++) {
+              const p1 = wire.particles[i];
+              const p2 = wire.particles[i + 1];
+              const delta = p2.pos.clone().sub(p1.pos);
+              const len = delta.length();
+              if (len < 0.001) continue;
+              const diff = ((len - wire.restLength) / len) * 0.5;
+              const correction = delta.multiplyScalar(diff);
+              if (!p1.fixed) p1.pos.add(correction);
+              if (!p2.fixed) p2.pos.sub(correction);
+            }
+          }
+
+          updateWireGeometry(wire);
+        }
+      }
+
+      createPoles();
+
+      // ============================================================================
+      // BULLET TRAIL SYSTEM (GPU instanced billboards)
+      // ============================================================================
+
+      // Pre-allocated reusable vectors for bullet trails
+      const _trailDir = new THREE.Vector3();
+      const _trailRight = new THREE.Vector3();
+      const _trailUp = new THREE.Vector3();
+      const _trailPos = new THREE.Vector3();
+      const _trailTarget = new THREE.Vector3();
+
+      // Bullet trail vertex shader
+      const bulletTrailVertexShader = /* glsl */ `
+                  uniform vec2 playerPositionXZ;
+
+                  attribute vec3 instanceOffset;
+                  attribute vec3 instanceDirection;
+                  attribute vec2 instanceScale;
+                  attribute vec4 instanceColor;
+                  attribute float instanceT;
+
+                  varying vec4 vColor;
+                  varying vec2 vUv;
+                  varying float vFogDepth;
+
+                  const float EPS = 1e-5;
+
+                  void main() {
+                    vColor = instanceColor;
+                    vUv = vec2(uv.x, instanceT);
+
+                    vec3 forward = normalize(instanceDirection);
+                    vec3 toCam = cameraPosition - instanceOffset;
+                    float toCamLen = length(toCam);
+                    if (toCamLen < EPS) {
+                      toCam = vec3(0.0, 0.0, 1.0);
+                    } else {
+                      toCam /= toCamLen;
+                    }
+
+                    if (abs(dot(toCam, forward)) > 0.9999) {
+                      toCam += vec3(0.01, 0.02, 0.03);
+                      toCam = normalize(toCam);
+                    }
+
+                    vec3 rawRight = cross(toCam, forward);
+                    float rlen = length(rawRight);
+                    vec3 right;
+                    if (rlen < EPS) {
+                      right = normalize(abs(forward.x) < 0.9 ? cross(forward, vec3(1.0,0.0,0.0)) : cross(forward, vec3(0.0,1.0,0.0)));
+                    } else {
+                      right = rawRight / rlen;
+                    }
+
+                    vec3 up = cross(forward, right);
+                    mat3 rotMatrix = mat3(right, up, forward);
+                    vec3 localPos = vec3(position.x * instanceScale.x, 0.0, position.y * instanceScale.y);
+                    vec3 worldPos = instanceOffset + rotMatrix * localPos;
+
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPos, 1.0);
+                    vFogDepth = distance(worldPos.xz, playerPositionXZ);
+                  }
+                `;
+
+      // Bullet trail fragment shader
+      const bulletTrailFragmentShader = /* glsl */ `
+                  uniform float fogNear;
+                  uniform float fogFar;
+
+                  varying vec4 vColor;
+                  varying vec2 vUv;
+                  varying float vFogDepth;
+
+                  void main() {
+                    float side = 1.0 - abs(vUv.x - 0.5) * 2.0;
+                    float sideFade = smoothstep(0.0, 0.45, side);
+                    float headFall = smoothstep(0.0, 0.15, 1.0 - vUv.y);
+                    float lengthFade = headFall * (1.0 - pow(vUv.y, 1.5));
+
+                    float alpha = vColor.a * sideFade * lengthFade;
+                    if (alpha <= 0.0001) discard;
+
+                    float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+                    alpha *= (1.0 - fogFactor);
+                    if (alpha <= 0.0001) discard;
+
+                    gl_FragColor = vec4(vColor.rgb, alpha);
+                  }
+                `;
+
+      /** Trail state object */
+      class Trail {
+        constructor(index, segmentsPerTrail) {
+          this.index = index;
+          this.segmentCount = segmentsPerTrail;
+          this.baseInstance = index * segmentsPerTrail;
+          this.active = false;
+          this.origin = new THREE.Vector3();
+          this.target = new THREE.Vector3();
+          this.direction = new THREE.Vector3();
+          this.distance = 0;
+          this.progress = 0;
+          this.phase = "flying";
+          this.fadeProgress = 0;
+          this.startTime = 0;
+          this.hitTime = 0;
+        }
+
+        fire(origin, target, now) {
+          this.origin.copy(origin);
+          this.target.copy(target);
+          this.direction.subVectors(target, origin).normalize();
+          this.distance = origin.distanceTo(target);
+          this.progress = 0;
+          this.phase = "flying";
+          this.fadeProgress = 0;
+          this.startTime = now;
+          this.hitTime = 0;
+          this.active = true;
+        }
+
+        update(
+          now,
+          bulletSpeed,
+          offsetAttr,
+          dirAttr,
+          scaleAttr,
+          colorAttr,
+          tAttr
+        ) {
+          if (!this.active) return false;
+          const cfg = CONFIG.BULLET_TRAILS;
+
+          if (this.phase === "flying") {
+            const elapsed = (now - this.startTime) / 1000;
+            const headDist = elapsed * bulletSpeed;
+            this.progress = Math.min(headDist / this.distance, 1);
+            if (this.progress >= 1) {
+              this.phase = "fading";
+              this.hitTime = now;
+            }
+          } else {
+            const fadeElapsed = now - this.hitTime;
+            this.fadeProgress = Math.min(fadeElapsed / cfg.LIFETIME_MS, 1);
+            if (this.fadeProgress >= 1) {
+              this.active = false;
+              this._hideSegments(scaleAttr);
+              return false;
+            }
+          }
+
+          const headDist = this.progress * this.distance;
+          const tailDist = Math.max(0, headDist - cfg.TRAIL_LENGTH);
+          let effectiveTailDist = tailDist;
+          if (this.phase === "fading") {
+            effectiveTailDist = tailDist + this.fadeProgress * cfg.TRAIL_LENGTH;
+          }
+
+          const trailSpan = headDist - effectiveTailDist;
+          const segmentLength = trailSpan / Math.max(this.segmentCount - 1, 1);
+          const fadeMult = 1 - this.fadeProgress;
+
+          for (let i = 0; i < this.segmentCount; i++) {
+            const t = i / (this.segmentCount - 1);
+            const segDist = headDist - t * (headDist - effectiveTailDist);
+            _trailPos
+              .copy(this.origin)
+              .addScaledVector(this.direction, segDist);
+            const idx = this.baseInstance + i;
+
+            offsetAttr.setXYZ(idx, _trailPos.x, _trailPos.y, _trailPos.z);
+            dirAttr.setXYZ(
+              idx,
+              this.direction.x,
+              this.direction.y,
+              this.direction.z
+            );
+
+            const width =
+              cfg.WIDTH_HEAD + (cfg.WIDTH_TAIL - cfg.WIDTH_HEAD) * t;
+            const length = Math.max(segmentLength, 0.01);
+            scaleAttr.setXY(idx, width, length);
+
+            let r, g, b, a;
+            if (t < 0.5) {
+              const lt = t * 2;
+              r = cfg.COLOR_HEAD.r + (cfg.COLOR_MID.r - cfg.COLOR_HEAD.r) * lt;
+              g = cfg.COLOR_HEAD.g + (cfg.COLOR_MID.g - cfg.COLOR_HEAD.g) * lt;
+              b = cfg.COLOR_HEAD.b + (cfg.COLOR_MID.b - cfg.COLOR_HEAD.b) * lt;
+              a = cfg.COLOR_HEAD.a + (cfg.COLOR_MID.a - cfg.COLOR_HEAD.a) * lt;
+            } else {
+              const lt = (t - 0.5) * 2;
+              r = cfg.COLOR_MID.r + (cfg.COLOR_TAIL.r - cfg.COLOR_MID.r) * lt;
+              g = cfg.COLOR_MID.g + (cfg.COLOR_TAIL.g - cfg.COLOR_MID.g) * lt;
+              b = cfg.COLOR_MID.b + (cfg.COLOR_TAIL.b - cfg.COLOR_MID.b) * lt;
+              a = cfg.COLOR_MID.a + (cfg.COLOR_TAIL.a - cfg.COLOR_MID.a) * lt;
+            }
+            colorAttr.setXYZW(idx, r, g, b, a * fadeMult);
+            if (tAttr) tAttr.setX(idx, t);
+          }
+          return true;
+        }
+
+        _hideSegments(scaleAttr) {
+          for (let i = 0; i < this.segmentCount; i++) {
+            scaleAttr.setXY(this.baseInstance + i, 0, 0);
+          }
+        }
+      }
+
+      /** BulletTrailManager - GPU instanced billboard trail system */
+      class BulletTrailManager {
+        constructor(targetScene) {
+          this.scene = targetScene;
+          this.trails = [];
+          this.enabled = CONFIG.BULLET_TRAILS.ENABLED;
+          this.mesh = null;
+          if (!this.enabled) return;
+          this._init();
+        }
+
+        _init() {
+          const cfg = CONFIG.BULLET_TRAILS;
+          const totalSegments = cfg.MAX_TRAILS * cfg.SEGMENTS_PER_TRAIL;
+
+          const geo = new THREE.PlaneGeometry(1, 1);
+          const offsets = new Float32Array(totalSegments * 3);
+          const directions = new Float32Array(totalSegments * 3);
+          const scales = new Float32Array(totalSegments * 2);
+          const colors = new Float32Array(totalSegments * 4);
+          const ts = new Float32Array(totalSegments);
+
+          const offsetAttr = new THREE.InstancedBufferAttribute(offsets, 3);
+          const dirAttr = new THREE.InstancedBufferAttribute(directions, 3);
+          const scaleAttr = new THREE.InstancedBufferAttribute(scales, 2);
+          const colorAttr = new THREE.InstancedBufferAttribute(colors, 4);
+          const tAttr = new THREE.InstancedBufferAttribute(ts, 1);
+
+          offsetAttr.setUsage(THREE.DynamicDrawUsage);
+          dirAttr.setUsage(THREE.DynamicDrawUsage);
+          scaleAttr.setUsage(THREE.DynamicDrawUsage);
+          colorAttr.setUsage(THREE.DynamicDrawUsage);
+          tAttr.setUsage(THREE.DynamicDrawUsage);
+
+          this.offsetAttr = offsetAttr;
+          this.dirAttr = dirAttr;
+          this.scaleAttr = scaleAttr;
+          this.colorAttr = colorAttr;
+          this.tAttr = tAttr;
+
+          const mat = new THREE.ShaderMaterial({
+            vertexShader: bulletTrailVertexShader,
+            fragmentShader: bulletTrailFragmentShader,
+            transparent: true,
+            depthWrite: false,
+            depthTest: true,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            uniforms: {
+              fogNear: { value: CONFIG.GRAPHICS.FOG_NEAR },
+              fogFar: { value: CONFIG.GRAPHICS.FOG_FAR },
+              playerPositionXZ: { value: new THREE.Vector2(0, 0) },
+            },
+          });
+
+          const instGeo = new THREE.InstancedBufferGeometry();
+          instGeo.index = geo.index;
+          instGeo.attributes.position = geo.attributes.position;
+          instGeo.attributes.uv = geo.attributes.uv;
+          instGeo.attributes.normal = geo.attributes.normal;
+          instGeo.setAttribute("instanceOffset", offsetAttr);
+          instGeo.setAttribute("instanceDirection", dirAttr);
+          instGeo.setAttribute("instanceScale", scaleAttr);
+          instGeo.setAttribute("instanceColor", colorAttr);
+          instGeo.setAttribute("instanceT", tAttr);
+          instGeo.instanceCount = totalSegments;
+
+          this.material = mat;
+          this.mesh = new THREE.Mesh(instGeo, mat);
+          this.mesh.frustumCulled = false;
+          this.mesh.renderOrder = 100000;
+          this.scene.add(this.mesh);
+
+          for (let i = 0; i < cfg.MAX_TRAILS; i++) {
+            this.trails.push(new Trail(i, cfg.SEGMENTS_PER_TRAIL));
+          }
+        }
+
+        setPlayerPosition(x, z) {
+          if (this.material) {
+            this.material.uniforms.playerPositionXZ.value.set(x, z);
+          }
+        }
+
+        fire(cam, shootDir, hitPoint, maxRange) {
+          if (!this.enabled) return;
+          const cfg = CONFIG.BULLET_TRAILS;
+          const trail = this.trails.find((t) => !t.active);
+          if (!trail) return;
+
+          // Calculate muzzle position from camera
+          _trailRight.set(1, 0, 0).applyQuaternion(cam.quaternion);
+          _trailUp.set(0, 1, 0).applyQuaternion(cam.quaternion);
+          _trailDir.set(0, 0, -1).applyQuaternion(cam.quaternion);
+
+          _trailPos
+            .copy(cam.position)
+            .addScaledVector(_trailDir, cfg.MUZZLE_OFFSET_FORWARD)
+            .addScaledVector(_trailUp, cfg.MUZZLE_OFFSET_DOWN)
+            .addScaledVector(_trailRight, cfg.MUZZLE_OFFSET_RIGHT);
+
+          // Target: exact hit point or max range along shoot direction
+          const target = hitPoint
+            ? _trailTarget.copy(hitPoint)
+            : _trailTarget
+                .copy(cam.position)
+                .addScaledVector(shootDir, maxRange);
+
+          trail.fire(_trailPos, target, performance.now());
+        }
+
+        update() {
+          if (!this.enabled) return;
+          const now = performance.now();
+          const speed = CONFIG.BULLET_TRAILS.BULLET_SPEED;
+          let needsUpdate = false;
+
+          for (const trail of this.trails) {
+            if (trail.active) {
+              trail.update(
+                now,
+                speed,
+                this.offsetAttr,
+                this.dirAttr,
+                this.scaleAttr,
+                this.colorAttr,
+                this.tAttr
+              );
+              needsUpdate = true;
+            }
+          }
+
+          if (needsUpdate) {
+            this.offsetAttr.needsUpdate = true;
+            this.dirAttr.needsUpdate = true;
+            this.scaleAttr.needsUpdate = true;
+            this.colorAttr.needsUpdate = true;
+            this.tAttr.needsUpdate = true;
+          }
+        }
+
+        dispose() {
+          if (this.mesh) {
+            this.scene.remove(this.mesh);
+            this.mesh.geometry.dispose();
+            this.mesh.material.dispose();
+          }
+        }
+      }
+
+      // Create bullet trail manager
+      const bulletTrailManager = new BulletTrailManager(scene);
+
+      // ============================================================================
+      // INSTANCED PARTICLES (Feathers + Blood)
+      // ============================================================================
+      const featherShape = new THREE.Shape();
+      featherShape.moveTo(0, -0.4);
+      featherShape.quadraticCurveTo(0.12, -0.15, 0.1, 0.15);
+      featherShape.quadraticCurveTo(0.06, 0.35, 0, 0.4);
+      featherShape.quadraticCurveTo(-0.06, 0.35, -0.1, 0.15);
+      featherShape.quadraticCurveTo(-0.12, -0.15, 0, -0.4);
+
+      const featherGeo = new THREE.ShapeGeometry(featherShape);
+      const featherMat = new THREE.MeshBasicMaterial({
+        color: 0x1a1a1a,
+        side: THREE.DoubleSide,
+      });
+      const featherMesh = new THREE.InstancedMesh(
+        featherGeo,
+        featherMat,
+        CONFIG.FEATHER_MAX
+      );
+      featherMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      featherMesh.frustumCulled = false; // Always render particles
+      featherMesh.count = 0;
+      scene.add(featherMesh);
+
+      const bloodGeo = new THREE.SphereGeometry(0.12, 6, 6); // Bigger blood drops
+      const bloodMat = new THREE.MeshBasicMaterial({ color: 0x880000 }); // Darker red
+      const bloodMesh = new THREE.InstancedMesh(
+        bloodGeo,
+        bloodMat,
+        CONFIG.BLOOD_MAX
+      );
+      bloodMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      bloodMesh.frustumCulled = false; // Always render particles
+      bloodMesh.count = 0;
+      scene.add(bloodMesh);
+
+      const particles = { feathers: [], blood: [] };
+      const _pMat = new THREE.Matrix4();
+      const _pPos = new THREE.Vector3();
+      const _pQuat = new THREE.Quaternion();
+      const _pScale = new THREE.Vector3();
+      const _pEuler = new THREE.Euler();
+
+      function spawnParticles(pos, type, count) {
+        const arr = particles[type];
+        const max = type === "feathers" ? CONFIG.FEATHER_MAX : CONFIG.BLOOD_MAX;
+        for (let i = 0; i < count && arr.length < max; i++) {
+          arr.push({
+            pos: pos.clone(),
+            vel: new THREE.Vector3(
+              (Math.random() - 0.5) * 15,
+              Math.random() * 10 + 5,
+              (Math.random() - 0.5) * 15
+            ),
+            rot: new THREE.Vector3(
+              Math.random() * Math.PI,
+              Math.random() * Math.PI,
+              Math.random() * Math.PI
+            ),
+            rotVel: new THREE.Vector3(
+              (Math.random() - 0.5) * 15,
+              (Math.random() - 0.5) * 15,
+              (Math.random() - 0.5) * 15
+            ),
+            life: 3.0 + Math.random() * 1.5,
+            scale:
+              type === "feathers"
+                ? 1.0 + Math.random() * 0.8
+                : 0.8 + Math.random() * 1.2,
+          });
+        }
+      }
+
+      function updateParticles(dt) {
+        ["feathers", "blood"].forEach((type) => {
+          const arr = particles[type];
+          const mesh = type === "feathers" ? featherMesh : bloodMesh;
+          const grav =
+            type === "feathers" ? CONFIG.GRAVITY * 0.15 : CONFIG.GRAVITY;
+
+          for (let i = arr.length - 1; i >= 0; i--) {
+            const p = arr[i];
+            p.vel.y += grav * dt;
+            p.pos.addScaledVector(p.vel, dt);
+            if (type === "feathers") {
+              p.rot.addScaledVector(p.rotVel, dt);
+              p.vel.x += Math.sin(p.life * 10) * 0.3 * dt;
+            }
+            p.life -= dt;
+            if (p.life <= 0 || p.pos.y < 0) arr.splice(i, 1);
+          }
+
+          mesh.count = arr.length;
+          for (let i = 0; i < arr.length; i++) {
+            const p = arr[i];
+            _pPos.copy(p.pos);
+            if (type === "feathers") {
+              _pEuler.set(p.rot.x, p.rot.y, p.rot.z);
+              _pQuat.setFromEuler(_pEuler);
+            } else {
+              _pQuat.identity();
+            }
+            const s = p.scale * Math.min(1, p.life);
+            _pScale.set(s, s, s);
+            _pMat.compose(_pPos, _pQuat, _pScale);
+            mesh.setMatrixAt(i, _pMat);
+          }
+          if (arr.length > 0) mesh.instanceMatrix.needsUpdate = true;
+        });
+      }
+
+      // ============================================================================
+      // GLTF BIRD MANAGEMENT
+      // ============================================================================
+      let birdPivot = null,
+        baseModel = null,
+        baseAnims = null,
+        mixer = null;
+      const birds = [];
+      const fallingBirds = [];
+
+      const STATE = {
+        PERCHING: 0,
+        APPROACHING: 1,
+        FLYING: 2,
+        SWOOPING: 3,
+        PECKING: 4,
+        RECOVERING: 5,
+      };
+
+      // Pre-allocated reusable vectors for bird updates
+      const _bVel = new THREE.Vector3();
+
+      // Pre-allocated vectors for PECKING state (optimization)
+      const _peckForward = new THREE.Vector3();
+      const _peckRight = new THREE.Vector3();
+
+      // Wing bone rotation targets for folded state
+      const WING_FOLD_ROTATION = {
+        left: new THREE.Euler(0, 0, Math.PI * 0.4), // Fold left wing down
+        right: new THREE.Euler(0, 0, -Math.PI * 0.4), // Fold right wing down
+      };
+
+      function createBirdData(mesh, action) {
+        const speed =
+          CONFIG.BIRD_SPEED_MIN +
+          Math.random() * (CONFIG.BIRD_SPEED_MAX - CONFIG.BIRD_SPEED_MIN);
+
+        return {
+          mesh,
+          action,
+          mouthBone: mesh.getObjectByName("BN_Mouth_01"), // cache the lower jaw
+          state: STATE.PERCHING,
+          // Movement
+          speed,
+          baseSpeed: speed,
+          heading: 0,
+          targetHeading: 0,
+          // Flock position (relative to flock center)
+          orbitAngle: Math.random() * Math.PI * 2,
+          orbitRadius:
+            CONFIG.FLOCK_RADIUS_MIN +
+            Math.random() * (CONFIG.FLOCK_RADIUS_MAX - CONFIG.FLOCK_RADIUS_MIN),
+          baseHeight:
+            CONFIG.FLOCK_HEIGHT_MIN +
+            Math.random() * (CONFIG.FLOCK_HEIGHT_MAX - CONFIG.FLOCK_HEIGHT_MIN),
+          bobOffset: Math.random() * Math.PI * 2,
+          bobSpeed: 1 + Math.random() * 1.5,
+          // Wander
+          wanderAngle: Math.random() * Math.PI * 2,
+          wanderTimer: Math.random() * 2,
+          // Swoop
+          swoopTarget: new THREE.Vector3(),
+          // Falling
+          falling: false,
+          fallVel: new THREE.Vector3(),
+          rotVel: new THREE.Vector3(),
+          // Perching
+          perchTimer: 0,
+          perchWire: null,
+          perchT: 0,
+          perchParticleIdx: 0,
+          // Pecking (FIX: initialize peckTimer)
+          peckTimer: 1.0 + Math.random() * 2.0,
+          wingsAreFolded: false,
+        };
+      }
+
+      /**
+       * Fold or unfold bird wings (for pecking state)
+       */
+      function setWingsFolded(bird, folded) {
+        if (bird.wingsAreFolded === folded) return;
+        bird.wingsAreFolded = folded;
+
+        if (folded) {
+          // Force animation to the "wings down" frame and freeze
+          bird.action.paused = true; // stop animation so it stays there
+          bird.action.time = 0.55; // exact moment when wings are folded (checked on https://modelviewer.dev/editor/)
+          bird.action.timeScale = 0; // ensure no progression
+        } else {
+          if (bird.action) {
+            bird.action.paused = false;
+            bird.action.timeScale = 1;
+          }
+        }
+      }
+
+      function getRandomWireSpawnPoint() {
+        if (wireAttachPoints.length === 0) {
+          // Fallback if no wires
+          return {
+            position: new THREE.Vector3(
+              (Math.random() - 0.5) * 100,
+              CONFIG.FLOCK_HEIGHT_MIN + Math.random() * 20,
+              CONFIG.POLE_ARC_RADIUS + Math.random() * 50
+            ),
+            wire: null,
+            t: 0,
+            particleIdx: 0,
+          };
+        }
+
+        // Pick a random wire
+        const wp =
+          wireAttachPoints[Math.floor(Math.random() * wireAttachPoints.length)];
+        const wire = wp.wire;
+
+        // Random position along wire (between first and last particle)
+        const t = 0.1 + Math.random() * 0.8; // fraction along the wire
+        const idxFloat = t * wire.segments;
+        const idx = Math.floor(idxFloat);
+        const frac = idxFloat - idx;
+
+        const p1 = wire.particles[idx].pos;
+        const p2 = wire.particles[Math.min(idx + 1, wire.segments)].pos;
+
+        // Linear interpolation between two particle positions
+        const position = new THREE.Vector3()
+          .lerpVectors(p1, p2, frac)
+          .add(new THREE.Vector3(0, -0.2, 0)); // slight offset so feet connect with the wire
+
+        return {
+          position,
+          wire,
+          t,
+          particleIdx: idx,
+        };
+      }
+
+      function spawnBird(atWire = true) {
+        if (!baseModel || !baseAnims) return null;
+
+        const mesh = SkeletonUtils.clone(birdPivot);
+        mesh.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+          }
+        });
+
+        const action = mixer.clipAction(baseAnims[0], mesh).play();
+        const bird = createBirdData(mesh, action);
+
+        if (atWire) {
+          // Spawn perching on wire
+          const spawnData = getRandomWireSpawnPoint();
+          mesh.position.copy(spawnData.position);
+          bird.state = STATE.PERCHING;
+          bird.perchTimer = CONFIG.PERCH_DURATION * (0.5 + Math.random() * 0.5); // Vary perch time
+          bird.perchWire = spawnData.wire;
+          bird.perchT = spawnData.t;
+          bird.perchParticleIdx = spawnData.particleIdx;
+
+          setWingsFolded(bird, true);
+
+          // Face along the wire
+          if (spawnData.wire) {
+            const p1 = spawnData.wire.particles[spawnData.particleIdx].pos;
+            const p2 =
+              spawnData.wire.particles[
+                Math.min(spawnData.particleIdx + 1, spawnData.wire.segments)
+              ].pos;
+            bird.heading = Math.atan2(-(p2.z - p1.z), p2.x - p1.x);
+          }
+        } else {
+          action.time = Math.random() * baseAnims[0].duration;
+          action.timeScale = 0.8 + Math.random() * 0.4;
+
+          // Spawn directly in flock
+          const x = Math.cos(bird.orbitAngle) * bird.orbitRadius;
+          const z =
+            CONFIG.FLOCK_CENTER_Z +
+            Math.sin(bird.orbitAngle) * bird.orbitRadius;
+          mesh.position.set(x, bird.baseHeight, z);
+          bird.state = STATE.FLYING;
+          bird.heading = bird.orbitAngle + Math.PI / 2;
+        }
+
+        mesh.rotation.y = bird.heading + Math.PI; // Bird model faces -Z, add PI to face +heading
+        //mesh.add(new THREE.AxesHelper(2)); // debug
+        scene.add(mesh);
+        birds.push(bird);
+        updateBirdCount();
+        return bird;
+      }
+
+      function respawnBird(bird) {
+        // Reset bird at wire spawn point - perching
+        const spawnData = getRandomWireSpawnPoint();
+        bird.mesh.position.copy(spawnData.position);
+        bird.state = STATE.PERCHING;
+        bird.perchTimer = CONFIG.PERCH_DURATION * (0.5 + Math.random() * 0.5);
+        bird.perchWire = spawnData.wire;
+        bird.perchT = spawnData.t;
+        bird.perchParticleIdx = spawnData.particleIdx;
+
+        // Face along the wire
+        if (spawnData.wire) {
+          const p1 = spawnData.wire.particles[spawnData.particleIdx].pos;
+          const p2 =
+            spawnData.wire.particles[
+              Math.min(spawnData.particleIdx + 1, spawnData.wire.segments)
+            ].pos;
+          bird.heading = Math.atan2(-(p2.z - p1.z), p2.x - p1.x);
+        }
+
+        bird.mesh.rotation.set(0, bird.heading + Math.PI, 0);
+        bird.speed = CONFIG.APPROACH_SPEED + Math.random() * 5;
+        bird.falling = false;
+        bird.fallVel.set(0, 0, 0);
+        bird.rotVel.set(0, 0, 0);
+        bird.peckTimer = 1.0 + Math.random() * 2.0; // Reset peck timer
+
+        // Unfold wings when respawning
+        setWingsFolded(bird, false);
+
+        // Restart animation but paused for perching
+        if (bird.action) {
+          bird.action.reset();
+          bird.action.play();
+          bird.action.timeScale = 0; // Stop flapping while perching
+        }
+        bird.wingsAreFolded = true;
+
+        // Move from falling to active
+        const idx = fallingBirds.indexOf(bird);
+        if (idx !== -1) fallingBirds.splice(idx, 1);
+        if (!birds.includes(bird)) birds.push(bird);
+
+        updateBirdCount();
+      }
+
+      function shootBird(bird, distance) {
+        // Capture bird position BEFORE any changes
+        const hitPosition = bird.mesh.position.clone();
+
+        // Reset mouth if pecking
+        if (bird.mouthBone) bird.mouthBone.rotation.z = 0;
+
+        bird.falling = true;
+        bird.fallVel.set(
+          (Math.random() - 0.5) * 5,
+          Math.random() * 4 + 2,
+          (Math.random() - 0.5) * 5
+        );
+        bird.rotVel.set(
+          (Math.random() - 0.5) * 10,
+          (Math.random() - 0.5) * 10,
+          (Math.random() - 0.5) * 10
+        );
+        if (bird.action) bird.action.stop();
+
+        // Unfold wings when shot (falling)
+        setWingsFolded(bird, false);
+
+        // Spawn particles at the captured hit position
+        spawnParticles(hitPosition, "feathers", 25);
+        spawnParticles(hitPosition, "blood", 18);
+
+        // Move to falling
+        const idx = birds.indexOf(bird);
+        if (idx !== -1) birds.splice(idx, 1);
+        fallingBirds.push(bird);
+
+        // Calculate points (separate from hits)
+        const wasSwooping = bird.state === STATE.SWOOPING;
+        let earnedPoints = 1;
+
+        if (wasSwooping) earnedPoints += 1; // +2 total for swoop
+        if (distance > CONFIG.LONG_SHOT_DISTANCE)
+          earnedPoints += 2; // Sniper bonus
+        else if (distance > CONFIG.SNIPER_DISTANCE) earnedPoints += 1; // Long shot bonus
+
+        // Update longest shot
+        if (distance > longestShot) longestShot = distance;
+
+        // Respawn after short delay
+        setTimeout(() => respawnBird(bird), 300);
+
+        return { earnedPoints, wasSwooping, distance };
+      }
+
+      function updateBirdCount() {
+        document.getElementById("birds").textContent = birds.length;
+        document.getElementById("swooping").textContent = birds.filter(
+          (b) => b.state === STATE.SWOOPING
+        ).length;
+      }
+
+      // Pre-allocate reusable vectors outside the update loop
+      const camDir = new THREE.Vector3(); // declare once globally
+      const _dxz = new THREE.Vector3();
+      const _forward = new THREE.Vector3();
+
+      function updateBirds(dt, time) {
+        const swoopingCount = birds.filter(
+          (b) => b.state === STATE.SWOOPING
+        ).length;
+        const peckingCount = birds.filter(
+          (b) => b.state === STATE.PECKING
+        ).length;
+
+        // Get camera forward direction for swoop targeting
+        camera.getWorldDirection(camDir);
+
+        for (let i = 0; i < birds.length; i++) {
+          const b = birds[i];
+          const mesh = b.mesh;
+
+          // Speed variation over time - never too slow
+          if (b.state !== STATE.PECKING) {
+            b.speed = Math.max(
+              CONFIG.BIRD_SPEED_MIN * 0.8,
+              b.baseSpeed + Math.sin(time * 0.5 + i * 0.7) * 3
+            );
+          }
+
+          switch (b.state) {
+            case STATE.PERCHING: {
+              // Bird is sitting on wire
+              b.perchTimer -= dt;
+
+              // Apply weight to wire particle
+              if (
+                b.perchWire &&
+                b.perchParticleIdx > 0 &&
+                b.perchParticleIdx < b.perchWire.segments
+              ) {
+                const particle = b.perchWire.particles[b.perchParticleIdx];
+                if (!particle.fixed) {
+                  particle.pos.y -= CONFIG.BIRD_WEIGHT;
+                }
+              }
+
+              // Update bird position to follow wire movement
+              if (b.perchWire) {
+                const idx = b.perchParticleIdx;
+
+                // Keep wings folded while perching
+                setWingsFolded(b, true);
+
+                const p1 = b.perchWire.particles[idx].pos;
+                const p2 =
+                  b.perchWire.particles[Math.min(idx + 1, b.perchWire.segments)]
+                    .pos;
+                const frac = b.perchT * b.perchWire.segments - idx;
+
+                mesh.position.lerpVectors(p1, p2, frac);
+                mesh.position.y -= 0.2; // slight offset so feet connect with the wire
+              }
+
+              // Time to fly off?
+              if (b.perchTimer <= 0) {
+                b.state = STATE.APPROACHING;
+                b.perchWire = null;
+
+                // Start flapping
+                if (b.action) {
+                  b.action.paused = false;
+                  b.action.timeScale = 0.8 + Math.random() * 0.4;
+                }
+                b.wingsAreFolded = false;
+
+                // Set heading toward flock
+                const dx = -mesh.position.x;
+                const dz = CONFIG.FLOCK_CENTER_Z - mesh.position.z;
+                b.heading = Math.atan2(-dz, dx);
+                b.targetHeading = b.heading;
+              }
+              break;
+            }
+
+            case STATE.APPROACHING: {
+              // Fly toward flock area
+              const targetX = Math.cos(b.orbitAngle) * b.orbitRadius;
+              const targetZ =
+                CONFIG.FLOCK_CENTER_Z + Math.sin(b.orbitAngle) * b.orbitRadius;
+              const targetY = b.baseHeight;
+
+              _dxz.set(targetX - mesh.position.x, 0, targetZ - mesh.position.z);
+              const dist = _dxz.length();
+
+              b.targetHeading = Math.atan2(-_dxz.z, _dxz.x);
+
+              if (dist < 5) {
+                b.state = STATE.FLYING;
+                b.speed = b.baseSpeed;
+              }
+
+              // Height adjustment
+              mesh.position.y += (targetY - mesh.position.y) * 2 * dt;
+              break;
+            }
+
+            case STATE.FLYING: {
+              // Horizontal distance check (XZ plane)
+              const dx = mesh.position.x - camera.position.x;
+              const dz = mesh.position.z - camera.position.z;
+              const distXZ = Math.sqrt(dx * dx + dz * dz);
+
+              if (
+                distXZ <= CONFIG.SWOOP_XZ_DISTANCE &&
+                swoopingCount < CONFIG.MAX_SWOOPING &&
+                Math.random() < CONFIG.SWOOP_CHANCE
+              ) {
+                b.state = STATE.SWOOPING;
+                b.speed = CONFIG.SWOOP_SPEED;
+                b.swoopTarget.set(
+                  camera.position.x + camDir.x * 1.5,
+                  camera.position.y + 0.2,
+                  camera.position.z + camDir.z * 1.5
+                );
+                if (b.action) b.action.timeScale = 2.5;
+                break;
+              }
+
+              // Wander - gentle heading changes
+              b.wanderTimer -= dt;
+              if (b.wanderTimer <= 0) {
+                b.wanderTimer = 0.5 + Math.random() * 1.0;
+                b.wanderAngle += (Math.random() - 0.5) * 0.6;
+              }
+
+              // Update orbit angle - birds fly along the arc of the poles
+              b.orbitAngle += (b.speed / b.orbitRadius) * dt * 0.3;
+
+              // Birds orbit ALONG the pole arc (same arc shape as poles)
+              // orbitAngle maps to the arc spread, orbitRadius is distance from that arc
+              const arcAngle =
+                -CONFIG.POLE_ARC_SPREAD / 2 +
+                ((((b.orbitAngle % (Math.PI * 2)) + Math.PI * 2) %
+                  (Math.PI * 2)) /
+                  (Math.PI * 2)) *
+                  CONFIG.POLE_ARC_SPREAD;
+
+              // Base position on the arc (like poles but closer)
+              const arcRadius =
+                CONFIG.POLE_ARC_RADIUS * 0.6 + b.orbitRadius * 0.5; // Vary distance from camera
+              const targetX =
+                Math.sin(arcAngle) * arcRadius + Math.sin(b.wanderAngle) * 5;
+              const targetZ =
+                Math.cos(arcAngle) * arcRadius + Math.cos(b.wanderAngle) * 5;
+
+              // Target heading: direction of movement along the arc
+              const nextArcAngle = arcAngle + 0.1;
+              const nextX = Math.sin(nextArcAngle) * arcRadius;
+              const nextZ = Math.cos(nextArcAngle) * arcRadius;
+              b.targetHeading =
+                Math.atan2(-(nextZ - targetZ), nextX - targetX) +
+                Math.sin(b.wanderAngle) * 0.3;
+
+              // Smoothly move toward target position
+              mesh.position.x += (targetX - mesh.position.x) * 2 * dt;
+              mesh.position.z += (targetZ - mesh.position.z) * 2 * dt;
+
+              // Height bobbing
+              const targetY =
+                b.baseHeight + Math.sin(time * b.bobSpeed + b.bobOffset) * 2;
+              mesh.position.y += (targetY - mesh.position.y) * 2 * dt;
+
+              break;
+            }
+
+            case STATE.SWOOPING: {
+              b.swoopTarget.set(
+                camera.position.x,
+                camera.position.y + 0.1, // eye level
+                camera.position.z
+              );
+
+              _dxz.set(
+                b.swoopTarget.x - mesh.position.x,
+                b.swoopTarget.y - mesh.position.y,
+                b.swoopTarget.z - mesh.position.z
+              );
+
+              b.targetHeading = Math.atan2(-_dxz.z, _dxz.x);
+
+              // Move toward face
+              mesh.position.x += _dxz.x * 4 * dt;
+              mesh.position.y += _dxz.y * 4 * dt;
+              mesh.position.z += _dxz.z * 4 * dt;
+
+              // When close enough, switch to PECKING; max 2 pecking at the same time
+              if (_dxz.length() < 0.5 && peckingCount < 2) {
+                b.state = STATE.PECKING;
+                b.speed = 0;
+
+                if (b.action) {
+                  b.action.timeScale = 1.0;
+                  b.action.play();
+                }
+              }
+              break;
+            }
+
+            case STATE.PECKING: {
+              // OPTIMIZED: Use pre-allocated vectors instead of creating new ones
+              camera.getWorldDirection(_peckForward);
+
+              // Right vector (perpendicular in XZ plane)
+              _peckRight.set(_peckForward.z, 0, -_peckForward.x).normalize();
+
+              // Base position in front of camera
+              mesh.position
+                .copy(camera.position)
+                .addScaledVector(_peckForward, 1.15);
+              mesh.position.y = 0.8;
+
+              // Get all pecking birds
+              const peckingBirds = birds.filter(
+                (bb) => bb.state === STATE.PECKING
+              );
+
+              if (peckingBirds.length === 1) {
+                // Single bird → centered, no offset
+              } else if (peckingBirds.length === 2) {
+                // Two birds → assign left/right based on index in array
+                const index = peckingBirds.indexOf(b);
+                const offset = index === 0 ? -0.4 : 0.4;
+                mesh.position.addScaledVector(_peckRight, offset);
+              }
+
+              // Compute yaw angle in XZ plane
+              const dx = camera.position.x - mesh.position.x;
+              const dz = camera.position.z - mesh.position.z;
+              let yaw = Math.atan2(dx, dz);
+              yaw -= Math.PI / 2;
+
+              mesh.rotation.set(0, yaw, 0);
+
+              // Jitter for pecking
+              mesh.position.y += Math.sin(time * 20) * 0.02;
+
+              // Animate mouth
+              if (b.mouthBone) {
+                b.mouthBone.rotation.z = Math.sin(time * 15) * 0.3;
+              }
+
+              // Fold wings while pecking
+              setWingsFolded(b, true);
+
+              if (b.action) b.action.timeScale = 2.0;
+
+              b.peckTimer -= dt;
+              if (b.peckTimer <= 0) {
+                // Unfold wings before recovering
+                setWingsFolded(b, false);
+                b.state = STATE.RECOVERING;
+                b.peckTimer = 1.0 + Math.random() * 2.0;
+              }
+              break;
+            }
+
+            case STATE.RECOVERING: {
+              if (b.mouthBone) b.mouthBone.rotation.z = 0;
+
+              const recoverY = b.baseHeight + 15;
+              mesh.position.y += (recoverY - mesh.position.y) * 3 * dt;
+
+              _dxz.set(
+                -mesh.position.x,
+                0,
+                CONFIG.FLOCK_CENTER_Z - mesh.position.z
+              );
+              b.targetHeading = Math.atan2(-_dxz.z, _dxz.x);
+
+              if (mesh.position.y > b.baseHeight + 5) {
+                b.state = STATE.FLYING;
+                b.speed = b.baseSpeed;
+                if (b.action) b.action.timeScale = 0.8 + Math.random() * 0.4;
+              }
+              break;
+            }
+          }
+
+          // Skip movement for perching or pecking birds
+          if (b.state === STATE.PERCHING || b.state === STATE.PECKING) {
+            continue;
+          }
+
+          // TURN toward target heading
+          let headingDiff = b.targetHeading - b.heading;
+          while (headingDiff > Math.PI) headingDiff -= Math.PI * 2;
+          while (headingDiff < -Math.PI) headingDiff += Math.PI * 2;
+
+          const maxTurn = CONFIG.TURN_RATE * dt;
+          b.heading += THREE.MathUtils.clamp(headingDiff, -maxTurn, maxTurn);
+
+          // TRUE FORWARD VECTOR (XZ plane)
+          _forward.set(Math.cos(b.heading), 0, -Math.sin(b.heading));
+
+          // Vertical intent
+          if (b.state === STATE.SWOOPING) {
+            _forward.y =
+              (b.swoopTarget.y - mesh.position.y) /
+              Math.max(1, mesh.position.distanceTo(b.swoopTarget));
+          } else if (b.state === STATE.RECOVERING) {
+            _forward.y = 0.6;
+          }
+
+          _forward.normalize();
+
+          // MOVE HEAD-FIRST
+          mesh.position.addScaledVector(_forward, b.speed * dt);
+
+          // ROTATE MODEL TO MATCH FORWARD AXIS
+          mesh.rotation.y = Math.atan2(-_forward.z, _forward.x);
+
+          // Pitch follows movement
+          const pitch = THREE.MathUtils.clamp(-_forward.y * 1.1, -1.0, 1.0);
+          mesh.rotation.x = THREE.MathUtils.lerp(
+            mesh.rotation.x,
+            pitch,
+            6 * dt
+          );
+
+          // Bank into turns
+          const bank = THREE.MathUtils.clamp(headingDiff * 4, -0.7, 0.7);
+          mesh.rotation.z = THREE.MathUtils.lerp(mesh.rotation.z, bank, 6 * dt);
+        }
+
+        // FALLING BIRDS
+        for (let i = fallingBirds.length - 1; i >= 0; i--) {
+          const b = fallingBirds[i];
+          b.fallVel.y += CONFIG.GRAVITY * dt;
+          _bVel.copy(b.fallVel).multiplyScalar(dt);
+          b.mesh.position.add(_bVel);
+          b.mesh.rotation.x += b.rotVel.x * dt;
+          b.mesh.rotation.y += b.rotVel.y * dt;
+          b.mesh.rotation.z += b.rotVel.z * dt;
+        }
+
+        // Warning when swooping
+        const currentSwooping = birds.filter(
+          (b) => b.state === STATE.SWOOPING
+        ).length;
+        warningEl.classList.toggle("show", currentSwooping > 0);
+        if (currentSwooping > 0 && Math.random() < 0.03) {
+          flash.classList.add("warning");
+          setTimeout(() => flash.classList.remove("warning"), 100);
+        }
+
+        updateBirdCount();
+      }
+
+      // ============================================================================
+      // RAYCASTING
+      // ============================================================================
+      const raycaster = new THREE.Raycaster();
+      const mouse = new THREE.Vector2();
+
+      function shoot() {
+        shots++;
+        crosshair.classList.add("shoot");
+
+        // Play gun animation
+        playGunAnimation();
+
+        setTimeout(() => crosshair.classList.remove("shoot"), 80);
+
+        mouse.x = (mouseX / innerWidth) * 2 - 1;
+        mouse.y = -(mouseY / innerHeight) * 2 + 1;
+
+        gunModel.rotation.y =
+          CONFIG.GUN.model.baseRotationY - (mouse.x * Math.PI) / 12; // rotate gun ~15° left/right
+
+        raycaster.setFromCamera(mouse, camera);
+
+        // Store shoot direction for bullet trail
+        const _shootDir = raycaster.ray.direction.clone();
+
+        // Check all bird meshes
+        const meshes = birds.map((b) => b.mesh);
+        const intersects = raycaster.intersectObjects(meshes, true);
+
+        if (intersects.length === 0) {
+          // Miss - still spawn bullet trail
+          misses++;
+          streak = 0;
+          updateStats();
+
+          // Spawn bullet trail (miss case)
+          if (bulletTrailManager) {
+            bulletTrailManager.fire(
+              camera,
+              _shootDir,
+              null,
+              CONFIG.GRAPHICS.FOG_FAR
+            );
+          }
+          return;
+        }
+
+        // STRICT ray-line piercing (no spherical bullshit)
+        const hitBirds = [];
+        const rayDir = raycaster.ray.direction.clone().normalize();
+        const rayOrigin = raycaster.ray.origin.clone();
+
+        // Sort hits by distance along ray
+        intersects.sort((a, b) => a.distance - b.distance);
+
+        const MAX_OFF_AXIS = 0.35; // meters from ray line (tight!)
+
+        for (const intersect of intersects) {
+          const hitObj = intersect.object;
+
+          // Find owning bird
+          const bird = birds.find(
+            (b) => hitObj === b.mesh || isChild(hitObj, b.mesh)
+          );
+          if (!bird) continue;
+          if (hitBirds.some((h) => h.bird === bird)) continue;
+
+          // Check perpendicular distance to ray
+          const hitPos = intersect.point;
+          const toHit = hitPos.clone().sub(rayOrigin);
+          const projectedLen = toHit.dot(rayDir);
+
+          if (projectedLen < 0) break; // behind camera
+
+          const closestPoint = rayDir
+            .clone()
+            .multiplyScalar(projectedLen)
+            .add(rayOrigin);
+
+          const offAxisDist = hitPos.distanceTo(closestPoint);
+
+          if (offAxisDist > MAX_OFF_AXIS) break; // bullet misses alignment → stop piercing
+
+          hitBirds.push({ bird, distance: intersect.distance });
+        }
+
+        if (hitBirds.length === 0) {
+          misses++;
+          streak = 0;
+          updateStats();
+
+          // Spawn bullet trail (miss case)
+          if (bulletTrailManager) {
+            bulletTrailManager.fire(
+              camera,
+              _shootDir,
+              null,
+              CONFIG.GRAPHICS.FOG_FAR
+            );
+          }
+          return;
+        }
+
+        // Process all kills
+        let totalPoints = 0;
+        let killCount = hitBirds.length;
+        let maxDistance = 0;
+        let anySwooping = false;
+
+        for (const { bird, distance } of hitBirds) {
+          const result = shootBird(bird, distance);
+          totalPoints += result.earnedPoints;
+          if (result.distance > maxDistance) maxDistance = result.distance;
+          if (result.wasSwooping) anySwooping = true;
+        }
+
+        // Multi-kill bonus!
+        if (killCount >= 2) {
+          const multiBonus = killCount * 2; // +2 per bird in multi-kill
+          totalPoints += multiBonus;
+        }
+
+        // Update stats
+        hits += killCount;
+        points += totalPoints;
+        streak += killCount;
+        if (streak > bestStreak) bestStreak = streak;
+
+        // Build popup text
+        let text = `+${totalPoints}`;
+        const tags = [];
+
+        if (killCount >= 3) tags.push(`${killCount}X MULTI-KILL!`);
+        else if (killCount === 2) tags.push("DOUBLE KILL!");
+
+        if (anySwooping) tags.push("SWOOP");
+        if (maxDistance > CONFIG.LONG_SHOT_DISTANCE)
+          tags.push(`SNIPER ${maxDistance.toFixed(0)}m`);
+        else if (maxDistance > CONFIG.SNIPER_DISTANCE) tags.push("LONG SHOT");
+
+        if (tags.length > 0) text += " " + tags.join(" · ");
+
+        showHit();
+        showPopup(mouseX, mouseY, text);
+        updateStats();
+        updateBirdCount();
+
+        // Spawn bullet trail (hit case)
+        // Note: Use the intersection point, not the bird mesh position (bird may be removed)
+        if (bulletTrailManager) {
+          // Get first intersection point from raycaster results
+          const hitPoint =
+            intersects.length > 0 ? intersects[0].point.clone() : null;
+          bulletTrailManager.fire(
+            camera,
+            _shootDir,
+            hitPoint,
+            CONFIG.GRAPHICS.FOG_FAR
+          );
+        }
+      }
+
+      function isChild(obj, parent) {
+        let cur = obj.parent;
+        while (cur) {
+          if (cur === parent) return true;
+          cur = cur.parent;
+        }
+        return false;
+      }
+
+      function showHit() {
+        crosshair.classList.add("hit");
+        flash.classList.add("on");
+        setTimeout(() => {
+          crosshair.classList.remove("hit");
+          flash.classList.remove("on");
+        }, 150);
+      }
+
+      function showPopup(x, y, text) {
+        const p = document.createElement("div");
+        p.className = "popup";
+        p.textContent = text;
+        p.style.left = x + "px";
+        p.style.top = y + "px";
+        if (text.includes("SWOOP")) p.style.color = "#ffd93d";
+        if (text.includes("SNIPER") || text.includes("LONG"))
+          p.style.color = "#ff9ff3";
+        document.body.appendChild(p);
+        setTimeout(() => p.remove(), 1200);
+      }
+
+      // ============================================================================
+      // EVENTS
+      // ============================================================================
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio, isTouchOnly ? 1 : 1.5);
+        renderer.setPixelRatio(dpr);
+        renderer.setSize(window.innerWidth, window.innerHeight, true);
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        mouseX = centerX();
+      }
+      addEventListener("resize", resize);
+
+      // Track mouse drag to prevent shooting while rotating camera
+      let mouseDownPos = { x: 0, y: 0 };
+      let isDragging = false;
+      const DRAG_THRESHOLD = 5; // pixels
+
+      addEventListener("mousemove", (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+        crosshair.style.left = mouseX + "px";
+        crosshair.style.top = mouseY + "px";
+
+        // Check if dragging
+        if (mouseDownPos.x !== 0 || mouseDownPos.y !== 0) {
+          const dx = mouseX - mouseDownPos.x;
+          const dy = mouseY - mouseDownPos.y;
+          if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+            isDragging = true;
+          }
+        }
+      });
+
+      // Keyboard controls for WASD movement and QR rotation
+      addEventListener("keydown", (e) => {
+        keys[e.code] = true;
+      });
+
+      addEventListener("keyup", (e) => {
+        keys[e.code] = false;
+      });
+
+      let skipNextClick = false;
+      // When window regains focus, mark that the next click should be ignored
+      window.addEventListener("focus", () => {
+        skipNextClick = true;
+      });
+
+      addEventListener("mousedown", (e) => {
+        if (e.button === 0) {
+          mouseDownPos = { x: e.clientX, y: e.clientY };
+          isDragging = false;
+        }
+      });
+
+      addEventListener("mouseup", (e) => {
+        if (e.button === 0) {
+          // If we just regained focus, skip this click
+          if (skipNextClick) {
+            skipNextClick = false; // consume the skip
+          } else {
+            // Only shoot if we didn't drag
+            if (!isDragging) {
+              shoot();
+            }
+          }
+          mouseDownPos = { x: 0, y: 0 };
+          isDragging = false;
+        }
+      });
+
+      addEventListener("contextmenu", (e) => e.preventDefault());
+
+      // ============================================================================
+      // LOAD MODEL
+      // ============================================================================
+      const loader = new GLTFLoader();
+
+      async function loadModel() {
+        try {
+          //https://raw.githubusercontent.com/Data-Bee38/models/main/bird-fly.glb
+          const gltf = await loader.loadAsync(
+            "https://raw.githubusercontent.com/red-reddington/public-assets/main/raven.glb"
+          );
+
+          if (!gltf.animations?.length) {
+            loadingEl.textContent = "Model has no animations";
+            return;
+          }
+
+          baseModel = gltf.scene;
+          baseAnims = gltf.animations;
+
+          baseModel.traverse((node) => {
+            if (node.isMesh) {
+              // Clone the material so we can modify it
+              node.material = node.material.clone();
+              node.material.side = THREE.DoubleSide;
+
+              // Boost bird visibility - if it's a MeshStandardMaterial, increase roughness and reduce metalness
+              if (node.material.isMeshStandardMaterial) {
+                node.material.roughness = Math.max(
+                  node.material.roughness,
+                  0.7
+                );
+                node.material.metalness = Math.min(
+                  node.material.metalness,
+                  0.5
+                );
+                // Add slight emissive to make birds pop
+                node.material.emissive = new THREE.Color(0x222222);
+                node.material.emissiveIntensity = 0.3;
+              }
+
+              node.castShadow = true;
+              node.receiveShadow = true;
+              node.frustumCulled = true;
+            }
+          });
+
+          // --- SCALE BASE MODEL ---
+          const box = new THREE.Box3().setFromObject(baseModel);
+          const size = box.getSize(new THREE.Vector3());
+          const scale = CONFIG.BIRD_SCALE / Math.max(size.x, size.y, size.z);
+          baseModel.scale.setScalar(scale);
+          baseModel.updateMatrixWorld(true);
+
+          // --- ALIGN VISUAL BOTTOM ---
+          birdPivot = new THREE.Group();
+          birdPivot.add(baseModel);
+
+          // Compute bounding box AFTER scaling
+          const bbox = new THREE.Box3().setFromObject(baseModel);
+          const minY = bbox.min.y;
+
+          // Shift the whole model up so its bottom sits at y=0
+          baseModel.position.y = -minY;
+
+          /*// Debug helper
+          scene.add(
+            new THREE.Box3Helper(
+              new THREE.Box3().setFromObject(baseModel),
+              0x00ff00
+            )
+          );*/
+
+          // --- CREATE MIXER ---
+          mixer = new THREE.AnimationMixer(baseModel);
+
+          // --- SPAWN BIRDS ---
+          for (let i = 0; i < CONFIG.BIRD_COUNT; i++) {
+            spawnBird(i < CONFIG.BIRD_COUNT / 2);
+          }
+
+          /*// --- DEBUG CLONE ---
+                    const birdMesh = SkeletonUtils.clone(birdPivot);
+                    birdMesh.position.set(0, 0, 0);
+                    birdMesh.rotation.y = Math.PI;
+                    birdMesh.add(new THREE.AxesHelper(2));
+                    scene.add(birdMesh);*/
+
+          loadingEl.style.display = "none";
+        } catch (e) {
+          loadingEl.textContent = "Could not load bird-fly.glb";
+          console.error(e);
+        }
+      }
+
+      loadModel();
+
+      // ============================================================================
+      // RENDER LOOP
+      // ============================================================================
+      const clock = new THREE.Clock();
+      const JOYSTICK_LOOK_SPEED = 2.5; // Radians per second at full deflection
+
+      // Helper vectors for movement (pre-allocated to avoid GC)
+      const _moveDir = new THREE.Vector3();
+      const _moveForward = new THREE.Vector3();
+      const _moveRight = new THREE.Vector3();
+      const _dir = new THREE.Vector3(); // reused for rotation
+      const _right = new THREE.Vector3(); // reused for pitch rotation
+      const _up = new THREE.Vector3(0, 1, 0); // constant up vector
+
+      let cameraYaw = 0; // horizontal rotation
+      let cameraPitch = 0; // accumulated vertical rotation
+
+      function updatePlayerMovement(dt) {
+        // Get camera's forward direction (projected onto XZ plane)
+        camera.getWorldDirection(_moveForward);
+        _moveForward.y = 0;
+        _moveForward.normalize();
+
+        cameraYaw = Math.atan2(_moveForward.x, _moveForward.z);
+
+        // Get right vector
+        _moveRight.crossVectors(_moveForward, _up).normalize();
+
+        // Calculate movement input from keyboard
+        let moveX = 0;
+        let moveZ = 0;
+
+        if (keys["KeyW"] || keys["ArrowUp"]) moveZ += 1;
+        if (keys["KeyS"] || keys["ArrowDown"]) moveZ -= 1;
+        if (keys["KeyA"] || keys["ArrowLeft"]) moveX -= 1;
+        if (keys["KeyD"] || keys["ArrowRight"]) moveX += 1;
+
+        // Add joystick input (left joystick controls movement)
+        moveX += joystickMove.x;
+        moveZ += joystickMove.y;
+
+        // Calculate rotation input from keyboard (Q/R)
+        let rotateInput = 0;
+        if (keys["KeyQ"]) rotateInput += 1;
+        if (keys["KeyE"]) rotateInput -= 1;
+
+        // Add right joystick for rotation (in touch mode)
+        if (cameraMode === "touch") {
+          rotateInput -= joystickLook.x;
+        }
+
+        // Apply rotation to camera - rotate around Y axis
+        if (rotateInput !== 0) {
+          const rotateAmount = rotateInput * CONFIG.ROTATE_SPEED * dt;
+
+          _dir.subVectors(controls.target, camera.position);
+          const distance = _dir.length();
+
+          _dir.y = 0;
+          _dir.normalize();
+          _dir.applyAxisAngle(_up, rotateAmount);
+
+          if (cameraMode === "touch") {
+            if (Math.abs(joystickLook.y) > DEADZONE) {
+              cameraPitch += joystickLook.y * CAMERA_PITCH_SPEED * dt;
+              cameraPitch = THREE.MathUtils.clamp(
+                cameraPitch,
+                CAMERA_PITCH_MIN,
+                CAMERA_PITCH_MAX
+              );
+            }
+            _right.crossVectors(_dir, _up).normalize();
+            _dir.applyAxisAngle(_right, cameraPitch);
+          }
+
+          _dir.setLength(distance);
+          controls.target.copy(camera.position).add(_dir);
+        }
+
+        // Apply movement if there's input
+        if (moveX !== 0 || moveZ !== 0) {
+          // Normalize if diagonal
+          const inputLength = Math.sqrt(moveX * moveX + moveZ * moveZ);
+          if (inputLength > 1) {
+            moveX /= inputLength;
+            moveZ /= inputLength;
+          }
+
+          // Calculate speed (with sprint)
+          let speed = CONFIG.MOVE_SPEED;
+          if (keys["ShiftLeft"] || keys["ShiftRight"]) {
+            speed *= CONFIG.SPRINT_MULTIPLIER;
+          }
+
+          // Calculate movement direction
+          _moveDir.set(0, 0, 0);
+          _moveDir.addScaledVector(_moveForward, moveZ);
+          _moveDir.addScaledVector(_moveRight, moveX);
+          _moveDir.normalize();
+
+          // Apply movement
+          const moveAmount = speed * dt;
+          camera.position.x += _moveDir.x * moveAmount;
+          camera.position.z += _moveDir.z * moveAmount;
+          controls.target.x += _moveDir.x * moveAmount;
+          controls.target.z += _moveDir.z * moveAmount;
+        }
+
+        // Clamp camera position to world radius
+        const distFromCenter = Math.sqrt(
+          camera.position.x * camera.position.x +
+            camera.position.z * camera.position.z
+        );
+
+        if (distFromCenter > CONFIG.WORLD_RADIUS) {
+          const scale = CONFIG.WORLD_RADIUS / distFromCenter;
+          const dx = camera.position.x - camera.position.x * scale;
+          const dz = camera.position.z - camera.position.z * scale;
+
+          camera.position.x *= scale;
+          camera.position.z *= scale;
+          controls.target.x -= dx;
+          controls.target.z -= dz;
+        }
+      }
+
+      function render() {
+        requestAnimationFrame(render);
+
+        const dt = Math.min(clock.getDelta(), 0.05);
+        const time = clock.getElapsedTime();
+
+        // Handle player movement (WASD + joystick)
+        updatePlayerMovement(dt);
+
+        // Update OrbitControls
+        controls.update();
+
+        if (mixer) mixer.update(dt);
+        if (gunMixer) gunMixer.update(dt);
+
+        updateWires(dt);
+        updateBirds(dt, time);
+        updateParticles(dt);
+        bulletTrailManager.update();
+        bulletTrailManager.setPlayerPosition(
+          camera.position.x,
+          camera.position.z
+        );
+        updateSunShadow(dt);
+        updateShadowFrustum();
+
+        renderer.render(scene, camera);
+
+        // stats
+        if (statsGL) statsGL.update();
+      }
+
+      render();
+      
+      ['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+    </script>
+  </body>
+</html>

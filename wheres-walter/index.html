@@ -1,0 +1,3194 @@
+<!-- https://codepen.io/the-red-reddington/full/xbONrJX -->
+<!-- https://discourse.threejs.org/t/one-draw-call-massive-crowd-performance-engineering-in-three-js/89928 -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Where's Walter? - Instanced Crowd Engine (Three.js)</title>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/",
+          "stats-gl": "https://cdn.jsdelivr.net/npm/stats-gl@4.0.2/+esm"
+        }
+      }
+    </script>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bangers&family=Fredoka:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      :root {
+        --ui-red: #e63946;
+        --ui-dark: #1d3557;
+        --ui-yellow: #ffbe0b;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #1a1a2e;
+        font-family: "Fredoka", sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      canvas {
+        display: block;
+        cursor:
+          url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" style="font-size:24px"><text y="24">👆</text></svg>')
+            14 4,
+          auto;
+      }
+
+      #clickDebug {
+        position: fixed;
+        pointer-events: none;
+        z-index: 9999;
+        transform: translate(-50%, -50%);
+        width: 20px;
+        height: 20px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      #clickDebug::before,
+      #clickDebug::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 100%;
+        height: 3px;
+        background: #ff4444;
+        border-radius: 2px;
+        box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+      }
+      #clickDebug::before {
+        transform: translate(-50%, -50%) rotate(45deg);
+      }
+      #clickDebug::after {
+        transform: translate(-50%, -50%) rotate(-45deg);
+      }
+      #performanceStats {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 150;
+      }
+      #statsCustom {
+        position: fixed;
+        top: 0;
+        left: 270px;
+        font: 10px monospace;
+        background: rgba(0, 0, 0, 1);
+        color: #0ff;
+        padding: 0px 5px;
+        display: block !important;
+        white-space: pre;
+        width: fit-content !important;
+      }
+      .start-screen {
+        position: fixed;
+        inset: 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 200;
+        transition:
+          opacity 0.6s ease,
+          transform 0.6s ease;
+      }
+      .start-screen.hidden {
+        opacity: 0;
+        pointer-events: none;
+        transform: scale(1.1);
+      }
+      .start-title {
+        font-family: "Bangers", cursive;
+        font-size: clamp(56px, 14dvmin, 140px);
+        color: var(--ui-yellow);
+        text-shadow:
+          6px 6px 0 var(--ui-red),
+          12px 12px 0 var(--ui-dark);
+        animation: bounce 0.8s ease-in-out infinite alternate;
+      }
+      @keyframes bounce {
+        from {
+          transform: translateY(0) rotate(-1deg);
+        }
+        to {
+          transform: translateY(-15px) rotate(1deg);
+        }
+      }
+      .start-subtitle {
+        font-size: clamp(18px, 3vw, 28px);
+        color: white;
+        margin-top: 1dvh;
+      }
+      .start-btn {
+        margin-top: 50px;
+        padding: 20px 60px;
+        font-family: "Bangers", cursive;
+        font-size: clamp(28px, 5vw, 42px);
+        background: var(--ui-yellow);
+        color: var(--ui-dark);
+        border: 5px solid var(--ui-dark);
+        border-radius: 60px;
+        cursor: pointer;
+        box-shadow: 8px 8px 0 var(--ui-dark);
+        transition: all 0.15s ease;
+      }
+      .start-btn:hover {
+        transform: translate(-3px, -3px);
+        box-shadow: 11px 11px 0 var(--ui-dark);
+      }
+      .level-select {
+        margin-top: 2dvh;
+        text-align: center;
+      }
+      .level-label {
+        font-size: 22px;
+        color: white;
+        margin-bottom: 1dvh;
+        font-weight: 600;
+      }
+      .level-buttons {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .level-btn {
+        padding: 1dvh 24px;
+        font-family: "Fredoka", sans-serif;
+        background: white;
+        border: 4px solid var(--ui-dark);
+        border-radius: 16px;
+        cursor: pointer;
+        box-shadow: 5px 5px 0 var(--ui-dark);
+        transition: all 0.15s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 120px;
+      }
+      .level-btn:hover {
+        transform: translate(-2px, -2px);
+        box-shadow: 7px 7px 0 var(--ui-dark);
+      }
+      .level-btn:active {
+        transform: translate(2px, 2px);
+        box-shadow: 2px 2px 0 var(--ui-dark);
+      }
+      .level-name {
+        font-family: "Bangers", cursive;
+        font-size: 24px;
+        color: var(--ui-dark);
+        white-space: nowrap;
+      }
+      .level-crowd {
+        font-size: 14px;
+        color: #666;
+        margin-top: 4px;
+        white-space: nowrap;
+      }
+      .level-btn[data-level="0"] {
+        background: #90ee90;
+      }
+      .level-btn[data-level="1"] {
+        background: #ffe066;
+      }
+      .level-btn[data-level="2"] {
+        background: #ffb347;
+      }
+      .level-btn[data-level="3"] {
+        background: #ff6b6b;
+      }
+      .level-btn[data-level="4"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+      .level-btn[data-level="4"] .level-name {
+        color: white;
+      }
+      .level-btn[data-level="4"] .level-crowd {
+        color: rgba(255, 255, 255, 0.8);
+      }
+      .Walter-preview {
+        margin-top: 2dvh;
+        padding: 1dvh 35px;
+        background: white;
+        border: 5px solid var(--ui-dark);
+        border-radius: 24px;
+        box-shadow: 8px 8px 0 var(--ui-dark);
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+      .Walter-preview p {
+        font-weight: 600;
+        font-size: 18px;
+        color: var(--ui-dark);
+      }
+      .Walter-figure {
+        width: 50px;
+        height: 90px;
+        position: relative;
+      }
+      .Walter-figure .head {
+        width: 20px;
+        height: 20px;
+        background: #ffdbac;
+        border-radius: 50%;
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .Walter-figure .body {
+        width: 24px;
+        height: 35px;
+        background: repeating-linear-gradient(
+          to bottom,
+          #cc0000 0px,
+          #cc0000 5px,
+          white 5px,
+          white 10px
+        );
+        position: absolute;
+        top: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        border-radius: 4px;
+      }
+      .Walter-figure .legs {
+        width: 24px;
+        height: 30px;
+        background: #1d3557;
+        position: absolute;
+        top: 55px;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      .hud {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        display: flex;
+        gap: 16px;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+      }
+      .hud.visible {
+        opacity: 1;
+      }
+      .timer-box {
+        background: white;
+        border: 4px solid var(--ui-dark);
+        border-radius: 16px;
+        padding: 12px 14px;
+        box-shadow: 4px 4px 0 var(--ui-dark);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .timer-text {
+        font-family: "Bangers", cursive;
+        font-size: 36px;
+        color: var(--ui-dark);
+        min-width: 80px;
+      }
+      .crowd-counter {
+        border: 4px solid var(--ui-dark);
+        border-radius: 16px;
+        padding: 8px 16px;
+        box-shadow: 4px 4px 0 var(--ui-dark);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        cursor: pointer;
+        min-width: 100px;
+      }
+      .crowd-counter[data-level="0"] {
+        background: #90ee90;
+      }
+      .crowd-counter[data-level="1"] {
+        background: #ffe066;
+      }
+      .crowd-counter[data-level="2"] {
+        background: #ffb347;
+      }
+      .crowd-counter[data-level="3"] {
+        background: #ff6b6b;
+      }
+      .crowd-counter[data-level="4"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+      .crowd-counter[data-level="4"] .level-name,
+      .crowd-counter[data-level="4"] .level-crowd {
+        color: white;
+      }
+      .win-screen {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 300;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.5s ease;
+      }
+      .win-screen.visible {
+        opacity: 1;
+        pointer-events: all;
+      }
+      .win-title {
+        font-family: "Bangers", cursive;
+        font-size: clamp(40px, 12vw, 100px);
+        color: var(--ui-yellow);
+        text-shadow: 6px 6px 0 var(--ui-red);
+        animation: pulse 0.4s ease-in-out infinite alternate;
+      }
+      @keyframes pulse {
+        from {
+          transform: scale(1);
+        }
+        to {
+          transform: scale(1.08);
+        }
+      }
+      .win-time {
+        font-size: clamp(28px, 6vw, 48px);
+        color: white;
+        margin-top: 30px;
+      }
+      .win-time span {
+        color: var(--ui-yellow);
+        font-weight: 700;
+      }
+      .win-buttons {
+        display: flex;
+        gap: 20px;
+        margin-top: 50px;
+      }
+      .change-level-btn,
+      .play-again-btn {
+        margin-top: 50px;
+        padding: 18px 50px;
+        font-family: "Bangers", cursive;
+        font-size: clamp(24px, 4vw, 32px);
+        border-radius: 50px;
+        cursor: pointer;
+      }
+      .change-level-btn,
+      .play-again-btn {
+        background: var(--ui-yellow);
+        color: var(--ui-dark);
+        border: 4px solid var(--ui-dark);
+      }
+      .play-again-btn {
+        background: var(--ui-red);
+        color: white;
+        border: 4px solid white;
+      }
+      .pause-screen {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 250;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+      .pause-screen.visible {
+        opacity: 1;
+        pointer-events: all;
+      }
+      .pause-title {
+        font-family: "Bangers", cursive;
+        font-size: clamp(48px, 10vw, 80px);
+        color: white;
+        text-shadow: 4px 4px 0 var(--ui-dark);
+      }
+      .pause-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-top: 40px;
+      }
+      .pause-btn {
+        padding: 16px 60px;
+        font-family: "Bangers", cursive;
+        font-size: 28px;
+        border: 4px solid var(--ui-dark);
+        border-radius: 50px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .pause-btn:hover {
+        transform: translate(-2px, -2px);
+      }
+      .resume-btn {
+        background: var(--ui-yellow);
+        color: var(--ui-dark);
+      }
+      .pause-btn:not(.resume-btn) {
+        background: white;
+        color: var(--ui-dark);
+      }
+      .pause-hint {
+        margin-top: 30px;
+        color: #888;
+        font-size: 16px;
+      }
+      .instructions {
+        position: fixed;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.5);
+        border: 3px solid var(--ui-dark);
+        border-radius: 14px;
+        padding: 6px 12px;
+        box-shadow: 4px 4px 0 var(--ui-dark);
+        opacity: 0;
+        transition: opacity 0.5s ease;
+        white-space: nowrap;
+        font-size: min(3dvw, 12px);
+        letter-spacing: -0.5px;
+      }
+      .instructions.visible {
+        opacity: 0.95;
+      }
+      .instructions kbd {
+        background: var(--ui-dark);
+        color: white;
+        padding: 3px 5px;
+        border-radius: 6px;
+        margin: 0 0 0 3px;
+      }
+
+      /* ================================================= */
+      /* CUSTOM MODAL                                      */
+      /* ================================================= */
+      .custom-modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 250;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+      .custom-modal.visible {
+        opacity: 1;
+        pointer-events: all;
+      }
+      .custom-content {
+        background: white;
+        border: 5px solid var(--ui-dark);
+        border-radius: 24px;
+        padding: 30px 40px;
+        box-shadow: 8px 8px 0 var(--ui-dark);
+        min-width: 320px;
+      }
+      .custom-content h2 {
+        font-family: "Bangers", cursive;
+        font-size: 36px;
+        color: var(--ui-dark);
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      .custom-content label {
+        display: block;
+        margin: 16px 0;
+        font-weight: 600;
+        color: var(--ui-dark);
+      }
+      .custom-content input[type="range"] {
+        width: 100%;
+        margin: 8px 0;
+      }
+      .custom-content span {
+        float: right;
+        font-family: monospace;
+        background: var(--ui-dark);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+      }
+      .custom-buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+      }
+      .custom-buttons button {
+        flex: 1;
+      }
+      .custom-warning {
+        margin-top: 16px;
+        color: #e63946;
+        font-size: 14px;
+        text-align: center;
+        min-height: 20px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="clickDebug"></div>
+
+    <div id="performanceStats"></div>
+
+    <div class="start-screen" id="startScreen">
+      <h1 class="start-title">Find Walter!</h1>
+      <p class="start-subtitle">He's hiding somewhere in the crowd...</p>
+      <div class="Walter-preview">
+        <div class="Walter-figure">
+          <div class="head"></div>
+          <div class="body"></div>
+          <div class="legs"></div>
+        </div>
+        <p>Look for the red & white<br />striped shirt!</p>
+      </div>
+      <div class="level-select">
+        <p class="level-label">Choose Difficulty:</p>
+        <div class="level-buttons">
+          <button class="level-btn" data-level="0">
+            <span class="level-name">Warm-up</span>
+            <span class="level-crowd">400 people</span>
+          </button>
+          <button class="level-btn" data-level="1">
+            <span class="level-name">Crowded</span>
+            <span class="level-crowd">2,000 people</span>
+          </button>
+          <button class="level-btn" data-level="2">
+            <span class="level-name">Packed</span>
+            <span class="level-crowd">10,000 people</span>
+          </button>
+          <button class="level-btn" data-level="3">
+            <span class="level-name">Chaos</span>
+            <span class="level-crowd">50,000 people</span>
+          </button>
+          <button class="level-btn" data-level="4">
+            <span class="level-name">Custom</span>
+            <span class="level-crowd">⚙️ Configure</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="hud" id="hud">
+      <div class="timer-box">
+        <span style="font-size: 28px">⏱️</span>
+        <span class="timer-text" id="timerText">00:00</span>
+      </div>
+      <div class="crowd-counter" id="crowdCounter">
+        <span class="level-name" id="hudLevelName">Chaos</span>
+        <span class="level-crowd" id="hudLevelCrowd">👥 100,000 people</span>
+      </div>
+    </div>
+
+    <div class="instructions" id="instructions">
+      <kbd>Click</kbd> Walter to win! <kbd>Drag</kbd> rotate
+      <kbd>Scroll</kbd> zoom <kbd>WASD</kbd> pan
+    </div>
+
+    <div class="win-screen" id="winScreen">
+      <h1 class="win-title">🎉 YOU FOUND HIM! 🎉</h1>
+      <p class="win-time">Your time: <span id="finalTime">00:00</span></p>
+      <div class="win-buttons">
+        <button class="play-again-btn" id="playAgainBtn">PLAY AGAIN</button>
+        <button class="change-level-btn" id="changeLevelBtn">
+          CHANGE LEVEL
+        </button>
+      </div>
+    </div>
+
+    <div class="pause-screen" id="pauseScreen">
+      <h1 class="pause-title">PAUSED</h1>
+      <div class="pause-buttons">
+        <button class="pause-btn resume-btn" id="resumeBtn">RESUME</button>
+        <button class="pause-btn" id="pauseChangeLevelBtn">CHANGE LEVEL</button>
+      </div>
+      <p class="pause-hint">Press ESC to resume</p>
+    </div>
+
+    <div class="custom-modal" id="customModal">
+      <div class="custom-content">
+        <h2>Custom Settings</h2>
+
+        <label>
+          Crowd Size
+          <input
+            type="range"
+            id="customCrowd"
+            min="10"
+            max="200000"
+            value="100000"
+            step="10"
+          />
+          <span id="customCrowdVal">100,000</span>
+        </label>
+
+        <label>
+          World Radius
+          <input type="range" id="customRadius" min="30" max="150" value="90" />
+          <span id="customRadiusVal">90</span>
+        </label>
+
+        <label>
+          Fog Near
+          <input
+            type="range"
+            id="customFogNear"
+            min="50"
+            max="200"
+            value="110"
+          />
+          <span id="customFogNearVal">110</span>
+        </label>
+
+        <label>
+          Fog Far
+          <input
+            type="range"
+            id="customFogFar"
+            min="80"
+            max="250"
+            value="140"
+          />
+          <span id="customFogFarVal">140</span>
+        </label>
+
+        <div class="custom-buttons">
+          <button id="customCancel" class="pause-btn">Cancel</button>
+          <button id="customStart" class="pause-btn resume-btn">
+            Start Game
+          </button>
+        </div>
+
+        <p class="custom-warning" id="customWarning"></p>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import StatsGL from "stats-gl";
+
+      /* ================================================= */
+      /* CONFIGURATION                                     */
+      /* ================================================= */
+
+      const CONFIG = {
+        // ---- Rendering ----
+        PIXEL_RATIO_MAX: 1.0,
+        SHADOW_SIZE: 1024,
+        SHADOW_FRUSTUM: 120,
+        FOG_NEAR: 110,
+        FOG_FAR: 140,
+
+        // ---- World (CIRCULAR) ----
+        WORLD_RADIUS: 90, // Circular world radius for people
+        GROUND_RADIUS: 200, // Larger circular ground
+        TREE_COUNT: 60,
+        STALL_COUNT: 10,
+        FOUNTAIN_RADIUS: 8,
+
+        // ---- Crowd ----
+        CROWD_SIZE: 10000,
+        MAX_CROWD_SIZE: 50000, // Current allocation (will grow as needed)
+        ABSOLUTE_MAX_CROWD: 200000, // Hard limit
+        CHAR_HEIGHT_MIN: 1.4,
+        CHAR_HEIGHT_MAX: 2.1,
+        CHILD_HEIGHT_MIN: 0.9,
+        CHILD_HEIGHT_MAX: 1.2,
+        CHILD_PROBABILITY: 0.15,
+        FEMALE_PROBABILITY: 0.5,
+        HAIR_PROBABILITY: 0.82,
+        HAT_PROBABILITY: 0.2,
+        BEARD_PROBABILITY: 0.35,
+        BELT_PROBABILITY: 0.6,
+        COLLAR_PROBABILITY: 0.5,
+        CHARACTER_SCALE: 0.5,
+
+        // ---- Character Geometry ----
+        CHAR: {
+          HEAD_Y: 1.55,
+          HEAD_RADIUS: 0.18,
+          BODY_Y: 1.125,
+          BODY_WIDTH: 0.4,
+          BODY_HEIGHT: 0.55,
+          BODY_DEPTH: 0.26,
+          LEG_WIDTH: 0.15,
+          LEG_HEIGHT: 0.95,
+          LEG_DEPTH: 0.22,
+          LEG_OFFSET_X: 0.09,
+          LEG_OFFSET_Y: -0.425,
+          LEG_Y_ADJUSTMENT: 0.85,
+          HAIR_Y: 1.68,
+          HAIR_RADIUS: 0.15,
+          HAIR_LENGTH_FEMALE_MIN: 0.5,
+          HAIR_LENGTH_FEMALE_MAX: 1.0,
+          HAIR_LENGTH_MALE_MIN: 0.0,
+          HAIR_LENGTH_MALE_MAX: 0.4,
+          HAT_Y: 1.78,
+          HAT_RADIUS_TOP: 0.14,
+          HAT_RADIUS_BOTTOM: 0.18,
+          HAT_HEIGHT: 0.14,
+        },
+
+        // ---- Part IDs ----
+        PART: {
+          HEAD: 0,
+          BODY: 1,
+          LEFT_LEG: 2,
+          RIGHT_LEG: 3,
+          HAIR: 4,
+          HAT: 5,
+        },
+
+        // ---- LOD Distances ----
+        LOD: {
+          ULTRA_FAR: 80.0,
+          FAR: 50.0,
+          MEDIUM: 40.0,
+          CLOSE: 20.0,
+          FACING_AWAY_BOOST: 30.0,
+          FACING_AWAY_THRESHOLD: 0.3,
+          MATRIX_UPDATE_DIST_SQ: 2500, // 50^2
+          SMOOTH_ROTATION_DIST_SQ: 3600, // 60^2
+        },
+
+        // ---- Animation ----
+        WALK_SPEED_MIN: 0.3,
+        WALK_SPEED_MAX: 0.6,
+        WALK_SWING: 0.3,
+        WALK_ANIM_SPEED: 4.0,
+        WALK_ANIM_VARIATION: 0.3, // ±30% speed variation
+        DIR_CHANGE_TIME: 4.0,
+        DIR_CHANGE_VAR: 2.0,
+        DIR_CHANGE_TIME_MIN: 0.5,
+        ROTATION_SMOOTHING: 0.3,
+        MAX_TURN_SPEED: Math.PI * 1.5,
+
+        // ---- Physics ----
+        PHYSICS: {
+          AMORTIZATION: 4, // Update 1/4 of characters per frame
+          DT_MULTIPLIER: 4,
+          BOUNCE_FACTOR: 1.6,
+          PUSH_FACTOR: 1.02,
+        },
+
+        // ---- Camera ----
+        CAM_FOV: 55,
+        CAM_NEAR: 0.1,
+        CAM_FAR: 600,
+        CAM_START: { x: 0, y: 80, z: 100 },
+        CTRL_MIN_DIST: 15,
+        CTRL_MAX_DIST: 200,
+        PAN_SPEED: 20,
+
+        // ---- Lighting ----
+        SUN_POS: { x: 80, y: 150, z: 80 },
+        SUN_INTENSITY: 1.0,
+        AMBIENT: 0.5,
+        LIGHT_DIR_APPROX: { x: 0.4, y: 0.75, z: 0.4 }, // Normalized sun direction
+
+        // ---- Stalls ----
+        STALL: {
+          COUNT: 10,
+          HOUSE_WIDTH: 6,
+          HOUSE_HEIGHT: 4,
+          HOUSE_DEPTH: 4,
+          ROOF_RADIUS: 5,
+          ROOF_HEIGHT: 2.5,
+          ROOF_SEGMENTS: 4,
+          PLACEMENT_RADIUS: 50,
+        },
+
+        // ---- Fountain ----
+        FOUNTAIN: {
+          BASIN_RADIUS: 7.5, // FOUNTAIN_RADIUS - 0.5
+          BASIN_TUBE_RADIUS: 1.2,
+          BASIN_Y: -0.5,
+          WATER_RADIUS: 7.0, // FOUNTAIN_RADIUS - 1.0
+          WATER_Y: 0.5,
+          PILLAR_RADIUS_TOP: 0.8,
+          PILLAR_RADIUS_BOTTOM: 1.2,
+          PILLAR_HEIGHT: 6,
+          PILLAR_Y: 3.0,
+        },
+
+        // ---- Face Details ----
+        FACE: {
+          EYE_Y: 1.57,
+          EYE_SPACING: 0.055,
+          EYE_RADIUS: 0.025,
+          NOSE_Y: 1.52,
+          NOSE_RADIUS: 0.03,
+          MOUTH_Y: 1.47,
+          MOUTH_WIDTH: 0.04,
+          MOUTH_HEIGHT: 0.012,
+          BEARD_TOP: 1.52,
+          BEARD_BOTTOM: 1.38,
+          FACE_Z_MIN: 0.08,
+          FACE_Z_MAX: 0.16,
+        },
+
+        // ---- Body Details ----
+        BODY_DETAILS: {
+          BUTTON_Y_OFFSET: 0.9,
+          BUTTON_SPACING: 4.5,
+          BELT_Y: 0.9,
+          BELT_WIDTH: 0.032,
+          COLLAR_Y: 1.28,
+          ZIPPER_WIDTH: 0.032,
+          SHOE_Y_START: -0.58,
+          SHOE_Y_END: -0.75,
+          SHOE_SOLE_Y: -0.78,
+        },
+
+        // ---- Stripes (Walter) ----
+        STRIPE_FREQUENCY: 12.0,
+        STRIPE_EDGE_SOFT: 0.45,
+        STRIPE_EDGE_HARD: 0.55,
+
+        // ---- Colors ----
+        SKIN: [
+          0xffdbac, 0xf5cfa0, 0xe8b88a, 0xd4956a, 0xc68642, 0x8d5524, 0x6b4423,
+        ],
+        SHIRTS: [
+          0x3498db, 0x2ecc71, 0x9b59b6, 0xf39c12, 0x1abc9c, 0xe67e22, 0x16a085,
+          0x27ae60, 0x2980b9, 0x8e44ad, 0x5dade2, 0x58d68d, 0xaf7ac5, 0xf7dc6f,
+          0x85c1e9, 0x76d7c4, 0xfad7a0, 0xff6b6b, 0x4ecdc4, 0x45b7d1, 0x96ceb4,
+          0x74b9ff, 0xa29bfe, 0xfd79a8, 0x00b894, 0x6c5ce7, 0xffeaa7, 0xdfe6e9,
+        ],
+        SHIRTS_FORBIDDEN: [0xcc0000, 0xe74c3c, 0xff6b6b], // Too close to Walter
+        PANTS: [
+          0x2c3e50, 0x34495e, 0x1a252f, 0x4a4a4a, 0x1d3557, 0x2d3748, 0x5d4e37,
+          0x3d405b,
+        ],
+        SKIRTS: [
+          0xe74c3c, 0x9b59b6, 0x3498db, 0xe91e63, 0xf39c12, 0x1abc9c, 0x2ecc71,
+          0xff6b6b,
+        ],
+        HAIR: [
+          0x2c1810, 0x4a3728, 0x8b6914, 0xd4a574, 0x1a1a1a, 0x8b4513, 0x654321,
+          0x090806,
+        ],
+        HATS: [
+          0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6, 0x1abc9c, 0x34495e,
+          0xf1c40f,
+        ],
+        STALL_COLORS: [
+          0xd35400, 0x8e44ad, 0x27ae60, 0xc0392b, 0x2980b9, 0xf39c12,
+        ],
+        GROUND_COLOR: 0x6b9b52,
+        TREE_TRUNK_COLOR: 0x5d4037,
+        TREE_LEAF_COLOR: 0x2d5016,
+        FOUNTAIN_COLOR: 0x888888,
+        WATER_COLOR: 0x4a90d9,
+        ROOF_COLOR: 0x8b4513,
+        SKY_COLOR: 0x87ceeb,
+
+        // ---- Walter ----
+        WALTER: {
+          RED: 0xcc0000,
+          PANTS: 0x1d3557,
+          SKIN: 0xffdbac,
+          HAIR: 0x4a3728,
+          HEIGHT: 1.8,
+          HEAD_SHAPE: 0.3,
+          HAIR_LENGTH: 0.2,
+        },
+
+        // ---- UI ----
+        STATS_INTERVAL: 250,
+        TIMER_INTERVAL: 1000,
+        CLICK_FEEDBACK_DURATION: 300,
+
+        // ---- Levels ----
+        currentLevel: 0,
+        LEVELS: [
+          {
+            name: "Warm-up",
+            crowd: 400,
+            worldRadius: 60,
+            fogNear: 90,
+            fogFar: 120,
+          },
+          {
+            name: "Crowded",
+            crowd: 2000,
+            worldRadius: 60,
+            fogNear: 90,
+            fogFar: 120,
+          },
+          {
+            name: "Packed",
+            crowd: 10000,
+            worldRadius: 70,
+            fogNear: 100,
+            fogFar: 130,
+          },
+          {
+            name: "Chaos",
+            crowd: 50000,
+            worldRadius: 90,
+            fogNear: 120,
+            fogFar: 150,
+          },
+          {
+            name: "Custom",
+            crowd: 100000,
+            worldRadius: 90,
+            fogNear: 120,
+            fogFar: 150,
+            isCustom: true,
+          },
+        ],
+      };
+
+      /* ================================================= */
+      /* LOCAL STORAGE                                     */
+      /* ================================================= */
+
+      const STORAGE_KEY = "FindWalter";
+
+      function loadSettings() {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            const data = JSON.parse(saved);
+            if (data.custom) {
+              CONFIG.LEVELS[4].crowd = data.custom.crowd ?? 100000;
+              CONFIG.LEVELS[4].worldRadius = data.custom.worldRadius ?? 90;
+              CONFIG.LEVELS[4].fogNear = data.custom.fogNear ?? 110;
+              CONFIG.LEVELS[4].fogFar = data.custom.fogFar ?? 140;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to load settings:", e);
+        }
+      }
+
+      function saveSettings() {
+        try {
+          const data = {
+            custom: {
+              crowd: CONFIG.LEVELS[4].crowd,
+              worldRadius: CONFIG.LEVELS[4].worldRadius,
+              fogNear: CONFIG.LEVELS[4].fogNear,
+              fogFar: CONFIG.LEVELS[4].fogFar,
+            },
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        } catch (e) {
+          console.warn("Failed to save settings:", e);
+        }
+      }
+
+      // Load on startup
+      loadSettings();
+
+      /* ================================================= */
+      /* GAME STATE                                        */
+      /* ================================================= */
+
+      const gameState = {
+        isPlaying: false,
+        isPaused: false,
+        startTime: 0,
+        elapsedTime: 0,
+        WalterFound: false,
+        WalterIndex: -1,
+        WalterVisibleIndex: -1, // Walter's slot in the visible instances array
+      };
+
+      /* ================================================= */
+      /* PREALLOCATED OBJECTS                              */
+      /* ================================================= */
+
+      const _raycaster = new THREE.Raycaster();
+      const _mouse = new THREE.Vector2();
+      const _matrix = new THREE.Matrix4();
+      const _position = new THREE.Vector3();
+      const _quaternion = new THREE.Quaternion();
+      const _scale = new THREE.Vector3();
+      const _color = new THREE.Color();
+      const _yAxis = new THREE.Vector3(0, 1, 0);
+      const _forward = new THREE.Vector3();
+      const _right = new THREE.Vector3();
+      const _toObstacle = new THREE.Vector3();
+
+      // ===== FRUSTUM CULLING =====
+      const _frustum = new THREE.Frustum();
+      const _projScreenMatrix = new THREE.Matrix4();
+      const _sphere = new THREE.Sphere(new THREE.Vector3(), 2);
+
+      // ===== PRE-COMPUTED MATRICES =====
+      let allMatrices = null; // Float32Array(CROWD_SIZE * 16)
+      let allColors0 = null; // Float32Array(CROWD_SIZE * 4)
+      let allColors1 = null;
+      let allColors2 = null;
+      let allColors3 = null;
+      let allWalkData = null; // Float32Array(CROWD_SIZE * 2) - phase, speed
+      let allVariation = null; // Float32Array(CROWD_SIZE * 4) - headShape, bodyDetail, isFemale, isChild
+      let allVariation2 = null; // Float32Array(CROWD_SIZE * 4) - hasBeard, hasBelt, hasCollar, reserved
+      const _tempObj = new THREE.Object3D();
+
+      // ===== GLOBAL COLLISION =====
+      const stallColliders = [];
+
+      /* ================================================= */
+      /* CHARACTER DATA                                    */
+      /* ================================================= */
+
+      const chars = {
+        px: null,
+        pz: null,
+        vx: null,
+        vz: null,
+        height: null,
+        rot: null,
+        timer: null,
+        type: null,
+        hasHat: null,
+        hasHair: null,
+        hasBeard: null,
+        headShape: null, // 0-1: oval factor (0=round, 1=tall oval)
+        bodyDetail: null, // 0=nothing, 1=buttons, 2=zipper
+        isFemale: null,
+        isChild: null,
+        walkPhase: null,
+        walkSpeed: null,
+      };
+
+      /* ================================================= */
+      /* RNG - Use Math.random for best distribution        */
+      /* ================================================= */
+
+      const rng = {
+        next() {
+          return Math.random();
+        },
+        range(a, b) {
+          return a + Math.random() * (b - a);
+        },
+        int(max) {
+          return Math.floor(Math.random() * max);
+        },
+        pick(arr) {
+          return arr[Math.floor(Math.random() * arr.length)];
+        },
+      };
+
+      /* ================================================= */
+      /* RENDERER                                          */
+      /* ================================================= */
+
+      const renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: true,
+        precision: "mediump",
+        powerPreference: "high-performance",
+        stencil: false,
+      });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(
+        Math.min(window.devicePixelRatio, CONFIG.PIXEL_RATIO_MAX),
+      );
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.0;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      document.body.appendChild(renderer.domElement);
+
+      /* ================================================= */
+      /* SCENE                                             */
+      /* ================================================= */
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(CONFIG.SKY_COLOR);
+      scene.fog = new THREE.Fog(
+        CONFIG.SKY_COLOR,
+        CONFIG.FOG_NEAR,
+        CONFIG.FOG_FAR,
+      );
+
+      /* ================================================= */
+      /* CAMERA & CONTROLS                                 */
+      /* ================================================= */
+
+      const camera = new THREE.PerspectiveCamera(
+        CONFIG.CAM_FOV,
+        window.innerWidth / window.innerHeight,
+        CONFIG.CAM_NEAR,
+        CONFIG.CAM_FAR,
+      );
+      camera.position.set(
+        CONFIG.CAM_START.x,
+        CONFIG.CAM_START.y,
+        CONFIG.CAM_START.z,
+      );
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = false;
+      controls.minDistance = CONFIG.CTRL_MIN_DIST;
+      controls.maxDistance = CONFIG.CTRL_MAX_DIST;
+      controls.maxPolarAngle = Math.PI / 2 - 0.05;
+
+      /* ================================================= */
+      /* STATS                                             */
+      /* ================================================= */
+
+      const stats = new StatsGL({ trackGPU: true, trackHz: true });
+      document.getElementById("performanceStats").appendChild(stats.dom);
+      stats.init(renderer);
+
+      const statsCustom = document.createElement("div");
+      statsCustom.id = "statsCustom";
+      document.getElementById("performanceStats").appendChild(statsCustom);
+
+      let lastStatsUpdate = 0;
+      let last = { c: -1, t: -1, g: -1, x: -1 };
+
+      function formatNumber(n) {
+        if (n >= 1_000_000) {
+          const millions = n / 1_000_000;
+          return millions < 10
+            ? millions.toFixed(1) + "M"
+            : Math.round(millions) + "M";
+        }
+        if (n >= 1_000) {
+          const thousands = n / 1_000;
+          return thousands < 10
+            ? thousands.toFixed(1) + "K"
+            : Math.round(thousands) + "K";
+        }
+        return n.toString();
+      }
+
+      function updateStatsCustom(now) {
+        if (now - lastStatsUpdate < CONFIG.STATS_INTERVAL) return;
+        lastStatsUpdate = now;
+
+        const r = renderer.info.render;
+        const m = renderer.info.memory;
+
+        if (
+          r.calls === last.c &&
+          r.triangles === last.t &&
+          m.geometries === last.g &&
+          m.textures === last.x
+        )
+          return;
+
+        last.c = r.calls;
+        last.t = r.triangles;
+        last.g = m.geometries;
+        last.x = m.textures;
+
+        statsCustom.textContent = `DC: ${formatNumber(
+          r.calls,
+        )}\nTRI: ${formatNumber(r.triangles)}\nGEO: ${formatNumber(
+          m.geometries,
+        )}\nTEX: ${formatNumber(m.textures)}`;
+      }
+
+      /* ================================================= */
+      /* LIGHTING                                          */
+      /* ================================================= */
+
+      scene.add(
+        new THREE.HemisphereLight(CONFIG.SKY_COLOR, CONFIG.GROUND_COLOR, 0.8),
+      );
+      scene.add(new THREE.AmbientLight(0xffffff, CONFIG.AMBIENT));
+
+      const sun = new THREE.DirectionalLight(0xfff5e0, CONFIG.SUN_INTENSITY);
+      sun.position.set(CONFIG.SUN_POS.x, CONFIG.SUN_POS.y, CONFIG.SUN_POS.z);
+      sun.castShadow = true;
+      sun.shadow.mapSize.setScalar(CONFIG.SHADOW_SIZE);
+      sun.shadow.camera.near = 10;
+      sun.shadow.camera.far = 400;
+      const sf = CONFIG.SHADOW_FRUSTUM;
+      sun.shadow.camera.left = -sf;
+      sun.shadow.camera.right = sf;
+      sun.shadow.camera.top = sf;
+      sun.shadow.camera.bottom = -sf;
+      sun.shadow.bias = 0.0002;
+      sun.shadow.normalBias = 0.3;
+      sun.shadow.radius = 1;
+      scene.add(sun);
+
+      // ============================================
+      // MERGED ENVIRONMENT - SINGLE DRAW CALL
+      // ============================================
+
+      function placeEnvironmentElements() {
+        // Remove old environment if exists (safe on first call too)
+        const oldEnv = scene.getObjectByName("environment");
+        if (oldEnv) scene.remove(oldEnv);
+
+        const positions = [];
+        const normals = [];
+        const colors = [];
+        const _col = new THREE.Color();
+
+        // Helper to add geometry with color
+        function addGeometry(geo, color, matrix = null) {
+          geo = geo.toNonIndexed();
+          const pos = geo.attributes.position.array;
+          const norm = geo.attributes.normal.array;
+          _col.setHex(color);
+          for (let i = 0; i < pos.length; i += 3) {
+            if (matrix) {
+              _position
+                .set(pos[i], pos[i + 1], pos[i + 2])
+                .applyMatrix4(matrix);
+              positions.push(_position.x, _position.y, _position.z);
+              _forward
+                .set(norm[i], norm[i + 1], norm[i + 2])
+                .transformDirection(matrix);
+              normals.push(_forward.x, _forward.y, _forward.z);
+            } else {
+              positions.push(pos[i], pos[i + 1], pos[i + 2]);
+              normals.push(norm[i], norm[i + 1], norm[i + 2]);
+            }
+            colors.push(_col.r, _col.g, _col.b);
+          }
+          geo.dispose();
+        }
+
+        // ===== GROUND =====
+        const groundGeo = new THREE.CircleGeometry(CONFIG.GROUND_RADIUS, 64);
+        groundGeo.rotateX(-Math.PI / 2);
+        addGeometry(groundGeo, CONFIG.GROUND_COLOR);
+
+        // ===== TREES =====
+        const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 6, 8);
+        const leafGeo = new THREE.ConeGeometry(4, 7, 8);
+        for (let i = 0; i < CONFIG.TREE_COUNT; i++) {
+          const angle =
+            (i / CONFIG.TREE_COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.2;
+          const radius = CONFIG.WORLD_RADIUS + 1 + Math.random() * 24;
+          const x = Math.cos(angle) * radius;
+          const z = Math.sin(angle) * radius;
+          const scale = 0.8 + Math.random() * 0.5;
+
+          // Trunk
+          _matrix.identity();
+          _matrix.makeTranslation(x, 3 * scale, z);
+          _matrix.scale(_scale.set(scale, scale, scale));
+          addGeometry(trunkGeo.clone(), CONFIG.TREE_TRUNK_COLOR, _matrix);
+
+          // Foliage
+          _matrix.identity();
+          _matrix.makeTranslation(x, 8 * scale, z);
+          _matrix.scale(_scale.set(scale, scale, scale));
+          addGeometry(leafGeo.clone(), CONFIG.TREE_LEAF_COLOR, _matrix);
+        }
+
+        // ===== STALLS =====
+        const stallGeo = new THREE.BoxGeometry(
+          CONFIG.STALL.HOUSE_WIDTH,
+          CONFIG.STALL.HOUSE_HEIGHT,
+          CONFIG.STALL.HOUSE_DEPTH,
+        );
+        stallGeo.translate(0, CONFIG.STALL.HOUSE_HEIGHT / 2, 0);
+
+        const roofGeo = new THREE.ConeGeometry(
+          CONFIG.STALL.ROOF_RADIUS,
+          CONFIG.STALL.ROOF_HEIGHT,
+          CONFIG.STALL.ROOF_SEGMENTS,
+        );
+        roofGeo.rotateY(Math.PI / CONFIG.STALL.ROOF_SEGMENTS);
+        roofGeo.translate(
+          0,
+          CONFIG.STALL.HOUSE_HEIGHT + CONFIG.STALL.ROOF_HEIGHT / 2,
+          0,
+        );
+
+        for (let i = 0; i < CONFIG.STALL.COUNT; i++) {
+          const angle = (i / CONFIG.STALL.COUNT) * Math.PI * 2;
+          const radius = CONFIG.STALL.PLACEMENT_RADIUS;
+          const x = Math.cos(angle) * radius;
+          const z = Math.sin(angle) * radius;
+
+          _matrix.identity();
+          _matrix.makeRotationY(-angle + Math.PI / 2);
+          _matrix.setPosition(x, 0, z);
+
+          // Stall body
+          addGeometry(
+            stallGeo.clone(),
+            CONFIG.STALL_COLORS[i % CONFIG.STALL_COLORS.length],
+            _matrix,
+          );
+
+          // Roof
+          addGeometry(roofGeo.clone(), CONFIG.ROOF_COLOR, _matrix);
+
+          // Collider
+          const stallRadius =
+            Math.max(CONFIG.STALL.HOUSE_WIDTH, CONFIG.STALL.HOUSE_DEPTH) / 2 +
+            0.5;
+          stallColliders.push({ x, z, r: stallRadius });
+        }
+
+        // ===== FOUNTAIN =====
+        const F = CONFIG.FOUNTAIN;
+
+        // Outer ring (basin walls) - half buried
+        const basinGeo = new THREE.TorusGeometry(
+          F.BASIN_RADIUS,
+          F.BASIN_TUBE_RADIUS,
+          8,
+          32,
+        );
+        basinGeo.rotateX(Math.PI / 2);
+        basinGeo.translate(0, F.BASIN_Y, 0);
+        addGeometry(basinGeo, CONFIG.FOUNTAIN_COLOR);
+
+        // Water inside - raised to look fuller
+        const waterGeo = new THREE.CircleGeometry(F.WATER_RADIUS, 32);
+        waterGeo.rotateX(-Math.PI / 2);
+        waterGeo.translate(0, F.WATER_Y, 0);
+        addGeometry(waterGeo, CONFIG.WATER_COLOR);
+
+        // Center pillar - taller, more elegant
+        const pillarGeo = new THREE.CylinderGeometry(
+          F.PILLAR_RADIUS_TOP,
+          F.PILLAR_RADIUS_BOTTOM,
+          F.PILLAR_HEIGHT,
+          16,
+        );
+        pillarGeo.translate(0, F.PILLAR_Y, 0);
+        addGeometry(pillarGeo, CONFIG.FOUNTAIN_COLOR);
+
+        // ===== CREATE MERGED MESH =====
+        const mergedGeo = new THREE.BufferGeometry();
+        mergedGeo.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(positions, 3),
+        );
+        mergedGeo.setAttribute(
+          "normal",
+          new THREE.Float32BufferAttribute(normals, 3),
+        );
+        mergedGeo.setAttribute(
+          "color",
+          new THREE.Float32BufferAttribute(colors, 3),
+        );
+        mergedGeo.computeBoundingSphere();
+
+        const mergedMat = new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: 0.85,
+          metalness: 0.0,
+          transparent: true,
+          depthWrite: true,
+        });
+
+        // Fog uniforms
+        const fogUniforms = {
+          xzFogCenter: { value: new THREE.Vector2(0, 0) },
+          xzFogNear: { value: CONFIG.FOG_NEAR },
+          xzFogFar: { value: CONFIG.FOG_FAR },
+          fogColor: { value: new THREE.Color(CONFIG.SKY_COLOR) },
+        };
+        mergedMat.userData.fogUniforms = fogUniforms;
+
+        mergedMat.onBeforeCompile = (shader) => {
+          shader.uniforms.xzFogCenter = fogUniforms.xzFogCenter;
+          shader.uniforms.xzFogNear = fogUniforms.xzFogNear;
+          shader.uniforms.xzFogFar = fogUniforms.xzFogFar;
+          shader.uniforms.fogColor = fogUniforms.fogColor;
+
+          // ────────────────────────────────────────────────
+          // Vertex shader modifications
+          // ────────────────────────────────────────────────
+          shader.vertexShader = shader.vertexShader
+            .replace(
+              "#include <fog_pars_vertex>",
+              `#include <fog_pars_vertex>
+
+              varying vec3 vWorldPosition;
+              varying float vXZDistance;
+              uniform vec2 xzFogCenter;`,
+            )
+            .replace(
+              "#include <fog_vertex>",
+              `#include <fog_vertex>
+
+              // This runs AFTER instanceMatrix, modelMatrix, etc.
+              vec3 worldPos = (inverse(viewMatrix) * mvPosition).xyz;   // reconstruct world from view space
+                        
+              vWorldPosition = worldPos;
+              vXZDistance = length(worldPos.xz - xzFogCenter);
+              
+              // Early vertex clip
+              if (worldPos.y < -0.02) gl_Position.w = 0.0;`,
+            );
+
+          // ────────────────────────────────────────────────
+          // Fragment shader modifications
+          // ────────────────────────────────────────────────
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              "#include <fog_pars_fragment>",
+              `#include <fog_pars_fragment>
+
+              varying float vXZDistance;
+              uniform float xzFogNear;
+              uniform float xzFogFar;`,
+            )
+            .replace(
+              "#include <fog_fragment>",
+              `float fogDepth = vXZDistance;
+              #ifdef USE_FOG
+                float fogFactor = smoothstep(xzFogNear, xzFogFar, fogDepth);
+                gl_FragColor.a *= (1.0 - fogFactor);
+              #endif
+              `,
+            );
+        };
+
+        const environment = new THREE.Mesh(mergedGeo, mergedMat);
+        environment.castShadow = true;
+        environment.receiveShadow = true;
+        environment.name = "environment";
+        scene.add(environment);
+      }
+
+      /* ================================================= */
+      /* CHARACTER GEOMETRY - CONNECTED PARTS              */
+      /* ================================================= */
+
+      const PART_HEAD = 0;
+      const PART_BODY = 1;
+      const PART_LEFT_LEG = 2;
+      const PART_RIGHT_LEG = 3;
+      const PART_HAIR = 4;
+      const PART_HAT = 5;
+
+      function createCharacterGeometry() {
+        const C = CONFIG.CHAR;
+        const P = CONFIG.PART;
+
+        const headG = new THREE.SphereGeometry(C.HEAD_RADIUS, 5, 4);
+        headG.translate(0, C.HEAD_Y, 0);
+
+        const bodyG = new THREE.BoxGeometry(
+          C.BODY_WIDTH,
+          C.BODY_HEIGHT,
+          C.BODY_DEPTH,
+        );
+        bodyG.translate(0, C.BODY_Y, 0);
+
+        const leftLegG = new THREE.BoxGeometry(
+          C.LEG_WIDTH,
+          C.LEG_HEIGHT,
+          C.LEG_DEPTH,
+          1,
+          1,
+          1,
+        );
+        leftLegG.translate(-C.LEG_OFFSET_X, C.LEG_OFFSET_Y, 0);
+
+        const rightLegG = new THREE.BoxGeometry(
+          C.LEG_WIDTH,
+          C.LEG_HEIGHT,
+          C.LEG_DEPTH,
+          1,
+          1,
+          1,
+        );
+        rightLegG.translate(C.LEG_OFFSET_X, C.LEG_OFFSET_Y, 0);
+
+        const hairG = new THREE.SphereGeometry(C.HAIR_RADIUS, 4, 3);
+        hairG.translate(0, C.HAIR_Y, 0);
+
+        const hatG = new THREE.CylinderGeometry(
+          C.HAT_RADIUS_TOP,
+          C.HAT_RADIUS_BOTTOM,
+          C.HAT_HEIGHT,
+          5,
+        );
+        hatG.translate(0, C.HAT_Y, 0);
+
+        const parts = [
+          { geo: headG, id: P.HEAD },
+          { geo: bodyG, id: P.BODY },
+          { geo: leftLegG, id: P.LEFT_LEG },
+          { geo: rightLegG, id: P.RIGHT_LEG },
+          { geo: hairG, id: P.HAIR },
+          { geo: hatG, id: P.HAT },
+        ];
+
+        // Add partId attribute to each geometry
+        parts.forEach(({ geo, id }) => {
+          const count = geo.attributes.position.count;
+          const partIds = new Float32Array(count).fill(id);
+          geo.setAttribute("partId", new THREE.BufferAttribute(partIds, 1));
+        });
+
+        // Merge all geometries using BufferGeometryUtils pattern
+        // Calculate total vertices and indices
+        let totalVerts = 0;
+        let totalIndices = 0;
+        parts.forEach(({ geo }) => {
+          totalVerts += geo.attributes.position.count;
+          totalIndices += geo.index ? geo.index.count : 0;
+        });
+
+        // Create merged arrays
+        const positions = new Float32Array(totalVerts * 3);
+        const normals = new Float32Array(totalVerts * 3);
+        const partIdAttr = new Float32Array(totalVerts);
+        const indices = new Uint16Array(totalIndices);
+
+        let vertOffset = 0;
+        let indexOffset = 0;
+        let indexVertOffset = 0;
+
+        parts.forEach(({ geo }) => {
+          const pos = geo.attributes.position.array;
+          const norm = geo.attributes.normal.array;
+          const pid = geo.attributes.partId.array;
+          const idx = geo.index.array;
+
+          // Copy vertex data
+          positions.set(pos, vertOffset * 3);
+          normals.set(norm, vertOffset * 3);
+          partIdAttr.set(pid, vertOffset);
+
+          // Copy and offset indices
+          for (let i = 0; i < idx.length; i++) {
+            indices[indexOffset + i] = idx[i] + indexVertOffset;
+          }
+
+          indexVertOffset += geo.attributes.position.count;
+          vertOffset += geo.attributes.position.count;
+          indexOffset += idx.length;
+
+          geo.dispose();
+        });
+
+        // Create merged geometry
+        const merged = new THREE.BufferGeometry();
+        merged.setAttribute(
+          "position",
+          new THREE.BufferAttribute(positions, 3),
+        );
+        merged.setAttribute("normal", new THREE.BufferAttribute(normals, 3));
+        merged.setAttribute("partId", new THREE.BufferAttribute(partIdAttr, 1));
+        merged.setIndex(new THREE.BufferAttribute(indices, 1));
+
+        /*console.log(
+          `Character geometry: ${totalVerts} vertices, ${totalIndices / 3} triangles (indexed)`,
+        );*/
+
+        return merged;
+      }
+
+      /* ================================================= */
+      /* CROWD MESH - SINGLE DRAW CALL                     */
+      /* ================================================= */
+
+      let crowdMesh = null;
+      let colorAttr0, colorAttr1, colorAttr2, colorAttr3;
+
+      let crowdMeshCreated = false;
+
+      function createCrowdMesh() {
+        if (crowdMeshCreated) {
+          // Just update the count, don't recreate
+          crowdMesh.count = CONFIG.CROWD_SIZE;
+          return;
+        }
+
+        const geom = createCharacterGeometry();
+        const count = CONFIG.MAX_CROWD_SIZE; // Allocate for max!
+
+        const c0 = new Float32Array(count * 4);
+        const c1 = new Float32Array(count * 4);
+        const c2 = new Float32Array(count * 4);
+        const c3 = new Float32Array(count * 4);
+
+        colorAttr0 = new THREE.InstancedBufferAttribute(c0, 4);
+        colorAttr1 = new THREE.InstancedBufferAttribute(c1, 4);
+        colorAttr2 = new THREE.InstancedBufferAttribute(c2, 4);
+        colorAttr3 = new THREE.InstancedBufferAttribute(c3, 4);
+
+        colorAttr0.setUsage(THREE.StaticDrawUsage);
+        colorAttr1.setUsage(THREE.StaticDrawUsage);
+        colorAttr2.setUsage(THREE.StaticDrawUsage);
+        colorAttr3.setUsage(THREE.StaticDrawUsage);
+
+        geom.setAttribute("colorPack0", colorAttr0);
+        geom.setAttribute("colorPack1", colorAttr1);
+        geom.setAttribute("colorPack2", colorAttr2);
+        geom.setAttribute("colorPack3", colorAttr3);
+
+        const walkData = new Float32Array(count * 2);
+        const walkAttr = new THREE.InstancedBufferAttribute(walkData, 2);
+        walkAttr.setUsage(THREE.StaticDrawUsage);
+        geom.setAttribute("walkData", walkAttr);
+
+        const variationData = new Float32Array(count * 4);
+        const variationAttr = new THREE.InstancedBufferAttribute(
+          variationData,
+          4,
+        );
+        variationAttr.setUsage(THREE.StaticDrawUsage);
+        geom.setAttribute("variation", variationAttr);
+
+        const variation2Data = new Float32Array(count * 4);
+        const variation2Attr = new THREE.InstancedBufferAttribute(
+          variation2Data,
+          4,
+        );
+        variation2Attr.setUsage(THREE.StaticDrawUsage);
+        geom.setAttribute("variation2", variation2Attr);
+
+        const mat = new THREE.ShaderMaterial({
+          uniforms: {
+            fogColor: { value: new THREE.Color(CONFIG.SKY_COLOR) },
+            fogNear: { value: CONFIG.FOG_NEAR },
+            fogFar: { value: CONFIG.FOG_FAR },
+            lightDir: {
+              value: new THREE.Vector3().copy(sun.position).normalize(),
+            },
+            uTime: { value: 0.0 },
+            // LOD uniforms
+            lodUltraFar: { value: CONFIG.LOD.ULTRA_FAR },
+            lodFar: { value: CONFIG.LOD.FAR },
+            lodMedium: { value: CONFIG.LOD.MEDIUM },
+            lodClose: { value: CONFIG.LOD.CLOSE },
+            facingAwayBoost: { value: CONFIG.LOD.FACING_AWAY_BOOST },
+            facingAwayThreshold: { value: CONFIG.LOD.FACING_AWAY_THRESHOLD },
+            // Character geometry
+            legOffsetX: { value: CONFIG.CHAR.LEG_OFFSET_X },
+            legYAdjust: { value: CONFIG.CHAR.LEG_Y_ADJUSTMENT },
+            hairY: { value: CONFIG.CHAR.HAIR_Y },
+            headY: { value: CONFIG.CHAR.HEAD_Y },
+            walkSwing: { value: CONFIG.WALK_SWING },
+            stripeFreq: { value: CONFIG.STRIPE_FREQUENCY },
+          },
+          vertexShader: `
+            precision mediump float;
+
+            attribute float partId;
+            attribute vec4 colorPack0;
+            attribute vec4 colorPack1;
+            attribute vec4 colorPack2;
+            attribute vec4 colorPack3;
+            attribute vec2 walkData;
+            attribute vec4 variation;
+            attribute vec4 variation2;
+
+            // Uniforms
+            uniform float uTime;
+            uniform float lodUltraFar;
+            uniform float lodFar;
+            uniform float lodMedium;
+            uniform float lodClose;
+            uniform float facingAwayBoost;
+            uniform float facingAwayThreshold;
+            uniform float legOffsetX;
+            uniform float legYAdjust;
+            uniform float hairY;
+            uniform float headY;
+            uniform float walkSwing;
+
+            varying vec3 vNormal;
+            varying vec3 vColor;
+            varying float vFogDepth;
+            varying float vIsWalterShirt;
+            varying float vLocalY;
+            varying float vLocalX;
+            varying float vLocalZ;
+            varying float vPartId;
+            varying vec4 vVariation;
+            varying vec4 vVariation2;
+            varying float vBlinkPhase;
+            varying float vHairLength;
+            varying float vHasHat;
+            varying float vViewZ;
+
+            void main() {
+float lodDist = -(viewMatrix * modelMatrix * instanceMatrix * vec4(0.0, 1.0, 0.0, 1.0)).z;
+      
+      vec2 charForward = mat2(instanceMatrix) * vec2(0.0, 1.0);
+      vec2 toCamera = -vec2(viewMatrix[0][2], viewMatrix[2][2]);
+      float facingDot = dot(normalize(charForward), normalize(toCamera));
+      
+      float effectiveLodDist = lodDist + max(0.0, facingDot - facingAwayThreshold) * facingAwayBoost;
+      
+              // Extract common values
+              vPartId = partId;
+
+              vHasHat = colorPack3.w;
+              float isWalter = step(variation2.w, 0.0); // 1 if < 0, else 0
+              vIsWalterShirt = isWalter;
+              float hairLen = abs(variation2.w);
+              hairLen = mix(hairLen, hairLen - 1.0, isWalter);
+              vHairLength = hairLen;
+
+              vec3 pos = position;
+              vec3 norm = normal;
+
+              // ============================================
+              // ULTRA-FAR PATH
+              // ============================================
+              if (effectiveLodDist > lodUltraFar) {
+                // Hide right leg (partId 3), scale left leg (partId 2)
+                if (partId > 2.5 && partId < 3.5) {
+                  pos = vec3(0.0);
+                } else if (partId > 1.5 && partId < 2.5) {
+                  pos.x = (pos.x + legOffsetX) * 2.0;
+                  pos.y += legYAdjust;
+                  pos.z *= 1.5;
+                }
+                
+                // Hair: hide if no hair OR if has hat (hat covers hair at distance)
+                if (partId > 3.5 && partId < 4.5 && (hairLen < 0.01 || vHasHat > 0.5)) pos = vec3(0.0);
+                // Hat: hide if no hat
+                if (partId > 4.5 && vHasHat < 0.5) pos = vec3(0.0);
+                
+                // Quick color
+                vColor = partId < 0.5 ? colorPack0.xyz : 
+                         partId < 1.5 ? vec3(colorPack0.w, colorPack1.xy) :
+                         partId < 3.5 ? vec3(colorPack1.zw, colorPack2.x) :
+                         partId < 4.5 ? colorPack2.yzw : colorPack3.xyz;
+                
+                vec4 worldPos = modelMatrix * instanceMatrix * vec4(pos, 1.0);
+                vec4 mvPos = viewMatrix * worldPos;
+                gl_Position = projectionMatrix * mvPos;
+                
+                vNormal = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * norm);
+                vViewZ = -mvPos.z;
+                vFogDepth = length(worldPos.xz);
+                vLocalY = position.y;
+                vLocalX = 0.0;
+                vLocalZ = 0.0;
+                vVariation = vec4(0.0);
+                vVariation2 = vec4(0.0);
+                vBlinkPhase = 0.0;
+                return;
+              }
+
+              // ============================================
+              // FAR PATH
+              // ============================================
+              if (effectiveLodDist > lodFar) {
+                if (partId > 2.5 && partId < 3.5) {
+                  pos = vec3(0.0);
+                } else if (partId > 1.5 && partId < 2.5) {
+                  pos.x = (pos.x + legOffsetX) * 2.0;
+                  pos.y += legYAdjust;
+                  pos.z *= 1.4;
+                }
+                
+                // Hair: hide if no hair OR if has hat (hat covers hair at distance)
+                if (partId > 3.5 && partId < 4.5 && (hairLen < 0.01 || vHasHat > 0.5)) pos = vec3(0.0);
+                // Hat: hide if no hat  
+                if (partId > 4.5 && vHasHat < 0.5) pos = vec3(0.0);
+                
+                vColor = partId < 0.5 ? colorPack0.xyz : 
+                         partId < 1.5 ? vec3(colorPack0.w, colorPack1.xy) :
+                         partId < 3.5 ? vec3(colorPack1.zw, colorPack2.x) :
+                         partId < 4.5 ? colorPack2.yzw : colorPack3.xyz;
+                
+                vec4 worldPos = modelMatrix * instanceMatrix * vec4(pos, 1.0);
+                vec4 mvPos = viewMatrix * worldPos;
+                gl_Position = projectionMatrix * mvPos;
+                
+                vNormal = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * norm);
+                vViewZ = -mvPos.z;
+                vFogDepth = length(worldPos.xz);
+                vLocalY = position.y;
+                vLocalX = 0.0;
+                vLocalZ = 0.0;
+                vVariation = vec4(0.0);
+                vVariation2 = vec4(0.0);
+                vBlinkPhase = 0.0;
+                return;
+              }
+
+              // ============================================
+              // CLOSE PATH (<50): Full detail
+              // ============================================
+              float headShape = variation.x;
+              vBlinkPhase = fract(variation2.w) * 10000.0;
+              vLocalY = position.y;
+              vLocalX = position.x;
+              vLocalZ = position.z;
+              vVariation = variation;
+              vVariation2 = variation2;
+
+              // Head look rotation - only < 40
+              float cosLook = 1.0, sinLook = 0.0;
+              if (effectiveLodDist < 40.0) {
+                float lookSeed = walkData.x * 2.3;
+                float lookTime = uTime * 0.8 + lookSeed;
+                float lookAngle = sin(lookTime * 1.1 + lookSeed * 5.0) * 0.4 * 
+                                  smoothstep(0.0, 0.3, sin(lookTime * 0.15 + lookSeed * 7.0)) +
+                                  sin(lookTime * 0.3 + lookSeed * 3.0) * 0.15;
+                cosLook = cos(lookAngle);
+                sinLook = sin(lookAngle);
+              }
+
+              // HEAD
+              if (partId < 0.5) {
+                float ovalFactor = 1.0 + headShape * 0.35;
+                float narrowFactor = 1.0 - headShape * 0.1;
+                pos.y = (pos.y - headY) * ovalFactor + headY;
+                pos.x *= narrowFactor;
+                pos.z *= narrowFactor;
+                
+                if (effectiveLodDist < 40.0) {
+                  float rx = pos.x, rz = pos.z;
+                  pos.x = rx * cosLook - rz * sinLook;
+                  pos.z = rx * sinLook + rz * cosLook;
+                  float nx = norm.x, nz = norm.z;
+                  norm.x = nx * cosLook - nz * sinLook;
+                  norm.z = nx * sinLook + nz * cosLook;
+                  float lx = vLocalX, lz = vLocalZ;
+                  vLocalX = lx * cosLook - lz * sinLook;
+                  vLocalZ = lx * sinLook + lz * cosLook;
+                }
+                
+                norm.y *= ovalFactor;
+                norm.x *= narrowFactor;
+                norm.z *= narrowFactor;
+                norm = normalize(norm);
+                vColor = colorPack0.xyz;
+              }
+              // BODY
+              else if (partId < 1.5) {
+                vColor = vec3(colorPack0.w, colorPack1.xy);
+              }
+              // LEGS
+              else if (partId < 3.5) {
+                float origY = pos.y;
+                float phase = walkData.x + uTime * walkData.y;
+                float swing = sin(phase + step(2.5, partId) * 3.14159) * walkSwing;
+                float c = cos(swing), s = sin(swing);
+                float y = pos.y, z = pos.z;
+                pos.y = y * c + z * s + legYAdjust;
+                pos.z = -y * s + z * c;
+                float ny = norm.y, nz = norm.z;
+                norm.y = ny * c + nz * s;
+                norm.z = -ny * s + nz * c;
+                
+                if (origY < -0.45) {
+                  pos.x *= 1.0 + smoothstep(-0.45, -0.85, origY) * 0.35;
+                }
+                vColor = vec3(colorPack1.zw, colorPack2.x);
+              }
+              // HAIR
+              else if (partId < 4.5) {
+                if (hairLen < 0.01) {
+                  pos = vec3(0.0);
+                } else {
+                  if (effectiveLodDist < 40.0) {
+                    float rx = pos.x, rz = pos.z;
+                    pos.x = rx * cosLook - rz * sinLook;
+                    pos.z = rx * sinLook + rz * cosLook;
+                    float nx = norm.x, nz = norm.z;
+                    norm.x = nx * cosLook - nz * sinLook;
+                    norm.z = nx * sinLook + nz * cosLook;
+                  }
+                  
+                  vec3 hc = vec3(0.0, hairY, 0.0);
+                  vec3 local = pos - hc;
+                  if (local.y < 0.0) {
+                    local.y *= 1.0 + hairLen * 2.0;
+                    local.z -= -local.y * hairLen * 0.8;
+                    if (local.z > 0.0) {
+                      local.z *= 1.0 - hairLen * 0.5;
+                      local.y *= 1.0 - hairLen * 0.3;
+                    }
+                  }
+                  local.x *= 1.0 + hairLen * 0.4;
+                  pos = hc + local * (0.85 + hairLen * 0.3);
+                }
+                vColor = colorPack2.yzw;
+              }
+              // HAT
+              else {
+                if (vHasHat < 0.5) {
+                  pos = vec3(0.0);
+                } else if (effectiveLodDist < 40.0) {
+                  float rx = pos.x, rz = pos.z;
+                  pos.x = rx * cosLook - rz * sinLook;
+                  pos.z = rx * sinLook + rz * cosLook;
+                  float nx = norm.x, nz = norm.z;
+                  norm.x = nx * cosLook - nz * sinLook;
+                  norm.z = nx * sinLook + nz * cosLook;
+                }
+                vColor = colorPack3.xyz;
+              }
+
+              vec4 worldPos = modelMatrix * instanceMatrix * vec4(pos, 1.0);
+              vec4 mvPos = viewMatrix * worldPos;
+              gl_Position = projectionMatrix * mvPos;
+              
+              vNormal = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * norm);
+              vViewZ = -mvPos.z;
+              vFogDepth = length(worldPos.xz);
+            }
+          `,
+          fragmentShader: `
+            precision mediump float;
+
+            uniform float uTime;
+            uniform vec3 fogColor;
+            uniform float fogNear;
+            uniform float fogFar;
+            uniform vec3 lightDir;
+            uniform float lodClose;
+            uniform float lodFar;
+            uniform float stripeFreq;
+
+            varying vec3 vNormal;
+            varying vec3 vColor;
+            varying float vFogDepth;
+            varying float vIsWalterShirt;
+            varying float vLocalY;
+            varying float vLocalX;
+            varying float vLocalZ;
+            varying float vPartId;
+            varying vec4 vVariation;
+            varying vec4 vVariation2;
+            varying float vBlinkPhase;
+
+            varying float vHairLength;
+            varying float vHasHat;
+
+            varying float vViewZ;
+
+            void main() {
+              // Early discard for hair/hat
+              if (vPartId > 3.5) {
+                if (vPartId < 4.5 && vHairLength < 0.01) discard;
+                if (vPartId > 4.5 && vHasHat < 0.5) discard;
+              }
+
+              float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);
+
+              // ULTRA-FAST PATH
+              if (vViewZ > lodFar) {
+                float approxDiff = max(0.0, vNormal.y * 0.75 + vNormal.x * 0.4 + vNormal.z * 0.4);
+                vec3 color = vColor * (0.5 + approxDiff * 0.5);
+                gl_FragColor = vec4(mix(color, fogColor, fogFactor), 1.0);
+                return;
+              }
+
+              vec3 baseColor = vColor;
+
+              // Walter stripes
+              if (vIsWalterShirt > 0.5 && vPartId > 0.5 && vPartId < 1.5) {
+                float stripe = fract(vLocalY * stripeFreq);
+                baseColor = mix(vec3(0.8, 0.0, 0.0), vec3(1.0), smoothstep(0.45, 0.55, stripe));
+              }
+
+              // FAST PATH
+              if (vViewZ > lodClose) {
+                float diff = max(dot(normalize(vNormal), lightDir), 0.0);
+                vec3 color = baseColor * (0.5 + diff * 0.5);
+                gl_FragColor = vec4(mix(color, fogColor, fogFactor), 1.0);
+                return;
+              }
+
+              // FULL DETAIL PATH: Close up only
+              float bodyDetail = vVariation.y * 2.0;
+              float hasBeard = vVariation2.x;
+              float hasBelt = vVariation2.y;
+              float hasCollar = vVariation2.z;
+
+              // Head details
+              if (vPartId < 0.5 && vLocalZ > 0.08) {
+                float faceZ = smoothstep(0.08, 0.16, vLocalZ);
+                
+                // Eyes
+                float eyeY = 1.57;
+                float eyeSpacing = 0.055;
+                float eyeRadius = 0.025;
+                float leftEyeDist = length(vec2(vLocalX + eyeSpacing, vLocalY - eyeY));
+                float rightEyeDist = length(vec2(vLocalX - eyeSpacing, vLocalY - eyeY));
+                float eyeDist = min(leftEyeDist, rightEyeDist);
+
+                if (eyeDist < eyeRadius) {
+                  float closed = 0.0;
+                  if (vViewZ < 20.0) {
+                    float t = uTime * 0.7 + vBlinkPhase;
+                    closed = pow(smoothstep(0.85, 0.98, abs(sin(t))), 3.0);
+                  }
+                  float eyeBlend = (1.0 - smoothstep(eyeRadius * 0.5, eyeRadius, eyeDist)) * (1.0 - closed) * faceZ;
+                  baseColor = mix(baseColor, vec3(0.08, 0.06, 0.06), eyeBlend);
+                }
+
+                // Nose
+                float noseDist = length(vec2(vLocalX * 2.0, vLocalY - 1.52));
+                if (noseDist < 0.03) {
+                  float noseBlend = (1.0 - smoothstep(0.015, 0.03, noseDist)) * 0.5 * faceZ;
+                  baseColor = mix(baseColor, baseColor * 0.75, noseBlend);
+                }
+
+                // Mouth
+                if (abs(vLocalX) < 0.04 && abs(vLocalY - 1.47) < 0.012) {
+                  float mouthBlend = (1.0 - abs(vLocalX) / 0.04) * (1.0 - abs(vLocalY - 1.47) / 0.012) * 0.7 * faceZ;
+                  baseColor = mix(baseColor, vec3(0.4, 0.2, 0.2), mouthBlend);
+                }
+
+                // Beard
+                if (hasBeard > 0.5 && vLocalY < 1.52) {
+                  float beardBlend = smoothstep(1.52, 1.38, vLocalY) * smoothstep(0.06, 0.14, vLocalZ) * (1.0 - smoothstep(0.06, 0.14, abs(vLocalX)));
+                  baseColor = mix(baseColor, baseColor * 0.2, beardBlend * 0.95);
+                }
+              }
+
+              // Body details
+              if (vPartId > 0.5 && vPartId < 1.5 && vIsWalterShirt < 0.5) {
+                // Buttons
+                if (bodyDetail > 0.5 && bodyDetail < 1.5 && vLocalZ > 0.10 && abs(vLocalX) < 0.03) {
+                  float buttonY = fract((vLocalY - 0.90) * 4.5);
+                  float buttonDist = length(vec2(abs(vLocalX) * 6.0, buttonY - 0.5));
+                  if (buttonDist < 0.35) {
+                    baseColor = mix(baseColor, vec3(0.12, 0.10, 0.06), (1.0 - smoothstep(0.12, 0.35, buttonDist)) * 0.9);
+                  }
+                }
+                // Zipper
+                else if (bodyDetail > 1.5 && vLocalZ > 0.10 && abs(vLocalX) < 0.032) {
+                  if (abs(vLocalX) < 0.015) {
+                    baseColor = mix(baseColor, vec3(0.25, 0.25, 0.28), 0.9);
+                  } else {
+                    float teeth = fract(vLocalY * 16.0);
+                    baseColor = mix(baseColor, vec3(0.5, 0.5, 0.55), step(0.4, teeth) * (1.0 - step(0.6, teeth)) * 0.7);
+                  }
+                }
+
+                // Collar
+                if (hasCollar > 0.5 && vLocalY > 1.28) {
+                  baseColor = mix(baseColor, baseColor * 0.6, smoothstep(1.28, 1.38, vLocalY));
+                }
+
+                // Belt
+                if (hasBelt > 0.5 && abs(vLocalY - 0.90) < 0.032) {
+                  float beltBlend = 1.0 - smoothstep(0.012, 0.032, abs(vLocalY - 0.90));
+                  baseColor = mix(baseColor, vec3(0.10, 0.06, 0.02), beltBlend * 0.95);
+                  if (abs(vLocalX) < 0.05 && vLocalZ > 0.10) {
+                    baseColor = mix(baseColor, vec3(0.7, 0.6, 0.25), beltBlend * 0.8);
+                  }
+                }
+              }
+
+              // Shoes
+              if (vPartId > 1.5 && vPartId < 3.5 && vLocalY < -0.58) {
+                float shoeBlend = smoothstep(-0.58, -0.75, vLocalY);
+                baseColor = mix(baseColor, vec3(0.05, 0.03, 0.02), shoeBlend);
+                if (vLocalY < -0.78) baseColor *= 0.4;
+              }
+
+              // Hair roots
+              if (vPartId > 3.5 && vPartId < 4.5 && vLocalY < 1.58) {
+                baseColor = mix(baseColor, baseColor * 0.5, smoothstep(1.58, 1.48, vLocalY));
+              }
+
+              // Hat band
+              if (vPartId > 4.5) {
+                if (vIsWalterShirt > 0.5) {
+                  baseColor = vLocalY < 1.75 ? vec3(1.0) : vec3(0.8, 0.0, 0.0);
+                } else if (vLocalY < 1.73 && vLocalY > 1.70) {
+                  baseColor *= 0.5;
+                }
+              }
+
+              // Final lighting
+              float diff = max(dot(normalize(vNormal), lightDir), 0.0);
+              vec3 color = baseColor * (0.5 + diff * 0.65);
+              gl_FragColor = vec4(mix(color, fogColor, fogFactor), 1.0);
+            }
+          `,
+        });
+
+        crowdMesh = new THREE.InstancedMesh(geom, mat, CONFIG.MAX_CROWD_SIZE);
+        crowdMesh.count = CONFIG.CROWD_SIZE; // Only render this many
+        crowdMesh.castShadow = true;
+        crowdMesh.receiveShadow = true;
+        crowdMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        crowdMesh.frustumCulled = false;
+
+        crowdMesh.walkAttr = walkAttr;
+        crowdMesh.variationAttr = variationAttr;
+        crowdMesh.variation2Attr = variation2Attr;
+
+        geom.boundingSphere = new THREE.Sphere(
+          new THREE.Vector3(0, 1.5, 0),
+          CONFIG.WORLD_RADIUS * 1.1,
+        );
+
+        scene.add(crowdMesh);
+        crowdMeshCreated = true;
+
+        /* console.log(
+          `Crowd mesh created for max ${CONFIG.MAX_CROWD_SIZE.toLocaleString()} instances`,
+        );*/
+      }
+
+      /* ================================================= */
+      /* INITIALIZE CHARACTERS - FULLY RANDOM FROM START   */
+      /* ================================================= */
+
+      // Bit flags for boolean properties
+      const FLAG_HAS_HAT = 1 << 0;
+      const FLAG_HAS_HAIR = 1 << 1;
+      const FLAG_HAS_BEARD = 1 << 2;
+      const FLAG_IS_FEMALE = 1 << 3;
+      const FLAG_IS_CHILD = 1 << 4;
+      const FLAG_HAS_BELT = 1 << 5;
+      const FLAG_HAS_COLLAR = 1 << 6;
+
+      let buffersInitialized = false;
+
+      function initBuffers() {
+        if (buffersInitialized) return;
+
+        const n = CONFIG.MAX_CROWD_SIZE;
+
+        // Position & velocity (essential, can't reduce)
+        chars.px = new Float32Array(n);
+        chars.pz = new Float32Array(n);
+        chars.vx = new Float32Array(n);
+        chars.vz = new Float32Array(n);
+
+        // Per-character properties
+        chars.height = new Float32Array(n);
+        chars.rot = new Float32Array(n);
+        chars.timer = new Float32Array(n);
+        chars.walkPhase = new Float32Array(n);
+        chars.walkSpeed = new Float32Array(n);
+        chars.headShape = new Float32Array(n);
+        chars.hairLength = new Float32Array(n);
+
+        // Packed flags (7 booleans in 1 byte)
+        chars.flags = new Uint8Array(n);
+
+        // Packed type + bodyDetail (2 values in 1 byte)
+        chars.typeDetail = new Uint8Array(n);
+        chars.cosR = new Float32Array(n);
+        chars.sinR = new Float32Array(n);
+
+        // Remembers the current turn angle
+        chars.currentRot = new Float32Array(n);
+
+        // GPU buffers (can't reduce - needed for instancing)
+        allMatrices = new Float32Array(n * 16);
+        allColors0 = new Float32Array(n * 4);
+        allColors1 = new Float32Array(n * 4);
+        allColors2 = new Float32Array(n * 4);
+        allColors3 = new Float32Array(n * 4);
+        allWalkData = new Float32Array(n * 2);
+        allVariation = new Float32Array(n * 4);
+        allVariation2 = new Float32Array(n * 4);
+
+        buffersInitialized = true;
+
+        // Calculate memory usage
+        const cpuBytes = 7 * 4 * n + 2 * n; // floats + uint8s
+        const gpuBytes = (16 + 4 * 4 + 2 + 4 + 4) * 4 * n; // matrices, colors, walk, variations
+        /* console.log(
+          `Buffers allocated: ${(cpuBytes / 1024).toFixed(1)}KB CPU, ${(gpuBytes / 1024).toFixed(1)}KB GPU for ${n.toLocaleString()} max characters`,
+        );*/
+      }
+
+      // Helper functions for flag access
+      function setFlag(i, flag, value) {
+        if (value) {
+          chars.flags[i] |= flag;
+        } else {
+          chars.flags[i] &= ~flag;
+        }
+      }
+
+      function getFlag(i, flag) {
+        return (chars.flags[i] & flag) !== 0;
+      }
+
+      function setTypeDetail(i, type, detail) {
+        chars.typeDetail[i] = (type << 4) | (detail & 0x0f);
+      }
+
+      function getType(i) {
+        return chars.typeDetail[i] >> 4;
+      }
+
+      function getBodyDetail(i) {
+        return chars.typeDetail[i] & 0x0f;
+      }
+
+      function initCharacters() {
+        initBuffers();
+
+        const n = CONFIG.CROWD_SIZE;
+        const W = CONFIG.WALTER;
+
+        gameState.WalterIndex = 0;
+
+        const wr = CONFIG.WORLD_RADIUS;
+        const fr = CONFIG.FOUNTAIN_RADIUS + 1;
+        const frSq = fr * fr;
+        const wrSq = wr * wr;
+
+        for (let i = 0; i < n; i++) {
+          const isWalter = i === 0;
+          const blinkPhase = rng.next() * Math.PI * 2;
+
+          if (isWalter) {
+            chars.flags[i] = FLAG_HAS_HAT | FLAG_HAS_HAIR;
+            setTypeDetail(i, 0, 0);
+
+            chars.hairLength[i] = W.HAIR_LENGTH;
+            chars.headShape[i] = W.HEAD_SHAPE;
+            chars.height[i] = W.HEIGHT * CONFIG.CHARACTER_SCALE;
+
+            const vi = i * 4;
+            allVariation[vi] = chars.headShape[i];
+            allVariation[vi + 1] = 0;
+            allVariation[vi + 2] = 0;
+            allVariation[vi + 3] = 0;
+
+            allVariation2[vi] = 0;
+            allVariation2[vi + 1] = 0;
+            allVariation2[vi + 2] = 0;
+            allVariation2[vi + 3] =
+              -1.0 - chars.hairLength[i] + blinkPhase * 0.0001;
+
+            const angle = rng.next() * Math.PI * 2;
+            const radiusSq = rng.next() * (wrSq - frSq) + frSq;
+            const radius = Math.sqrt(radiusSq);
+            chars.px[i] = Math.cos(angle) * radius;
+            chars.pz[i] = Math.sin(angle) * radius;
+
+            const moveAngle = rng.next() * Math.PI * 2;
+            const speed = rng.range(
+              CONFIG.WALK_SPEED_MIN,
+              CONFIG.WALK_SPEED_MAX,
+            );
+            chars.currentRot[i] = moveAngle;
+            chars.vx[i] = Math.cos(moveAngle) * speed;
+            chars.vz[i] = Math.sin(moveAngle) * speed;
+            chars.rot[i] = moveAngle;
+            chars.timer[i] = rng.range(
+              CONFIG.DIR_CHANGE_TIME_MIN,
+              CONFIG.DIR_CHANGE_TIME + CONFIG.DIR_CHANGE_VAR,
+            );
+
+            chars.walkPhase[i] = rng.next() * Math.PI * 2;
+            chars.walkSpeed[i] =
+              CONFIG.WALK_ANIM_SPEED *
+              rng.range(
+                1 - CONFIG.WALK_ANIM_VARIATION,
+                1 + CONFIG.WALK_ANIM_VARIATION,
+              );
+
+            const wi = i * 2;
+            allWalkData[wi] = chars.walkPhase[i];
+            allWalkData[wi + 1] = chars.walkSpeed[i];
+
+            setCharacterColors(i, true);
+            continue;
+          }
+
+          // Build flags byte
+          let flags = 0;
+          const isChild = rng.next() < CONFIG.CHILD_PROBABILITY;
+          const isFemale = rng.next() < CONFIG.FEMALE_PROBABILITY;
+          const hasHair = rng.next() < CONFIG.HAIR_PROBABILITY;
+          const hasHat = rng.next() < CONFIG.HAT_PROBABILITY;
+          const hasBeard =
+            !isChild && !isFemale && rng.next() < CONFIG.BEARD_PROBABILITY;
+          const hasBelt = rng.next() < CONFIG.BELT_PROBABILITY;
+          const hasCollar = rng.next() < CONFIG.COLLAR_PROBABILITY;
+
+          if (hasHat) flags |= FLAG_HAS_HAT;
+          if (hasHair) flags |= FLAG_HAS_HAIR;
+          if (hasBeard) flags |= FLAG_HAS_BEARD;
+          if (isFemale) flags |= FLAG_IS_FEMALE;
+          if (isChild) flags |= FLAG_IS_CHILD;
+          if (hasBelt) flags |= FLAG_HAS_BELT;
+          if (hasCollar) flags |= FLAG_HAS_COLLAR;
+          chars.flags[i] = flags;
+
+          const type = rng.int(3);
+          const bodyDetail = rng.int(3);
+          setTypeDetail(i, type, bodyDetail);
+          chars.hairLength[i] = isFemale
+            ? rng.range(
+                CONFIG.CHAR.HAIR_LENGTH_FEMALE_MIN,
+                CONFIG.CHAR.HAIR_LENGTH_FEMALE_MAX,
+              )
+            : rng.range(
+                CONFIG.CHAR.HAIR_LENGTH_MALE_MIN,
+                CONFIG.CHAR.HAIR_LENGTH_MALE_MAX,
+              );
+          chars.headShape[i] = rng.range(0.0, 1.0);
+
+          const vi = i * 4;
+          allVariation[vi] = chars.headShape[i];
+          allVariation[vi + 1] = bodyDetail / 2.0;
+          allVariation[vi + 2] = isFemale ? 1 : 0;
+          allVariation[vi + 3] = isChild ? 1 : 0;
+
+          allVariation2[vi] = hasBeard ? 1 : 0;
+          allVariation2[vi + 1] = hasBelt ? 1 : 0;
+          allVariation2[vi + 2] = hasCollar ? 1 : 0;
+
+          let encoded = hasHair ? chars.hairLength[i] : 0.0;
+          encoded += blinkPhase * 0.0001;
+          allVariation2[vi + 3] = encoded;
+
+          const angle = rng.next() * Math.PI * 2;
+          const radiusSq = rng.next() * (wrSq - frSq) + frSq;
+          const radius = Math.sqrt(radiusSq);
+          chars.px[i] = Math.cos(angle) * radius;
+          chars.pz[i] = Math.sin(angle) * radius;
+
+          chars.height[i] =
+            (isChild
+              ? rng.range(CONFIG.CHILD_HEIGHT_MIN, CONFIG.CHILD_HEIGHT_MAX)
+              : rng.range(CONFIG.CHAR_HEIGHT_MIN, CONFIG.CHAR_HEIGHT_MAX)) *
+            CONFIG.CHARACTER_SCALE;
+
+          const moveAngle = rng.next() * Math.PI * 2;
+          const speed = rng.range(CONFIG.WALK_SPEED_MIN, CONFIG.WALK_SPEED_MAX);
+          chars.currentRot[i] = moveAngle;
+          chars.vx[i] = Math.cos(moveAngle) * speed;
+          chars.vz[i] = Math.sin(moveAngle) * speed;
+          chars.rot[i] = moveAngle;
+          chars.timer[i] = rng.range(
+            CONFIG.DIR_CHANGE_TIME_MIN,
+            CONFIG.DIR_CHANGE_TIME + CONFIG.DIR_CHANGE_VAR,
+          );
+
+          chars.walkPhase[i] = rng.next() * Math.PI * 2;
+          chars.walkSpeed[i] = CONFIG.WALK_ANIM_SPEED * rng.range(0.7, 1.3);
+
+          // Initialize cached rotation
+          const rot = Math.atan2(chars.vx[i], chars.vz[i]);
+          chars.cosR[i] = Math.cos(rot);
+          chars.sinR[i] = Math.sin(rot);
+
+          const wi = i * 2;
+          allWalkData[wi] = chars.walkPhase[i];
+          allWalkData[wi + 1] = chars.walkSpeed[i];
+
+          setCharacterColors(i, false);
+        }
+
+        // Copy all data to GPU buffers once
+        colorAttr0.array.set(allColors0.subarray(0, n * 4));
+        colorAttr1.array.set(allColors1.subarray(0, n * 4));
+        colorAttr2.array.set(allColors2.subarray(0, n * 4));
+        colorAttr3.array.set(allColors3.subarray(0, n * 4));
+        crowdMesh.walkAttr.array.set(allWalkData.subarray(0, n * 2));
+        crowdMesh.variationAttr.array.set(allVariation.subarray(0, n * 4));
+        crowdMesh.variation2Attr.array.set(allVariation2.subarray(0, n * 4));
+
+        colorAttr0.needsUpdate = true;
+        colorAttr1.needsUpdate = true;
+        colorAttr2.needsUpdate = true;
+        colorAttr3.needsUpdate = true;
+        crowdMesh.walkAttr.needsUpdate = true;
+        crowdMesh.variationAttr.needsUpdate = true;
+        crowdMesh.variation2Attr.needsUpdate = true;
+      }
+
+      function setCharacterColors(i, isWalter) {
+        const i4 = i * 4;
+
+        if (isWalter) {
+          _color.setHex(CONFIG.WALTER.SKIN);
+          allColors0[i4] = _color.r;
+          allColors0[i4 + 1] = _color.g;
+          allColors0[i4 + 2] = _color.b;
+
+          _color.setHex(CONFIG.WALTER.RED);
+          allColors0[i4 + 3] = _color.r;
+          allColors1[i4] = _color.g;
+          allColors1[i4 + 1] = _color.b;
+
+          _color.setHex(CONFIG.WALTER.PANTS);
+          allColors1[i4 + 2] = _color.r;
+          allColors1[i4 + 3] = _color.g;
+          allColors2[i4] = _color.b;
+
+          _color.setHex(CONFIG.WALTER.HAIR);
+          allColors2[i4 + 1] = _color.r;
+          allColors2[i4 + 2] = _color.g;
+          allColors2[i4 + 3] = _color.b;
+
+          _color.setHex(CONFIG.WALTER.RED);
+          allColors3[i4] = _color.r;
+          allColors3[i4 + 1] = _color.g;
+          allColors3[i4 + 2] = _color.b;
+          allColors3[i4 + 3] = 1.0;
+        } else {
+          const flags = chars.flags[i];
+          const hasHair = (flags & FLAG_HAS_HAIR) !== 0;
+          const hasHat = (flags & FLAG_HAS_HAT) !== 0;
+          const isFemale = (flags & FLAG_IS_FEMALE) !== 0;
+          const type = getType(i);
+
+          const skinColor = rng.pick(CONFIG.SKIN);
+          _color.setHex(skinColor);
+          allColors0[i4] = _color.r;
+          allColors0[i4 + 1] = _color.g;
+          allColors0[i4 + 2] = _color.b;
+
+          let shirt;
+          do {
+            shirt = rng.pick(CONFIG.SHIRTS);
+          } while (CONFIG.SHIRTS_FORBIDDEN.includes(shirt));
+          _color.setHex(shirt);
+          allColors0[i4 + 3] = _color.r;
+          allColors1[i4] = _color.g;
+          allColors1[i4 + 1] = _color.b;
+
+          const isSkirt = type === 2 && isFemale;
+          _color.setHex(
+            isSkirt ? rng.pick(CONFIG.SKIRTS) : rng.pick(CONFIG.PANTS),
+          );
+          allColors1[i4 + 2] = _color.r;
+          allColors1[i4 + 3] = _color.g;
+          allColors2[i4] = _color.b;
+
+          const hairColor = hasHair ? rng.pick(CONFIG.HAIR) : skinColor;
+          _color.setHex(hairColor);
+          allColors2[i4 + 1] = _color.r;
+          allColors2[i4 + 2] = _color.g;
+          allColors2[i4 + 3] = _color.b;
+
+          if (hasHat) {
+            let hatCol;
+            do {
+              hatCol = rng.pick(CONFIG.HATS);
+            } while (hatCol === CONFIG.WALTER.RED);
+            _color.setHex(hatCol);
+          } else {
+            _color.set(0, 0, 0);
+          }
+          allColors3[i4] = _color.r;
+          allColors3[i4 + 1] = _color.g;
+          allColors3[i4 + 2] = _color.b;
+          allColors3[i4 + 3] = hasHat ? 1 : 0;
+        }
+      }
+
+      // Update matrix in the master allMatrices buffer
+      function updateCharMatrixStored(i) {
+        const h = chars.height[i];
+        _tempObj.position.set(chars.px[i], 0, chars.pz[i]);
+        // Always compute rotation from actual velocity for perfect alignment
+        const rot = Math.atan2(chars.vx[i], chars.vz[i]);
+        _tempObj.rotation.set(0, rot, 0);
+        const s = h; // Already includes * 0.5 from initialization
+        _tempObj.scale.set(s, s, s);
+        _tempObj.updateMatrix();
+        _tempObj.matrix.toArray(allMatrices, i * 16);
+      }
+
+      /* ================================================= */
+      /* UPDATE CHARACTERS - STAY INSIDE CIRCULAR WORLD    */
+      /* ================================================= */
+
+      let physicsFrame = 0;
+
+      function updateCharacters(dt) {
+        if (dt < 0.001) return; // skip tiny frames (e.g. tab just focused)
+
+        const camX = camera.position.x;
+        const camZ = camera.position.z;
+
+        const n = CONFIG.CROWD_SIZE;
+        const wr = CONFIG.WORLD_RADIUS;
+        const wrSq = wr * wr;
+        const fr = CONFIG.FOUNTAIN_RADIUS + 1;
+        const frSq = fr * fr;
+        const PHY = CONFIG.PHYSICS;
+        const LOD = CONFIG.LOD;
+
+        const instanceMatrixArray = crowdMesh.instanceMatrix.array;
+
+        // Only update physics for 1/4 of characters per frame (amortized)
+        const physicsChunkSize = Math.ceil(n / PHY.AMORTIZATION);
+        const physicsStart =
+          (physicsFrame % PHY.AMORTIZATION) * physicsChunkSize;
+        const physicsEnd = Math.min(physicsStart + physicsChunkSize, n);
+        physicsFrame++;
+
+        // Local refs for hot loop
+        const heights = chars.height;
+        const pxArr = chars.px;
+        const pzArr = chars.pz;
+        const vxArr = chars.vx;
+        const vzArr = chars.vz;
+        const timerArr = chars.timer;
+        const cosRArr = chars.cosR;
+        const sinRArr = chars.sinR;
+
+        const stallCollidersLen = stallColliders.length;
+
+        // Physics pass - only 25% of characters + Walter
+        for (let i = physicsStart; i < physicsEnd; i++) {
+          pxArr[i] += vxArr[i] * dt * PHY.DT_MULTIPLIER;
+          pzArr[i] += vzArr[i] * dt * PHY.DT_MULTIPLIER;
+
+          const x = pxArr[i];
+          const z = pzArr[i];
+          const distSq = x * x + z * z;
+
+          // World edge
+          if (distSq > wrSq) {
+            const dist = Math.sqrt(distSq);
+            const nx = x / dist;
+            const nz = z / dist;
+            const dot = vxArr[i] * nx + vzArr[i] * nz;
+            if (dot > 0) {
+              vxArr[i] -= PHY.BOUNCE_FACTOR * dot * nx;
+              vzArr[i] -= PHY.BOUNCE_FACTOR * dot * nz;
+            }
+            const excess = dist - wr;
+            if (excess > 0) {
+              pxArr[i] -= nx * excess * PHY.PUSH_FACTOR;
+              pzArr[i] -= nz * excess * PHY.PUSH_FACTOR;
+            }
+          }
+
+          // Fountain
+          if (distSq < frSq) {
+            const dist = Math.sqrt(distSq) || 1;
+            const nx = x / dist;
+            const nz = z / dist;
+            const dot = vxArr[i] * nx + vzArr[i] * nz;
+            if (dot < 0) {
+              vxArr[i] -= PHY.BOUNCE_FACTOR * dot * nx;
+              vzArr[i] -= PHY.BOUNCE_FACTOR * dot * nz;
+            }
+            const excess = fr - dist;
+            if (excess > 0) {
+              pxArr[i] += nx * excess * PHY.PUSH_FACTOR;
+              pzArr[i] += nz * excess * PHY.PUSH_FACTOR;
+            }
+          }
+
+          // Stalls
+          for (let j = 0; j < stallCollidersLen; j++) {
+            const sc = stallColliders[j];
+            const dx = pxArr[i] - sc.x;
+            const dz = pzArr[i] - sc.z;
+            const dSq = dx * dx + dz * dz;
+            const srSq = sc.r * sc.r;
+
+            if (dSq < srSq) {
+              const dist = Math.sqrt(dSq) || 1;
+              const nx = dx / dist;
+              const nz = dz / dist;
+              const dot = vxArr[i] * nx + vzArr[i] * nz;
+              if (dot < 0) {
+                vxArr[i] -= PHY.BOUNCE_FACTOR * dot * nx;
+                vzArr[i] -= PHY.BOUNCE_FACTOR * dot * nz;
+              }
+              const excess = sc.r - dist;
+              if (excess > 0) {
+                pxArr[i] += nx * excess * PHY.PUSH_FACTOR;
+                pzArr[i] += nz * excess * PHY.PUSH_FACTOR;
+              }
+            }
+          }
+
+          // Direction change
+          timerArr[i] -= dt * PHY.DT_MULTIPLIER;
+          if (timerArr[i] <= 0) {
+            const a = Math.random() * Math.PI * 2;
+            const spd = Math.sqrt(vxArr[i] * vxArr[i] + vzArr[i] * vzArr[i]);
+            vxArr[i] = Math.cos(a) * spd;
+            vzArr[i] = Math.sin(a) * spd;
+            timerArr[i] =
+              CONFIG.DIR_CHANGE_TIME / 2 +
+              Math.random() * CONFIG.DIR_CHANGE_VAR;
+          }
+
+          // Rotation smoothing
+          const targetRot = Math.atan2(vxArr[i], vzArr[i]);
+          let currentRot = chars.currentRot[i];
+
+          let delta = targetRot - currentRot;
+          delta = ((delta + Math.PI) % (Math.PI * 2)) - Math.PI;
+
+          const maxStep = CONFIG.MAX_TURN_SPEED * dt;
+
+          if (delta > maxStep) delta = maxStep;
+          if (delta < -maxStep) delta = -maxStep;
+
+          currentRot += delta;
+          chars.currentRot[i] = currentRot;
+
+          const cosR = Math.cos(currentRot);
+          const sinR = Math.sin(currentRot);
+          cosRArr[i] = cosR;
+          sinRArr[i] = sinR;
+        }
+
+        // Always update Walter (index 0) if not in current chunk
+        if (physicsStart > 0) {
+          pxArr[0] += vxArr[0] * dt * PHY.DT_MULTIPLIER;
+          pzArr[0] += vzArr[0] * dt * PHY.DT_MULTIPLIER;
+
+          const x = pxArr[0];
+          const z = pzArr[0];
+          const distSq = x * x + z * z;
+
+          if (distSq > wrSq) {
+            const dist = Math.sqrt(distSq);
+            const nx = x / dist;
+            const nz = z / dist;
+            const dot = vxArr[0] * nx + vzArr[0] * nz;
+            if (dot > 0) {
+              vxArr[0] -= PHY.BOUNCE_FACTOR * dot * nx;
+              vzArr[0] -= PHY.BOUNCE_FACTOR * dot * nz;
+            }
+            const excess = dist - wr;
+            if (excess > 0) {
+              pxArr[0] -= nx * excess * PHY.PUSH_FACTOR;
+              pzArr[0] -= nz * excess * PHY.PUSH_FACTOR;
+            }
+          }
+
+          if (distSq < frSq) {
+            const dist = Math.sqrt(distSq) || 1;
+            const nx = x / dist;
+            const nz = z / dist;
+            const dot = vxArr[0] * nx + vzArr[0] * nz;
+            if (dot < 0) {
+              vxArr[0] -= PHY.BOUNCE_FACTOR * dot * nx;
+              vzArr[0] -= PHY.BOUNCE_FACTOR * dot * nz;
+            }
+            const excess = fr - dist;
+            if (excess > 0) {
+              pxArr[0] += nx * excess * PHY.PUSH_FACTOR;
+              pzArr[0] += nz * excess * PHY.PUSH_FACTOR;
+            }
+          }
+
+          timerArr[0] -= dt * PHY.DT_MULTIPLIER;
+          if (timerArr[0] <= 0) {
+            const a = Math.random() * 6.283185; //  * Math.PI * 2
+            const spd = Math.sqrt(vxArr[0] * vxArr[0] + vzArr[0] * vzArr[0]);
+            vxArr[0] = Math.cos(a) * spd;
+            vzArr[0] = Math.sin(a) * spd;
+            timerArr[0] =
+              CONFIG.DIR_CHANGE_TIME / 2 +
+              Math.random() * CONFIG.DIR_CHANGE_VAR;
+          }
+          const rot = Math.atan2(vxArr[0], vzArr[0]);
+          cosRArr[0] = Math.cos(rot);
+          sinRArr[0] = Math.sin(rot);
+        }
+
+        // Matrix update pass - amortized for far characters
+        const matrixFrame = physicsFrame; // Reuse counter
+
+        for (let i = 0; i < n; i++) {
+          // Check distance to camera (cheap squared distance)
+          const dx = pxArr[i] - camX;
+          const dz = pzArr[i] - camZ;
+          const distSq = dx * dx + dz * dz;
+
+          if (distSq > LOD.SMOOTH_ROTATION_DIST_SQ && i !== 0) {
+            if ((i & 3) !== (matrixFrame & 3)) continue;
+          }
+
+          const s = heights[i]; // Already multiplied by 0.5
+          const cosR = cosRArr[i];
+          const sinR = sinRArr[i];
+
+          const mi = i * 16;
+          instanceMatrixArray[mi] = s * cosR;
+          instanceMatrixArray[mi + 2] = -s * sinR;
+          instanceMatrixArray[mi + 5] = s;
+          instanceMatrixArray[mi + 8] = s * sinR;
+          instanceMatrixArray[mi + 10] = s * cosR;
+          instanceMatrixArray[mi + 12] = pxArr[i];
+          instanceMatrixArray[mi + 14] = pzArr[i];
+          instanceMatrixArray[mi + 15] = 1;
+        }
+
+        gameState.WalterVisibleIndex = 0;
+        crowdMesh.count = n;
+        crowdMesh.instanceMatrix.needsUpdate = true;
+      }
+
+      /* ================================================= */
+      /* CLICK DETECTION                                   */
+      /* ================================================= */
+      function handleClick(e) {
+        if (!gameState.isPlaying || gameState.WalterFound) return;
+
+        const rect = renderer.domElement.getBoundingClientRect();
+        _mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        _mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        _raycaster.setFromCamera(_mouse, camera);
+        const hits = _raycaster.intersectObject(crowdMesh);
+
+        if (
+          hits.length > 0 &&
+          gameState.WalterVisibleIndex >= 0 &&
+          hits[0].instanceId === gameState.WalterVisibleIndex
+        ) {
+          winGame();
+        } else {
+          // Show X on miss
+          const dot = document.getElementById("clickDebug");
+          dot.style.left = e.clientX + "px";
+          dot.style.top = e.clientY + "px";
+          dot.style.opacity = "1";
+          setTimeout(
+            () => (dot.style.opacity = "0"),
+            CONFIG.CLICK_FEEDBACK_DURATION,
+          );
+        }
+      }
+
+      renderer.domElement.addEventListener("click", handleClick);
+
+      // Click on crowd counter opens pause menu
+      document.getElementById("crowdCounter").addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (gameState.isPlaying && !gameState.WalterFound) {
+          pauseGame();
+        }
+      });
+
+      // Prevent other HUD clicks from passing through
+      document.getElementById("hud").addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+
+      /* ================================================= */
+      /* INPUT - CAMERA-RELATIVE WASD                      */
+      /* ================================================= */
+
+      const keys = new Set();
+      document.addEventListener("keydown", (e) => {
+        keys.add(e.code);
+        if (e.code === "Escape") {
+          if (gameState.isPaused) {
+            resumeGame();
+          } else if (gameState.isPlaying && !gameState.WalterFound) {
+            pauseGame();
+          }
+        }
+      });
+      document.addEventListener("keyup", (e) => keys.delete(e.code));
+
+      function handleInput(dt) {
+        const spd = CONFIG.PAN_SPEED * dt;
+
+        // Get camera's forward and right vectors (projected onto XZ plane)
+        camera.getWorldDirection(_forward);
+        _forward.y = 0;
+        _forward.normalize();
+
+        _right.crossVectors(_forward, _yAxis).normalize();
+
+        let moveX = 0,
+          moveZ = 0;
+
+        if (keys.has("KeyW") || keys.has("ArrowUp")) {
+          moveX += _forward.x;
+          moveZ += _forward.z;
+        }
+        if (keys.has("KeyS") || keys.has("ArrowDown")) {
+          moveX -= _forward.x;
+          moveZ -= _forward.z;
+        }
+        if (keys.has("KeyA") || keys.has("ArrowLeft")) {
+          moveX -= _right.x;
+          moveZ -= _right.z;
+        }
+        if (keys.has("KeyD") || keys.has("ArrowRight")) {
+          moveX += _right.x;
+          moveZ += _right.z;
+        }
+
+        if (moveX !== 0 || moveZ !== 0) {
+          const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+          moveX = (moveX / len) * spd;
+          moveZ = (moveZ / len) * spd;
+
+          controls.target.x += moveX;
+          controls.target.z += moveZ;
+          camera.position.x += moveX;
+          camera.position.z += moveZ;
+        }
+      }
+
+      /* ================================================= */
+      /* TIMER                                             */
+      /* ================================================= */
+      const timerText = document.getElementById("timerText");
+
+      let lastTimerUpdate = 0;
+
+      function updateTimer(now) {
+        if (!gameState.isPlaying || gameState.WalterFound) return;
+
+        if (now - lastTimerUpdate < CONFIG.TIMER_INTERVAL) return;
+        lastTimerUpdate = now;
+
+        const totalSeconds = Math.floor((now - gameState.startTime) / 1000);
+
+        if (totalSeconds === gameState.elapsedTime) return;
+        gameState.elapsedTime = totalSeconds;
+
+        const m = Math.floor(totalSeconds / 60);
+        const s = totalSeconds % 60;
+
+        timerText.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      }
+
+      /* ================================================= */
+      /* GAME FLOW                                         */
+      /* ================================================= */
+
+      function pauseGame() {
+        if (!gameState.isPlaying || gameState.WalterFound) return;
+        gameState.isPaused = true;
+        document.getElementById("pauseScreen").classList.add("visible");
+      }
+
+      function resumeGame() {
+        gameState.isPaused = false;
+        document.getElementById("pauseScreen").classList.remove("visible");
+      }
+
+      function startGame(levelIndex) {
+        const level = CONFIG.LEVELS[levelIndex];
+        CONFIG.currentLevel = levelIndex;
+        CONFIG.CROWD_SIZE = level.crowd;
+        CONFIG.WORLD_RADIUS = level.worldRadius;
+        CONFIG.FOG_NEAR = level.fogNear;
+        CONFIG.FOG_FAR = level.fogFar;
+
+        // Update HUD with level info
+        const counter = document.getElementById("crowdCounter");
+        counter.dataset.level = levelIndex;
+        document.getElementById("hudLevelName").textContent = level.name;
+        document.getElementById("hudLevelCrowd").textContent =
+          `👥 ${level.crowd.toLocaleString()} people`;
+
+        // Update scene fog
+        scene.fog.near = level.fogNear;
+        scene.fog.far = level.fogFar;
+
+        // Recreate environment with new config values (trees, stalls, etc.)
+        placeEnvironmentElements();
+
+        // Create crowd mesh first (if not already created)
+        createCrowdMesh();
+
+        // Initialize characters (reuses buffers)
+        initCharacters();
+
+        // Update shader fog uniforms
+        if (crowdMesh && crowdMesh.material.uniforms) {
+          crowdMesh.material.uniforms.fogNear.value = level.fogNear;
+          crowdMesh.material.uniforms.fogFar.value = level.fogFar;
+        }
+
+        // Update environment fog uniforms
+        const env = scene.getObjectByName("environment");
+        if (env && env.material.userData.fogUniforms) {
+          env.material.userData.fogUniforms.xzFogNear.value = level.fogNear;
+          env.material.userData.fogUniforms.xzFogFar.value = level.fogFar;
+        }
+
+        document.getElementById("startScreen").classList.add("hidden");
+        document.getElementById("hud").classList.add("visible");
+        document.getElementById("instructions").classList.add("visible");
+
+        gameState.WalterFound = false;
+        gameState.startTime = performance.now();
+        gameState.elapsedTime = 0;
+        document.getElementById("timerText").textContent = "00:00";
+        lastTimerUpdate = performance.now(); // Reset timer update tracker
+        gameState.isPlaying = true;
+
+        camera.position.set(
+          CONFIG.CAM_START.x,
+          CONFIG.CAM_START.y,
+          CONFIG.CAM_START.z,
+        );
+        controls.target.set(0, 0, 0);
+        camera.lookAt(0, 0, 0);
+        controls.update();
+      }
+
+      function winGame() {
+        gameState.WalterFound = true;
+        const m = Math.floor(gameState.elapsedTime / 60);
+        const s = Math.floor(gameState.elapsedTime % 60);
+        document.getElementById("finalTime").textContent =
+          `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        document.getElementById("winScreen").classList.add("visible");
+        camera.position.set(
+          chars.px[gameState.WalterIndex],
+          15,
+          chars.pz[gameState.WalterIndex] + 20,
+        );
+        controls.target.set(
+          chars.px[gameState.WalterIndex],
+          1.5,
+          chars.pz[gameState.WalterIndex],
+        );
+      }
+
+      function resetGame() {
+        document.getElementById("winScreen").classList.remove("visible");
+
+        // Reinitialize characters (reuses buffers)
+        initCharacters();
+
+        // Update mesh count
+        crowdMesh.count = CONFIG.CROWD_SIZE;
+
+        gameState.isPlaying = true;
+        gameState.WalterFound = false;
+        gameState.startTime = performance.now();
+        gameState.elapsedTime = 0;
+        document.getElementById("timerText").textContent = "00:00";
+        camera.position.set(
+          CONFIG.CAM_START.x,
+          CONFIG.CAM_START.y,
+          CONFIG.CAM_START.z,
+        );
+        controls.target.set(0, 0, 0);
+        camera.lookAt(0, 0, 0);
+        controls.update();
+      }
+
+      document.querySelectorAll(".level-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const level = parseInt(btn.dataset.level);
+          if (level === 4) {
+            // Load saved values into sliders
+            const custom = CONFIG.LEVELS[4];
+            customCrowd.value = custom.crowd;
+            customRadius.value = custom.worldRadius;
+            customFogNear.value = custom.fogNear;
+            customFogFar.value = custom.fogFar;
+
+            // Update displayed values
+            document.getElementById("customCrowdVal").textContent =
+              custom.crowd.toLocaleString();
+            document.getElementById("customRadiusVal").textContent =
+              custom.worldRadius;
+            document.getElementById("customFogNearVal").textContent =
+              custom.fogNear;
+            document.getElementById("customFogFarVal").textContent =
+              custom.fogFar;
+
+            // Show custom modal
+            updateCustomWarning();
+            customModal.classList.add("visible");
+          } else {
+            startGame(level);
+          }
+        });
+      });
+      document
+        .getElementById("playAgainBtn")
+        .addEventListener("click", resetGame);
+
+      document
+        .getElementById("changeLevelBtn")
+        .addEventListener("click", () => {
+          document.getElementById("winScreen").classList.remove("visible");
+          document.getElementById("hud").classList.remove("visible");
+          document.getElementById("instructions").classList.remove("visible");
+          document.getElementById("startScreen").classList.remove("hidden");
+          gameState.isPlaying = false;
+        });
+
+      document
+        .getElementById("resumeBtn")
+        .addEventListener("click", resumeGame);
+
+      document
+        .getElementById("pauseChangeLevelBtn")
+        .addEventListener("click", () => {
+          document.getElementById("pauseScreen").classList.remove("visible");
+          document.getElementById("hud").classList.remove("visible");
+          document.getElementById("instructions").classList.remove("visible");
+          document.getElementById("startScreen").classList.remove("hidden");
+          gameState.isPlaying = false;
+          gameState.isPaused = false;
+        });
+
+      /* ================================================= */
+      /* CUSTOM MODAL                                      */
+      /* ================================================= */
+      // Custom level modal
+      const customModal = document.getElementById("customModal");
+      const customCrowd = document.getElementById("customCrowd");
+      const customRadius = document.getElementById("customRadius");
+      const customFogNear = document.getElementById("customFogNear");
+      const customFogFar = document.getElementById("customFogFar");
+      const customWarning = document.getElementById("customWarning");
+
+      // Update displayed values
+      customCrowd.oninput = () => {
+        document.getElementById("customCrowdVal").textContent = parseInt(
+          customCrowd.value,
+        ).toLocaleString();
+        updateCustomWarning();
+      };
+      customRadius.oninput = () => {
+        document.getElementById("customRadiusVal").textContent =
+          customRadius.value;
+      };
+      customFogNear.oninput = () => {
+        document.getElementById("customFogNearVal").textContent =
+          customFogNear.value;
+      };
+      customFogFar.oninput = () => {
+        document.getElementById("customFogFarVal").textContent =
+          customFogFar.value;
+      };
+
+      function updateCustomWarning() {
+        const crowd = parseInt(customCrowd.value);
+        if (crowd > CONFIG.MAX_CROWD_SIZE) {
+          customWarning.textContent = `⚠️ First launch with ${crowd.toLocaleString()} will allocate memory (may stutter)`;
+        } else {
+          customWarning.textContent = "";
+        }
+      }
+
+      document.getElementById("customCancel").onclick = () => {
+        customModal.classList.remove("visible");
+      };
+
+      document.getElementById("customStart").onclick = () => {
+        const crowd = parseInt(customCrowd.value);
+
+        // Update custom level settings
+        CONFIG.LEVELS[4].crowd = crowd;
+        CONFIG.LEVELS[4].worldRadius = parseInt(customRadius.value);
+        CONFIG.LEVELS[4].fogNear = parseInt(customFogNear.value);
+        CONFIG.LEVELS[4].fogFar = parseInt(customFogFar.value);
+
+        // Save to localStorage
+        saveSettings();
+
+        // Expand allocation if needed (one-time cost)
+        if (crowd > CONFIG.MAX_CROWD_SIZE) {
+          CONFIG.MAX_CROWD_SIZE = Math.min(crowd, CONFIG.ABSOLUTE_MAX_CROWD);
+          buffersInitialized = false; // Force reallocation
+          crowdMeshCreated = false;
+        }
+
+        customModal.classList.remove("visible");
+        startGame(4);
+      };
+
+      /* ================================================= */
+      /* RENDER LOOP                                       */
+      /* ================================================= */
+
+      let prevTime = 0;
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+        // Skip entire frame when tab is backgrounded (saves CPU/battery)
+        if (document.hidden) {
+          return;
+        }
+        const dt = Math.min((now - prevTime) / 1000, 0.1);
+        prevTime = now;
+
+        if (
+          gameState.isPlaying &&
+          !gameState.WalterFound &&
+          !gameState.isPaused
+        ) {
+          updateCharacters(dt);
+          handleInput(dt);
+          updateTimer(now);
+        }
+
+        // Update walk animation time
+        if (crowdMesh && crowdMesh.material.uniforms) {
+          crowdMesh.material.uniforms.uTime.value = now * 0.001;
+        }
+
+        renderer.render(scene, camera);
+        updateStatsCustom(now);
+        stats.update();
+      }
+
+      /* ================================================= */
+      /* RESIZE                                            */
+      /* ================================================= */
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      /* ================================================= */
+      /* INIT                                              */
+      /* ================================================= */
+
+      placeEnvironmentElements(); // initial environment with default config
+      initBuffers();
+      // Don't create crowd mesh here - wait for level selection
+      animate(0);
+    </script>
+  </body>
+</html>

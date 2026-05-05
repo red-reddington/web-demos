@@ -1,0 +1,181 @@
+<!-- https://codepen.io/the-red-reddington/full/ByQaaNO -->
+<!DOCTYPE html>
+<html>
+<body style = "height: 100dvh; margin: 0; background: #000; display:flex; align-items:center; justify-content:center; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; -ms-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; -webkit-user-callout: none;">
+<canvas id = "c" width = "640" height = "430" style = "image-rendering: pixelated; background: #c0c0c0; border: 2px solid #444; width: min(100dvw, 100dvh * 640/430); height: auto;"></canvas>
+<p style="color:#888; font-family:monospace; font-size:12px; margin: 0 auto; width:100%; position: absolute; text-align: center; top: 5px; mix-blend-mode: difference;">← → / A/D / hold bottom-left or bottom-right to walk<br />SPACE / ↑ / W / tap top half / swipe up to jump</p>
+<script>
+const WIDTH = 640, HEIGHT = 430, FLOORS = 8, FLOOR_H = 44, TOP = 40, HOLE_W = 60, PLAYER_H = 16;
+const floorY = i => TOP + i * FLOOR_H, ctx = c.getContext(`2d`), k = {};
+onkeydown = e => k[e.code] = 1; onkeyup = e => k[e.code] = 0; 
+const zones = {}, starts = {}; // pointer/touch zones (whole page): tap above player or top half = jump; bottom-left/right = walk; swipe-up anywhere = jump
+const zone = e => {
+  const r = c.getBoundingClientRect();
+  const playerTopVp = r.top + (player[1] - 2) * (r.height / HEIGHT);
+  return e.clientY < Math.max(innerHeight * .5, playerTopVp) ? 'Space' : e.clientX < innerWidth * .5 ? 'ArrowLeft' : 'ArrowRight';
+};
+addEventListener('pointerdown', e => { starts[e.pointerId] = [e.clientX, e.clientY, performance.now()]; k[zones[e.pointerId] = zone(e)] = 1; });
+addEventListener('pointermove', e => { const s = starts[e.pointerId]; if (!s || zones[e.pointerId] === 'Space') return; if (s[1] - e.clientY > 40 && performance.now() - s[2] < 400) { k[zones[e.pointerId]] = 0; k[zones[e.pointerId] = 'Space'] = 1; } }); // swipe-up upgrades any active touch to jump
+addEventListener('pointerup', e => { k[zones[e.pointerId]] = 0; delete zones[e.pointerId]; delete starts[e.pointerId]; });
+addEventListener('pointercancel', e => { k[zones[e.pointerId]] = 0; delete zones[e.pointerId]; delete starts[e.pointerId]; });
+['touchstart', 'touchend'].forEach(ev => addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom
+let player, hazards, holes, level, lives, score, phase, tick, space; 
+
+const reset = () => { lives = 6; score = 0; start(1) }
+const start = L => {
+  level = L; tick = 0; phase = 0; space = 0; 
+  player = [WIDTH / 2, floorY(FLOORS) - PLAYER_H, FLOORS, 0, 0, 0];  // x, y, f, vy, stun, grace
+  const layout = L == 1 ? [[7,-1],[6,-1],[5,-1],[3,-1],[2,1]] : [[7,-1],[5,-1],[3,-1],[2,1]]; // [floor, dir] — dir: -1 = scrolls left & wraps up a floor, +1 = scrolls right & wraps down a floor
+  holes = layout.map(([f, d]) => [Math.random() * (WIDTH - HOLE_W), f, d]);
+  hazards = Array.from({ length: Math.min(L - 1, 20) }, _ => [ Math.random() * WIDTH, floorY(FLOORS) - 20]); // spawn hazards slightly above bottom floor
+}; 
+
+const hole = f => holes.find(h => h[1] == f && player[0] > h[0] && player[0] < h[0] + HOLE_W); 
+
+function update(){
+  tick++; 
+  if(player && player.cooldown) player.cooldown--; // tick down bad-jump lockout (set when bonking ceiling)
+  // phase: 1=win, 2=game over, 3=hit; wait for SPACE
+  if(phase){
+    if((k.Space || k.ArrowUp || k.KeyW) && tick > 30){
+      if(phase == 1) start(level + 1); 
+      else if(phase == 2) reset(); 
+      else player = [WIDTH / 2, floorY(FLOORS) - PLAYER_H, FLOORS, 0, 0, 0];
+      phase = 0; tick = 0; space = 1; // require release before next jump
+    }
+    return; 
+  }
+
+  // holes
+  for(const h of holes){
+    h[0] += h[2] * (1.0 + level * .16); // hole speed = direction * (base + level scale)
+    if(h[2] < 0 && h[0] + HOLE_W < 0){ h[0] = WIDTH; h[1] = (h[1] - 1 + FLOORS) % FLOORS } // wrap hole to previous floor (modulo wrap)
+    if(h[2] > 0 && h[0] > WIDTH){ h[0] = -HOLE_W; h[1] = (h[1] + 1) % FLOORS } // wrap hole to next floor
+  }
+
+  // hazards
+  for(let i = hazards.length; i--; ){
+    const h = hazards[i];  h[1] -= (.3 + level * .06); 
+    if(h[1] < 10){ hazards.splice(i, 1, [Math.random() * WIDTH, floorY(FLOORS) - 20]); continue } // respawn hazard at top
+    if (!player[4] && Math.abs(h[0] - player[0]) < 10 && Math.abs(h[1] - (player[1] + 8)) < 12) player[4] = 45; // 10px horz, 12px vert hitbox (player center offset by +8)
+  }
+
+  // stun
+  if(player[4]) { if(--player[4] == 0) player[1] = floorY(player[2]) - PLAYER_H;  return }
+
+  // walk
+  player[0] += ((k.ArrowRight  || k.KeyD) ? 1.8 : 0) -((k.ArrowLeft  || k.KeyA) ? 1.8 : 0); 
+  player[0] = (player[0] + WIDTH) % WIDTH; 
+
+  // jump trigger
+  if((k.Space || k.ArrowUp || k.KeyW) && !space && !player[3] && !player.cooldown && player[2] > 0){
+    player[3] = -1.8; 
+    player.gap = !!hole(player[2] - 1); // jumping into a hole above?
+    if(!player.gap) player.cooldown = 60; // bonk lockout — just covers the bonk→pause→fall cycle
+  }
+  space = k.Space || k.ArrowUp || k.KeyW; 
+
+  // vertical
+  if(player[3] < 0){
+    player[1] += player[3];
+    let ceil = floorY(player[2] - 1) - PLAYER_H; 
+    if(player.gap){
+      if(player[1] <= ceil){
+        player[1] = ceil; player[2]--; player[3] = 0; player[5] = 30; score += 10 * level; 
+        if(!player[2]) { phase = 1; tick = 0; score += 100; lives++ }
+      }
+    } else if(player[1] <= ceil + 8){ // small buffer so ceiling doesn't auto-step player up
+      player[1] = ceil + 8; player[3] = 0; player.pause = 20; 
+    }
+    return; 
+  }
+  // pause after ceiling bump, then force downward velocity
+  if(player.pause){ if(--player.pause == 0) player[3] = 3.0;  return }
+
+  if(player[3] > 0){
+    player[1] += player[3]; 
+    let y = floorY(player[2]) - PLAYER_H; 
+    if(player[1] >= y) { player[1] = y; player[3] = 0 }
+    return; 
+  }
+
+  // fall through
+  if(player[5]) player[5]--; // grace frames: delay fall-through after landing
+  else if(player[2] < FLOORS && hole(player[2])){
+    player[2]++; 
+    if(player[2] >= FLOORS){ lives--;  phase = lives ? 3 : 2;  tick = 0;  return }
+    player[1] = floorY(player[2]) - PLAYER_H;  player[4] = 20; 
+  }
+}
+
+function render(){
+  ctx.fillStyle = '#c0c0c0';  ctx.fillRect(0, 0, WIDTH, HEIGHT); 
+
+  // floors
+  ctx.fillStyle = '#d92020'; 
+  for(let i = 0; i < FLOORS; i++){
+    let y = floorY(i)-2, cuts = holes.filter(h => h[1] == i).sort((a, b) => a[0] - b[0]); 
+    let x = 0; 
+    for(const h of cuts){
+      if(h[0] > x) ctx.fillRect(x, y, h[0] - x, 4); 
+      x = Math.max(x, h[0] + HOLE_W); 
+    }
+    if(x < WIDTH) ctx.fillRect(x, y, WIDTH - x, 4); 
+  }
+
+  // hazards
+  for(const h of hazards){
+    ctx.beginPath(); 
+    ctx.moveTo(h[0], h[1] - 7); 
+    ctx.lineTo(h[0] - 6, h[1] + 5); 
+    ctx.lineTo(h[0] + 6, h[1] + 5); 
+    ctx.fill(); 
+  }
+
+  // player
+  ctx.fillStyle = '#000'; 
+  let [x, y, , vy, stun] = player; 
+  if(stun){
+    ctx.fillRect(x - 6, y + 10, 12, 4); 
+    ctx.fillText('*', x - 10 + (tick & 3), y); 
+    ctx.fillText('*', x + 6 - (tick & 3), y + 4); 
+  } else {
+    let w = (k.ArrowLeft || k.KeyA || k.ArrowRight || k.KeyD || vy) ? (tick >> 2 & 1) : 0; // walking animation frame (toggle legs using bitshift)
+    let up = vy < 0; 
+    ctx.fillRect(x - 3, y, 6, 5); 
+    ctx.fillRect(x - 1, y + 5, 3, 7); 
+    ctx.fillRect(up ? x - 7 : x - 6, y + (up ? 3 : 7), 4, 2); 
+    ctx.fillRect(up ? x + 3 : x + 2, y + (up ? 3 : 7), 4, 2); 
+    ctx.fillRect(w ? x - 4 : x - 2, y + 12, w ? 3 : 2, 4); 
+    ctx.fillRect(w ? x + 1 : x, y + 12, w ? 3 : 2, 4); 
+  }
+
+  // HUD
+  ctx.fillText(`LIVES: ${lives}`, 10, 410); 
+  ctx.fillText(`LEVEL: ${level}`, 280, 410); 
+  ctx.fillText(`SCORE: ${score}`, 500, 410); 
+
+  // overlay
+  if(phase){
+    ctx.fillStyle = 'rgba(0, 0, 0, .7)';
+    ctx.fillRect(80, 200, WIDTH - 160, 80);
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.fillText(phase == 1 ? 'YOU MADE IT' : phase == 2 ? 'GAME OVER' : 'OUCH', WIDTH / 2, 240 );
+    ctx.fillText('SPACE / TAP TOP / SWIPE UP', WIDTH / 2, 265);
+    ctx.textAlign = 'start';
+  }
+}
+
+reset(); 
+let acc = 0, last = performance.now();
+(function loop(t){
+  requestAnimationFrame(loop);
+  acc = Math.min(acc + t - last, 100); // cap catch-up to 100ms (prevents freeze after tab inactive)
+  last = t;
+  while (acc >= 16.67) { update(); acc -= 16.67; } // run update at 60Hz regardless of render rate
+  render();
+})(performance.now());
+</script>
+</body>
+</html>

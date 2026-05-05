@@ -1,0 +1,970 @@
+<!-- https://codepen.io/the-red-reddington/full/emZJxZp -->
+<!-- https://discourse.threejs.org/t/parametric-boat-with-dynamic-water-masking/88150 -->
+<!-- Inspired by Pavel Boytchev's
+"Making a sink" https://codepen.io/boytchev/pen/abgBojv
+"Thick custom lathe geometry" https://codepen.io/boytchev/pen/dPbrRzG
+Thank you!
+-->
+<!-- https://discourse.threejs.org/t/screen-space-water-ripples-with-world-space-player-movement-in-three-js/87814 --> 
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Parametric Boat with Dynamic Water Masking and Water Ripples</title>
+<style>
+  body { 
+    margin: 0; 
+    overflow: hidden; 
+    background: #87CEEB;
+  }
+  #info { 
+    position: absolute; 
+    left: 12px; 
+    top: 12px; 
+    color: #222; 
+    font-family: monospace;
+    background: rgba(255,255,255,0.6); 
+    padding: 8px 10px; 
+    border-radius: 8px; 
+    z-index: 10; 
+  }
+  #maskCanvas { 
+    display: none; 
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.181.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="info">
+  <strong>Move:</strong> WASD / ↑↓←→<br>
+  <strong>Rotate:</strong> Mouse drag<br>
+  <strong>Zoom:</strong> Scroll<br>
+  <strong>Pause:</strong> Double-click
+</div>
+<canvas id="maskCanvas" width="4096" height="4096"></canvas>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// ========================================
+// CONFIGURATION
+// ========================================
+const CONFIG = {
+  // Ripple Settings
+  ripples: {
+    strength: 5.0,           // How much ripples affect water surface (0-10)
+    fadeSpeed: 6.0,          // How fast ripples fade (higher = faster)
+    expansionSpeed: 1.0,     // How fast ripples expand
+    spawnDistance: 0.8,      // Distance boat travels before spawning new ripple
+    maxRipples: 200,         // Maximum number of simultaneous ripples
+    initialOpacity: 0.6,     // Starting opacity of ripples (0-1)
+  },
+  
+  // Water Settings
+  water: {
+    color: 0x5a75a0,         // Water color
+    metalness: 0,            // Water metalness (0-1)
+    roughness: 0.27,         // Water roughness (0-1)
+    opacity: 0.85,           // Water transparency (0-1)
+    normalIntensity: 1.0,    // Strength of base water normals (0-2)
+    waveSpeed: 0.03,         // Speed of base water animation
+    size: 1000,              // Size of water plane
+  },
+  
+  // Boat Settings
+  boat: {
+    speed: 2.5,              // Movement speed
+    rotationSpeed: 1.5,      // Turning speed
+    pitchAmount: 0.08,       // How much boat pitches forward/back
+    rollAmount: 0.06,        // How much boat rolls left/right
+    bobbingHeight: 0.03,     // Height of bobbing animation
+    bobbingSpeed: 2.0,       // Speed of bobbing animation
+    dynamicDepth: 0.02,      // How much boat dips when moving
+  },
+  
+  // Camera Settings
+  camera: {
+    followSpeed: 0.05,       // How smoothly camera follows boat (0-1)
+    distance: 5,             // Initial distance from boat
+    height: 2.5,             // Initial height above boat
+  }
+};
+
+// ---------- Renderer & Scene ----------
+const renderer = new THREE.WebGLRenderer({
+  antialias: true,
+  precision: "highp",
+  powerPreference: "high-performance",
+});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.sortObjects = true;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.autoUpdate = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+
+// Y-up coordinate system (standard Three.js)
+const camera = new THREE.PerspectiveCamera(30, window.innerWidth/window.innerHeight);
+camera.position.set(0, CONFIG.camera.height, CONFIG.camera.distance);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = false;
+controls.minDistance = 0.3;  
+controls.maxDistance = 100;
+controls.target.set(0, 0.2, 0);
+controls.maxPolarAngle = Math.PI / 2;
+
+// ---------- Lights ----------
+scene.add(new THREE.HemisphereLight(0xffffff, 0xaaaaaa, 1.2));
+
+const sun = new THREE.DirectionalLight(0xffffff, 2);
+sun.position.set(50, 50, 30);
+sun.castShadow = true;
+  
+// Optimized shadow configuration
+sun.shadow.mapSize.width = 4096; // changed from 2048
+sun.shadow.mapSize.height = 4096; // changed from 2048
+sun.shadow.camera.near = 1; // changed from 0.5
+sun.shadow.camera.far = 200;
+sun.shadow.bias = -0.0001;        // Negative bias helps with self-shadowing
+sun.shadow.normalBias = 0.03;     // Normal bias prevents shadow acne
+  
+// ---------- Shadow Configuration ----------
+const SHADOW_CONFIG = {
+    FRUSTUM_SIZE_DEFAULT: 8,      // Smaller for boat scene -- changed from 15
+    FRUSTUM_SIZE_ORBIT: 12,        // Larger when orbiting -- changed from 20
+    FORWARD_OFFSET: 10,            // Lead distance when moving forward
+    SHADOW_UPDATE_INTERVAL: 0.1,   // Update every 0.1s instead of every frame
+    MOVEMENT_THRESHOLD_SQ: 1,      // Boat must move 1 unit before recentering
+};  
+// Shadow system state
+const shadowCenter = new THREE.Vector3();
+const _lastBoatPosition = new THREE.Vector3();
+const _targetPosition = new THREE.Vector3();
+const boatForwardDir = new THREE.Vector3();
+let shadowUpdateTimer = 0;
+
+// Start with default frustum
+sun.shadow.camera.left = -SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+sun.shadow.camera.right = SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+sun.shadow.camera.top = SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+sun.shadow.camera.bottom = -SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+sun.shadow.camera.zoom = 1; // 0.5 preserves shadow sharpness while expanding area -- changed from 0.5
+
+//const shadowHelper = new THREE.CameraHelper(sun.shadow.camera);
+//scene.add(shadowHelper);
+  
+scene.add(sun);
+
+// Add shadow camera target
+sun.target = new THREE.Object3D();
+scene.add(sun.target);
+
+// ---------- Shadow Frustum Update ----------
+function updateShadowFrustum() {
+    const isOrbitMode = controls.enabled;
+    const frustumSize = isOrbitMode 
+        ? SHADOW_CONFIG.FRUSTUM_SIZE_ORBIT 
+        : SHADOW_CONFIG.FRUSTUM_SIZE_DEFAULT;
+    
+    if (frustumSize !== sun.shadow.camera.left) {
+        sun.shadow.camera.left = -frustumSize;
+        sun.shadow.camera.right = frustumSize;
+        sun.shadow.camera.top = frustumSize;
+        sun.shadow.camera.bottom = -frustumSize;
+        sun.shadow.camera.zoom = 1; // changed from 0.5
+        sun.shadow.camera.updateProjectionMatrix();
+    }
+}
+
+// ---------- Sun Shadow Update ----------
+function updateSunShadow(deltaT) {
+    const boatPosition = boat.position;
+    
+    // Initialize on first run
+    if (_lastBoatPosition.lengthSq() === 0) {
+        _lastBoatPosition.copy(boatPosition);
+        shadowCenter.copy(boatPosition);
+    }
+    
+    // Check if boat moved enough to warrant shadow update
+    if (_lastBoatPosition.distanceToSquared(boatPosition) >= SHADOW_CONFIG.MOVEMENT_THRESHOLD_SQ) {
+        // Get boat's forward direction for shadow offset
+        const isMovingForward = boat.userData.forwardInput > 0;
+        
+        if (isMovingForward) {
+            // Get boat's forward direction
+            boat.getWorldDirection(boatForwardDir);
+            boatForwardDir.y = 0;
+            boatForwardDir.normalize();
+            
+            // Offset shadow center forward
+            _targetPosition.copy(boatForwardDir)
+                .multiplyScalar(SHADOW_CONFIG.FORWARD_OFFSET)
+                .add(boatPosition);
+        } else {
+            // Center shadow on boat when not moving forward
+            _targetPosition.copy(boatPosition);
+        }
+        
+        // Smooth lerp to reduce jumps
+        shadowCenter.lerp(_targetPosition, 0.05);
+        _lastBoatPosition.copy(boatPosition);
+    }
+    
+    // Throttle expensive shadow map updates
+    shadowUpdateTimer += deltaT;
+    if (shadowUpdateTimer >= SHADOW_CONFIG.SHADOW_UPDATE_INTERVAL) {
+        // Shadow camera follows center
+        sun.shadow.camera.position.set(
+            shadowCenter.x,
+            sun.position.y,
+            shadowCenter.z
+        );
+        
+        // Light target always looks at shadow center
+        sun.target.position.copy(shadowCenter);
+        sun.target.updateMatrixWorld();
+        sun.shadow.camera.updateMatrixWorld();
+        
+        shadowUpdateTimer = 0;
+    }
+}
+
+// ---------- Ripple Scene Setup (Y-up, top-down view) ----------
+const normalScene = new THREE.Scene();
+const gray50 = new THREE.Color(0.5, 0.5, 0.5);
+normalScene.background = gray50;
+
+const squareGeometry = new THREE.PlaneGeometry(10, 10);
+squareGeometry.rotateX(-Math.PI/2); // Rotate to XZ plane for Y-up
+
+const minusMaterial = new THREE.MeshBasicMaterial({
+  color: gray50,
+  blending: THREE.CustomBlending,
+  blendEquation: THREE.ReverseSubtractEquation,
+  blendSrc: THREE.SrcAlphaFactor,
+  blendDst: THREE.OneFactor,
+  blendEquationAlpha: THREE.AddEquation,
+  depthTest: false,
+  depthWrite: false,
+  transparent: true,
+  side: THREE.DoubleSide,
+});
+
+const textureLoader = new THREE.TextureLoader();
+const rippleTexture = textureLoader.load(
+  "https://raw.githubusercontent.com/mqnc/cheapwater/master/ripple.png"
+);
+const plusMaterial = new THREE.MeshBasicMaterial({
+  map: rippleTexture,
+  blending: THREE.CustomBlending,
+  blendEquation: THREE.AddEquation,
+  blendSrc: THREE.SrcAlphaFactor,
+  blendDst: THREE.OneFactor,
+  depthTest: false,
+  depthWrite: false,
+  transparent: true,
+  side: THREE.DoubleSide,
+});
+
+// ---------- Ripple Object Pool ----------
+const MAX_RIPPLES = CONFIG.ripples.maxRipples;
+const ripplePool = [];
+let activeRipples = [];
+let freeRippleIndices = [];
+
+for (let i = 0; i < MAX_RIPPLES; i++) {
+  const minus = new THREE.Mesh(squareGeometry, minusMaterial.clone());
+  const plus = new THREE.Mesh(squareGeometry, plusMaterial.clone());
+  minus.renderOrder = plus.renderOrder = i * 2;
+  minus.scale.set(0.1, 1, 0.1);
+  plus.scale.set(0.1, 1, 0.1);
+  minus.visible = plus.visible = false;
+  minus.frustumCulled = false;
+  plus.frustumCulled = false;
+  normalScene.add(minus);
+  normalScene.add(plus);
+  ripplePool.push({ minus, plus, active: false, index: i });
+  freeRippleIndices.push(i);
+}
+
+function makeRipple(x, z, strength) {
+  if (freeRippleIndices.length === 0) return;
+  const idx = freeRippleIndices.pop();
+  const slot = ripplePool[idx];
+  slot.active = true;
+  slot.minus.position.set(x, 0, z);
+  slot.plus.position.set(x, 0, z);
+  slot.minus.material.opacity = strength;
+  slot.plus.material.opacity = strength;
+  slot.minus.scale.set(0.1, 1, 0.1);
+  slot.plus.scale.set(0.1, 1, 0.1);
+  slot.minus.visible = true;
+  slot.plus.visible = true;
+  activeRipples.push(idx);
+}
+
+function updateRipples(dt) {
+  let count = activeRipples.length;
+  for (let i = 0; i < count; ) {
+    const idx = activeRipples[i];
+    const r = ripplePool[idx];
+    r.minus.scale.x += dt * CONFIG.ripples.expansionSpeed;
+    r.minus.scale.z += dt * CONFIG.ripples.expansionSpeed;
+    r.plus.scale.x += dt * CONFIG.ripples.expansionSpeed;
+    r.plus.scale.z += dt * CONFIG.ripples.expansionSpeed;
+    r.minus.material.opacity -= dt / CONFIG.ripples.fadeSpeed;
+    r.plus.material.opacity -= dt / CONFIG.ripples.fadeSpeed;
+    if (r.minus.material.opacity <= 0) {
+      r.active = false;
+      r.minus.visible = false;
+      r.plus.visible = false;
+      freeRippleIndices.push(idx);
+      activeRipples[i] = activeRipples[--count];
+    } else {
+      i++;
+    }
+  }
+  activeRipples.length = count;
+}
+
+// ---------- Normal Render Target ----------
+const normalTarget = new THREE.WebGLRenderTarget(
+  window.innerWidth,
+  window.innerHeight,
+  {
+    type: THREE.UnsignedByteType,
+    format: THREE.RGBAFormat,
+  }
+);
+normalTarget.texture.colorSpace = THREE.NoColorSpace;
+normalTarget.texture.minFilter = THREE.LinearFilter;
+normalTarget.texture.magFilter = THREE.LinearFilter;
+const normalTextureUniform = { value: normalTarget.texture };
+  
+// Initialize the normal texture with the base gray color
+renderer.setRenderTarget(normalTarget);
+renderer.render(normalScene, camera);
+renderer.setRenderTarget(null);
+
+// ---------- Alpha Mask Setup ----------
+const WATER_SIZE = CONFIG.water.size;
+const maskCanvas = document.getElementById('maskCanvas');
+const maskCtx = maskCanvas.getContext('2d');
+
+maskCtx.fillStyle = 'white';
+maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+const maskTexture = new THREE.CanvasTexture(maskCanvas);
+maskTexture.minFilter = THREE.LinearFilter;
+maskTexture.magFilter = THREE.LinearFilter;
+
+// ---------- Water Plane (Y-up: XZ plane) ----------
+const waterGeometry = new THREE.PlaneGeometry(WATER_SIZE, WATER_SIZE);
+waterGeometry.rotateX(-Math.PI/2); // Rotate to XZ plane
+
+const waterMaterial = new THREE.MeshStandardMaterial({
+  color: CONFIG.water.color,
+  metalness: CONFIG.water.metalness,
+  roughness: CONFIG.water.roughness,
+  normalMap: textureLoader.load(
+    "https://raw.githubusercontent.com/mqnc/cheapwater/master/water_normal.png",
+    (t) => (t.flipY = false)
+  ),
+  normalMapType: THREE.ObjectSpaceNormalMap,
+  side: THREE.DoubleSide,
+  transparent: true,
+  opacity: CONFIG.water.opacity,
+  alphaMap: maskTexture,
+  alphaTest: 0.5,
+  envMapIntensity: 0.2
+});
+
+waterMaterial.normalMap.wrapS = THREE.RepeatWrapping;
+waterMaterial.normalMap.wrapT = THREE.RepeatWrapping;
+const repeatVal = WATER_SIZE / 10;
+waterMaterial.normalMap.repeat.set(repeatVal, repeatVal);
+
+const timeUniform = { value: 0 };
+const resolutionUniform = {
+  value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+};
+
+waterMaterial.onBeforeCompile = (shader) => {
+  const angles = [0.1, 0.1 + 2.0943951, 0.1 + 4.1887902];
+  const rotMats = new Float32Array(3 * 4);
+  for (let i = 0; i < 3; i++) {
+    const a = angles[i];
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    rotMats[i * 4 + 0] = c;
+    rotMats[i * 4 + 1] = -s;
+    rotMats[i * 4 + 2] = s;
+    rotMats[i * 4 + 3] = c;
+  }
+
+  shader.uniforms.time = timeUniform;
+  shader.uniforms.resolution = resolutionUniform;
+  shader.uniforms.normalDisturbance = normalTextureUniform;
+  shader.uniforms.rotMats = { value: rotMats };
+  shader.uniforms.angleOffsets = { value: new Float32Array(angles) };
+  shader.uniforms.rippleStrength = { value: CONFIG.ripples.strength };
+  shader.uniforms.normalIntensity = { value: CONFIG.water.normalIntensity };
+
+        // GLSL injection
+        const chunk = `
+    // Combine 3 pre-rotated normal maps (identical math, faster)
+    for (int i = 0; i < 3; i++) {
+      mat2 r = mat2(
+        rotMats[i].x, rotMats[i].y,
+        rotMats[i].z, rotMats[i].w
+      );
+      vec2 uv = r * vNormalMapUv + vec2(time * ${CONFIG.water.waveSpeed.toFixed(3)}, angleOffsets[i]);
+      vec3 subNormal = texture2D(normalMap, uv).rgb * 2.0 - 1.0;
+      subNormal.xy = r * subNormal.xy;
+      normal += subNormal * normalIntensity;
+    }
+  `;
+
+        shader.fragmentShader =
+          "uniform float time;\n" +
+          "uniform vec2 resolution;\n" +
+          "uniform sampler2D normalDisturbance;\n" +
+          "uniform vec4 rotMats[3];\n" +
+          "uniform float angleOffsets[3];\n" +
+          "uniform float rippleStrength;\n" +
+    "uniform float normalIntensity;\n" +
+          shader.fragmentShader.replace(
+            "\t#include <normal_fragment_maps>",
+            chunk +
+              `
+      vec3 ripple = texture2D(normalDisturbance, gl_FragCoord.xy / resolution).rgb * 2.0 - 1.0;
+      normal += rippleStrength * ripple;
+      #ifdef FLIP_SIDED
+        normal = -normal;
+      #endif
+      #ifdef DOUBLE_SIDED
+        normal = normal * faceDirection;
+      #endif
+      normal = normalize(normalMatrix * normal);
+      `
+          );
+      };
+
+const water = new THREE.Mesh(waterGeometry, waterMaterial);
+water.position.y = 0;
+water.receiveShadow = true;
+// Force an additional render to ensure water shader compiles with proper uniforms
+scene.add(water);
+renderer.render(scene, camera);
+
+// ---------- Boat Construction ----------
+const BOAT_CONFIG = {
+  length: 2.4,
+  width: 1.0,
+  depth: 0.15,
+  bowSharpness: 2.8,
+  bowTaper: 0.98,
+  bowStart: 0.2,
+  sternSharpness: 4.0,
+  sternTaper: 0.45,
+  hullCurve: 8,
+  segmentsX: 100,
+  segmentsY: 50,
+  hullThickness: 0.025
+};
+
+// Create boat hull geometry
+function createBoatHullGeometry(config) {
+  const {
+    length, width, depth, bowSharpness, bowTaper, bowStart,
+    sternSharpness, sternTaper, hullCurve, segmentsX, segmentsY, hullThickness
+  } = config;
+  
+  // First create the outer surface
+  const outerGeometry = new THREE.PlaneGeometry(length, width, segmentsX, segmentsY);
+  const outerPos = outerGeometry.getAttribute('position');
+  
+  // Store outer vertices with normals
+  const outerVertices = [];
+  const outerNormals = [];
+  
+  for(let i=0; i<outerPos.count; i++){
+    let x = outerPos.getX(i);
+    let y = outerPos.getY(i);
+    const normX = x / (length/2);
+    const longTaper = Math.cos(normX * Math.PI/2);
+    let z = -depth * Math.exp(-hullCurve*y*y) * longTaper;
+
+    const dX = 15*Math.min(Math.abs(x-length/2), Math.abs(x+length/2));
+    const clampedDX = Math.min(dX, Math.PI);
+    const dY = 15*Math.min(Math.abs(y-width/2), Math.abs(y+width/2));
+    const clampedDY = Math.min(dY, Math.PI);
+    z += 0.06*Math.max((Math.cos(clampedDX)+1),(Math.cos(clampedDY)+1));
+
+    if(normX > bowStart){
+      const adjustedNormX = (normX - bowStart)/(1-bowStart);
+      const bowTaperVal = 1 - Math.pow(adjustedNormX, bowSharpness)*bowTaper;
+      y = y * bowTaperVal;
+    }
+
+    if(normX < 0){
+      const sternFactor = Math.abs(normX);
+      const sternTaperVal = 1 - Math.pow(sternFactor, sternSharpness)*sternTaper;
+      y = y * sternTaperVal;
+    }
+
+    outerPos.setX(i,x);
+    outerPos.setY(i,y);
+    outerPos.setZ(i,z);
+    outerVertices.push(new THREE.Vector3(x, y, z));
+  }
+  
+  outerGeometry.computeVertexNormals();
+  const normalAttr = outerGeometry.getAttribute('normal');
+  
+  for(let i=0; i<normalAttr.count; i++){
+    outerNormals.push(new THREE.Vector3(
+      normalAttr.getX(i),
+      normalAttr.getY(i),
+      normalAttr.getZ(i)
+    ));
+  }
+  
+  // Create inner surface by offsetting along normals
+  const innerVertices = [];
+  for(let i=0; i<outerVertices.length; i++){
+    const offsetVertex = outerVertices[i].clone().addScaledVector(outerNormals[i], hullThickness);
+    innerVertices.push(offsetVertex);
+  }
+  
+  // Build the complete geometry with outer, inner, and edge faces
+  const vertices = [];
+  const indices = [];
+  
+  // Add outer surface
+  for(let i=0; i<outerVertices.length; i++){
+    vertices.push(outerVertices[i].x, outerVertices[i].y, outerVertices[i].z);
+  }
+  
+  // Add inner surface
+  for(let i=0; i<innerVertices.length; i++){
+    vertices.push(innerVertices[i].x, innerVertices[i].y, innerVertices[i].z);
+  }
+  
+  const cols = segmentsX + 1;
+  const rows = segmentsY + 1;
+  
+  // Outer surface indices
+  for(let row=0; row<segmentsY; row++){
+    for(let col=0; col<segmentsX; col++){
+      const a = row * cols + col;
+      const b = row * cols + col + 1;
+      const c = (row + 1) * cols + col + 1;
+      const d = (row + 1) * cols + col;
+      indices.push(a, b, c);
+      indices.push(a, c, d);
+    }
+  }
+  
+  const innerOffset = outerVertices.length;
+  
+  // Inner surface indices (reversed winding)
+  for(let row=0; row<segmentsY; row++){
+    for(let col=0; col<segmentsX; col++){
+      const a = innerOffset + row * cols + col;
+      const b = innerOffset + row * cols + col + 1;
+      const c = innerOffset + (row + 1) * cols + col + 1;
+      const d = innerOffset + (row + 1) * cols + col;
+      indices.push(a, c, b);
+      indices.push(a, d, c);
+    }
+  }
+  
+  // Edge strips connecting outer and inner surfaces
+  // Top edge
+  for(let col=0; col<segmentsX; col++){
+    const a = col;
+    const b = col + 1;
+    const c = innerOffset + col + 1;
+    const d = innerOffset + col;
+    indices.push(a, b, c);
+    indices.push(a, c, d);
+  }
+  
+  // Bottom edge
+  for(let col=0; col<segmentsX; col++){
+    const a = segmentsY * cols + col;
+    const b = segmentsY * cols + col + 1;
+    const c = innerOffset + segmentsY * cols + col + 1;
+    const d = innerOffset + segmentsY * cols + col;
+    indices.push(a, c, b);
+    indices.push(a, d, c);
+  }
+  
+  // Left edge
+  for(let row=0; row<segmentsY; row++){
+    const a = row * cols;
+    const b = (row + 1) * cols;
+    const c = innerOffset + (row + 1) * cols;
+    const d = innerOffset + row * cols;
+    indices.push(a, c, b);
+    indices.push(a, d, c);
+  }
+  
+  // Right edge
+  for(let row=0; row<segmentsY; row++){
+    const a = row * cols + segmentsX;
+    const b = (row + 1) * cols + segmentsX;
+    const c = innerOffset + (row + 1) * cols + segmentsX;
+    const d = innerOffset + row * cols + segmentsX;
+    indices.push(a, b, c);
+    indices.push(a, c, d);
+  }
+  
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  
+  return geometry;
+}
+
+function createTrapezoidBench(frontWidth, backWidth, depth, thickness) {
+  const geometry = new THREE.BufferGeometry();
+  
+  const halfFront = frontWidth / 2;
+  const halfBack = backWidth / 2;
+  const halfDepth = depth / 2;
+  const halfThick = thickness / 2;
+  
+  // 8 vertices for trapezoid box
+  const vertices = new Float32Array([
+        // Top face
+        -halfDepth, -halfFront, halfThick,   // front edge
+        -halfDepth, halfFront, halfThick,
+        halfDepth, -halfBack, halfThick,     // back edge
+        halfDepth, halfBack, halfThick,
+        // Bottom face
+        -halfDepth, -halfFront, -halfThick,
+        -halfDepth, halfFront, -halfThick,
+        halfDepth, -halfBack, -halfThick,
+        halfDepth, halfBack, -halfThick,
+  ]);
+  
+  const indices = [
+        0,2,1, 1,2,3, // top
+        4,5,6, 5,7,6, // bottom
+        0,1,5, 0,5,4, // front end
+        2,6,7, 2,7,3, // back end
+        0,4,6, 0,6,2, // left edge
+        1,3,7, 1,7,5  // right edge
+  ];
+  
+  geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  
+  return geometry;
+}
+
+function createBoat(config) {
+  const boatGeometry = createBoatHullGeometry(config);
+  
+  const boatMaterial = new THREE.MeshStandardMaterial({
+    color: 'saddlebrown',
+    roughness: 0.7,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+    envMapIntensity: 0.2
+  });
+  
+  const boat = new THREE.Mesh(boatGeometry, boatMaterial);
+  boat.rotation.x = -Math.PI/2; // Y-up system: rotate to XZ plane
+  boat.position.y = 0.05;
+  boat.receiveShadow = true;
+  boat.castShadow = true;
+  
+  const benchMaterial = new THREE.MeshStandardMaterial({
+    color: 'saddlebrown',
+    roughness: 0.7,
+    metalness: 0.0,
+    envMapIntensity: 0.2
+  });
+  
+  const benchThickness = 0.03;
+  const benchDepth = 0.22;
+  
+  const frontBenchWidth = config.width * 0.79;
+  const frontBench = new THREE.Mesh(
+    createTrapezoidBench(frontBenchWidth, frontBenchWidth * 1.0, benchDepth, benchThickness),
+    benchMaterial
+  );
+  frontBench.position.set(0.2, 0, 0.04);
+  frontBench.castShadow = true;
+  boat.add(frontBench);
+  
+  const backBenchWidth = config.width * 0.7;
+  const backBench = new THREE.Mesh(
+    createTrapezoidBench(backBenchWidth, backBenchWidth * 1.1, benchDepth, benchThickness),
+    benchMaterial
+  );
+  backBench.position.set(-0.65, 0, 0.04);
+  backBench.castShadow = true;
+  boat.add(backBench);
+  
+  // Add axes helper to visualize boat's local axes
+  //const axesHelper = new THREE.AxesHelper(2);
+  //boat.add(axesHelper);
+  
+  return boat;
+}
+
+// Create the boat
+const boat = createBoat(BOAT_CONFIG);
+scene.add(boat);
+
+// ---------- 2D Convex Hull for Mask ----------
+function convexHull2D(points) {
+  points.sort((a,b) => a[0] !== b[0] ? a[0]-b[0] : a[1]-b[1]);
+  const cross = (o,a,b) => (a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const lower=[], upper=[];
+  for(const p of points){
+    while(lower.length>=2 && cross(lower[lower.length-2], lower[lower.length-1], p)<=0) lower.pop();
+    lower.push(p);
+  }
+  for(let i=points.length-1;i>=0;i--){
+    const p = points[i];
+    while(upper.length>=2 && cross(upper[upper.length-2], upper[upper.length-1], p)<=0) upper.pop();
+    upper.push(p);
+  }
+  upper.pop(); lower.pop();
+  return lower.concat(upper);
+}
+
+// ---------- Update Mask (with optimized allocations) ----------
+// Reusable vector for mask calculations
+const _maskVector = new THREE.Vector3();
+
+function updateMask() {
+  maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
+  maskCtx.fillStyle='white';
+  maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height);
+  maskCtx.fillStyle='black';
+  maskCtx.beginPath();
+  maskCtx.imageSmoothingEnabled=false;
+
+  const positions = boat.geometry.getAttribute('position');
+  const points=[];
+  
+  for(let i=0;i<positions.count;i++){
+    _maskVector.set(
+      positions.getX(i),
+      positions.getY(i),
+      positions.getZ(i)
+    );
+    boat.localToWorld(_maskVector);
+    if(_maskVector.y <= water.position.y - 0.0099){
+      const u = ((_maskVector.x / WATER_SIZE) + 0.5) * maskCanvas.width;
+      const vZ = (0.5 + (_maskVector.z / WATER_SIZE)) * maskCanvas.height;
+      points.push([u, vZ]);
+    }
+  }
+
+  if(points.length>0){
+    const hull = convexHull2D(points);
+    maskCtx.moveTo(hull[0][0], hull[0][1]);
+    for(let i=1;i<hull.length;i++) maskCtx.lineTo(hull[i][0], hull[i][1]);
+    maskCtx.closePath();
+    maskCtx.fill();
+  }
+
+  maskTexture.needsUpdate = true;
+}
+
+// ---------- WASD Movement ----------
+const keys = {};
+window.addEventListener("keydown", (e) => (keys[e.code] = true));
+window.addEventListener("keyup", (e) => (keys[e.code] = false));
+
+const moveVec = new THREE.Vector3();
+const boatForward = new THREE.Vector3();
+
+function updateBoatMovement(dt) {
+  const speed = CONFIG.boat.speed;
+  const rotationSpeed = CONFIG.boat.rotationSpeed;
+  
+  let forwardInput = 0;
+  let turnInput = 0;
+  
+  // Rotate boat with A/D around Z axis (in local space)
+  if (keys["KeyA"] || keys["ArrowLeft"]) {
+    boat.userData.steeringZ = (boat.userData.steeringZ || 0) + rotationSpeed * dt;
+    turnInput = 1;
+  }
+  if (keys["KeyD"] || keys["ArrowRight"]) {
+    boat.userData.steeringZ = (boat.userData.steeringZ || 0) - rotationSpeed * dt;
+    turnInput = -1;
+  }
+  
+  // Move forward/backward with W/S along boat's LOCAL X axis
+  moveVec.set(0, 0, 0);
+  
+  if (keys["KeyW"] || keys["ArrowUp"]) {
+    boatForward.set(1, 0, 0);
+    boatForward.applyEuler(new THREE.Euler(boat.rotation.x, boat.rotation.y, (boat.userData.steeringZ || 0) + (boat.userData.bobbingZ || 0)));
+    boatForward.y = 0;
+    boatForward.normalize();
+    moveVec.add(boatForward);
+    forwardInput = 1;
+  }
+  if (keys["KeyS"] || keys["ArrowDown"]) {
+    boatForward.set(1, 0, 0);
+    boatForward.applyEuler(new THREE.Euler(boat.rotation.x, boat.rotation.y, (boat.userData.steeringZ || 0) + (boat.userData.bobbingZ || 0)));
+    boatForward.y = 0;
+    boatForward.normalize();
+    moveVec.sub(boatForward);
+    forwardInput = -1;
+  }
+
+  if (moveVec.lengthSq() > 0) {
+    moveVec.normalize().multiplyScalar(speed * dt);
+    boat.position.x += moveVec.x;
+    boat.position.z += moveVec.z;
+    
+    // Create ripples when moving (in XZ plane for Y-up)
+    const dx = boat.position.x - (boat.userData.lastRippleX || 0);
+    const dz = boat.position.z - (boat.userData.lastRippleZ || 0);
+    if (Math.hypot(dx, dz) > CONFIG.ripples.spawnDistance) {
+      makeRipple(boat.position.x, boat.position.z, CONFIG.ripples.initialOpacity);
+      boat.userData.lastRippleX = boat.position.x;
+      boat.userData.lastRippleZ = boat.position.z;
+    }
+  }
+  
+  // Store dynamics for animation
+  boat.userData.forwardInput = forwardInput;
+  boat.userData.turnInput = turnInput;
+}
+
+// ---------- Resize ----------
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio, 1.5);
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  normalTarget.setSize(window.innerWidth * dpr, window.innerHeight * dpr);
+  resolutionUniform.value.set(window.innerWidth * dpr, window.innerHeight * dpr);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  
+  renderer.setRenderTarget(normalTarget);
+  renderer.render(normalScene, camera);
+  renderer.setRenderTarget(null);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---------- Animation ----------
+const clock = new THREE.Clock();
+let running = true;
+let lastTime = 0;
+let hasRipples = false;
+
+window.addEventListener('dblclick', () => running = !running);
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  timeUniform.value = t;
+  let dt = t - lastTime;
+  lastTime = t;
+  
+  if(running) {
+    updateBoatMovement(dt);
+    
+    // Camera follows boat
+    controls.target.lerp(boat.position, CONFIG.camera.followSpeed);
+    
+    // Boat dynamics (from original codepen)
+    const forwardInput = boat.userData.forwardInput || 0;
+    const turnInput = boat.userData.turnInput || 0;
+    
+    const PITCH_AMOUNT = CONFIG.boat.pitchAmount;
+    const ROLL_AMOUNT = CONFIG.boat.rollAmount;
+    const DYNAMICS_SMOOTHING = 0.15;
+    
+    const targetPitch = -forwardInput * PITCH_AMOUNT;
+    const targetRoll = turnInput * ROLL_AMOUNT;
+  
+    // Framerate-independent decay when no input
+    if (turnInput === 0) {
+      boat.userData.currentRoll = (boat.userData.currentRoll || 0) * Math.pow(0.05, dt);
+    }
+    if (forwardInput === 0) {
+      boat.userData.currentPitch = (boat.userData.currentPitch || 0) * Math.pow(0.05, dt);
+    }
+    
+    // Smooth interpolation to target dynamics
+    boat.userData.currentPitch = boat.userData.currentPitch || 0;
+    boat.userData.currentRoll = boat.userData.currentRoll || 0;
+    
+    boat.userData.currentPitch += (targetPitch - boat.userData.currentPitch) * DYNAMICS_SMOOTHING;
+    boat.userData.currentRoll += (targetRoll - boat.userData.currentRoll) * DYNAMICS_SMOOTHING;
+    
+    // Apply dynamics to boat rotation
+  // Reusable vector for mask calculations
+    boat.rotation.x = -Math.PI/2 - boat.userData.currentRoll;
+    boat.rotation.y = boat.userData.currentPitch;
+    
+    // Bobbing animation + dynamic depth
+    const bobbingBase = 0.05 + CONFIG.boat.bobbingHeight * Math.sin(t * CONFIG.boat.bobbingSpeed);
+    const dynamicDepth = Math.abs(forwardInput) * CONFIG.boat.dynamicDepth;
+    boat.position.y = bobbingBase - dynamicDepth;
+    
+    // Apply steering rotation + bobbing roll
+    const bobbingRoll = 0.02*Math.sin(t*1.5);
+    boat.userData.bobbingZ = bobbingRoll;
+    boat.rotation.z = (boat.userData.steeringZ || 0) + bobbingRoll;
+
+    // Update shadow system
+    updateSunShadow(dt);
+    updateShadowFrustum();
+    
+    // Update mask and ripples
+    updateMask();
+    updateRipples(dt);
+    
+    // Render ripples to normal map
+    const hadRipples = hasRipples;
+    hasRipples = activeRipples.length > 0;
+    if (hasRipples || hadRipples) {
+      renderer.setRenderTarget(normalTarget);
+      renderer.render(normalScene, camera);
+      renderer.setRenderTarget(null);
+    }
+    
+    renderer.render(scene, camera);
+  }
+}
+
+animate();
+  
+['touchstart', 'touchend'].forEach(ev => renderer.domElement.addEventListener(ev, e => e.preventDefault(), { passive: false })); // kill iOS double-tap zoom on canvas
+</script>
+</body>
+</html>
