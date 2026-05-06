@@ -34,9 +34,10 @@ This repo is a **curated mirror** of my [CodePen](https://codepen.io/the-red-red
 - [`threejs-xzfog`](threejs-xzfog/) — Horizontal distance fog
 
 ### Games
+- [`gorillas`](gorillas/) — Canvas 2D Gorillas.BAS tribute
 - [`hiss-highness-snake`](hiss-highness-snake/) — Procedural snake game with realistic terrain-following slithering and a fully procedural animated head
 - [`jumping-jack`](jumping-jack/) — Canvas 2D retro platformer
-- [`nibbles`](nibbles/) — Canvas 2D Nibbles tribute
+- [`nibbles`](nibbles/) — Canvas 2D Nibbles.BAS tribute
 - [`ravenfall`](ravenfall/) — Moody first-person raven shooter with Verlet wire physics and mobile controls
 - [`snow-brawl`](snow-brawl/) — Festive snowball fight as a snowman against AI opponents, with full mobile support
 - [`velvetshuffle-cards`](velvetshuffle-cards/) — Collection of original tactile card games with procedural decks and dynamic layouts
