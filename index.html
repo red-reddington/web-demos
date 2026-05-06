@@ -1,347 +1,462 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Red Reddington's Web Demos</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Red Reddington's Web Demos</title>
 
-<style>
-  body {
-    margin: 0;
-    font-family: system-ui, sans-serif;
-    background: #0f1115;
-    color: #e6e6e6;
-  }
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #0f1115;
+        color: #e6e6e6;
+      }
 
-  header {
-    text-align: center;
-    padding: 40px 20px 10px;
-  }
+      header {
+        text-align: center;
+        padding: 40px 20px 10px;
+      }
 
-  h1 {
-    margin: 0;
-    font-size: 28px;
-  }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+      }
 
-  p {
-    opacity: 0.6;
-    margin-top: 8px;
-  }
+      p {
+        opacity: 0.6;
+        margin-top: 8px;
+      }
 
-  .filters {
-    text-align: center;
-    margin: 20px 0;
-  }
+      .filters {
+        text-align: center;
+        margin: 20px 0;
+      }
 
-  .filters button {
-    margin: 5px;
-    padding: 6px 12px;
-    border-radius: 999px;
-    border: none;
-    background: #1f232b;
-    color: #ccc;
-    cursor: pointer;
-  }
+      .filters button {
+        margin: 5px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: none;
+        background: #1f232b;
+        color: #ccc;
+        cursor: pointer;
+      }
 
-  .filters button.active {
-    background: #4c8bf5;
-    color: white;
-  }
+      .filters button.active {
+        background: #4c8bf5;
+        color: white;
+      }
 
-  /* --- Dual Range Slider --- */
-  .range-container {
-    max-width: 420px;
-    margin: 0 auto 20px;
-    text-align: center;
-  }
+      .sort-bar {
+        text-align: center;
+        margin: 10px 0 20px;
+      }
 
-  .range-labels {
-    font-size: 12px;
-    opacity: 0.6;
-    margin-bottom: 6px;
-  }
+      .sort-bar button {
+        margin: 5px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: none;
+        background: #1f232b;
+        color: #ccc;
+        cursor: pointer;
+      }
 
-  .range-slider {
-    position: relative;
-    height: 32px;
-  }
+      .filters button,
+      .sort-bar button {
+        margin: 5px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        border: 1px solid #2a2f3a;
+        background: #1f232b;
+        color: #ccc;
+        cursor: pointer;
+        opacity: 0.55;
+        transition:
+          opacity 0.15s ease,
+          background 0.15s ease,
+          transform 0.1s ease;
+      }
 
-  .range-slider input[type="range"] {
-    position: absolute;
-    width: 100%;
-    height: 32px;
-    top: 50%;
-	left: 0;
-	margin: 2px 0;
-    transform: translateY(-50%);
-    pointer-events: none;
-    -webkit-appearance: none;
-    background: none;
-  }
+      .filters button.active,
+      .sort-bar button.active {
+        background: #4c8bf5;
+        color: white;
+        opacity: 1;
+        border-color: #4c8bf5;
+      }
 
-  .range-slider input[type="range"]::-webkit-slider-thumb {
-    pointer-events: all;
-    width: 16px;
-    height: 16px;
-    margin-top: -6px;
-    border-radius: 50%;
-    background: #4c8bf5;
-    cursor: pointer;
-    -webkit-appearance: none;
-  }
+      .filters button:hover:not(.active),
+      .sort-bar button:hover:not(.active) {
+        opacity: 0.8;
+        background: #262b34;
+      }
 
-  .range-slider .track {
-    position: absolute;
-    height: 4px;
-    background: #333;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 100%;
-    border-radius: 2px;
-  }
+      .filters button:active,
+      .sort-bar button:active {
+        transform: scale(0.96);
+      }
 
-  .range-slider .range {
-    position: absolute;
-    height: 4px;
-    background: #4c8bf5;
-    top: 50%;
-    transform: translateY(-50%);
-    border-radius: 2px;
-  }
+      .filters button:focus-visible,
+      .sort-bar button:focus-visible {
+        outline: 2px solid #4c8bf5;
+        outline-offset: 2px;
+      }
 
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 16px;
-    padding: 20px;
-    max-width: 1200px;
-    margin: auto;
-  }
+      /* --- Dual Range Slider --- */
+      .range-container {
+        max-width: min(300px, 80dvw);
+        margin: 0 auto 20px;
+        text-align: center;
+      }
 
-  .card {
-    background: #1a1d24;
-    border-radius: 12px;
-    overflow: hidden;
-    text-decoration: none;
-    color: inherit;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-  }
+      .range-labels {
+        font-size: 12px;
+        opacity: 0.6;
+      }
 
-  .card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-  }
+      .range-slider {
+        position: relative;
+        height: 32px;
+      }
 
-  .thumb {
-    width: 100%;
-    height: 150px;
-    background: #2a2f3a;
-	display: none; /* will enable after thumbs are added */
-  }
+      .range-slider input[type="range"] {
+        position: absolute;
+        width: 100%;
+        height: 32px;
+        top: 50%;
+        left: 0;
+        margin: 2px 0;
+        transform: translateY(-50%);
+        pointer-events: none;
+        -webkit-appearance: none;
+        background: none;
+      }
 
-  .content {
-    padding: 12px;
-  }
+      .range-slider input[type="range"]::-webkit-slider-thumb {
+        pointer-events: all;
+        width: 16px;
+        height: 16px;
+        margin-top: -6px;
+        border-radius: 50%;
+        background: #4c8bf5;
+        cursor: pointer;
+        -webkit-appearance: none;
+      }
 
-  .tag {
-    font-size: 11px;
-    opacity: 0.5;
-    margin-bottom: 6px;
-  }
+      .range-slider .track {
+        position: absolute;
+        height: 4px;
+        background: #333;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 100%;
+        border-radius: 2px;
+      }
 
-  .title {
-    font-weight: 600;
-    margin-bottom: 6px;
-  }
+      .range-slider .range {
+        position: absolute;
+        height: 4px;
+        background: #4c8bf5;
+        top: 50%;
+        transform: translateY(-50%);
+        border-radius: 2px;
+      }
 
-  .desc {
-    font-size: 13px;
-    opacity: 0.7;
-  }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 16px;
+        padding: 20px;
+        width: min(1200px, 100dvw - 40px);
+        margin: 0 auto;
+        box-sizing: border-box;
+      }
 
-  .date {
-    font-size: 11px;
-    opacity: 0.45;
-    margin-top: 8px;
-  }
-</style>
-</head>
-<body>
+      .card {
+        background: #1a1d24;
+        border-radius: 12px;
+        overflow: hidden;
+        text-decoration: none;
+        color: inherit;
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease;
+      }
 
-<header>
-  <h1>Red Reddington's Web Demos</h1>
-  <p>High-performance Three.js experiments, procedural systems, and games</p>
-</header>
+      .card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      }
 
-<div class="filters" id="filters"></div>
+      .thumb {
+        width: 100%;
+        aspect-ratio: 16 / 9; /* auto height */
+        background: #2a2f3a;
+        background-size: cover;
+        background-position: center;
+        border-bottom: 1px solid #0003;
+      }
 
-<div class="range-container">
-  <div class="range-labels" id="rangeLabel"></div>
-  <div class="range-slider">
-    <div class="track"></div>
-    <div class="range" id="rangeFill"></div>
-    <input type="range" id="minDate" step="1">
-    <input type="range" id="maxDate" step="1">
-  </div>
-</div>
+      .content {
+        padding: 12px;
+      }
 
-<div class="grid" id="grid"></div>
+      .tag {
+        font-size: 11px;
+        opacity: 0.5;
+        margin-bottom: 6px;
+      }
 
-<script>
-let allDemos = [];
-let currentFilter = "All";
-let minDate = null;
-let maxDate = null;
+      .title {
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
 
-fetch('./data.json')
-  .then(res => res.json())
-  .then(demos => {
-    allDemos = demos.map(d => ({
-      ...d,
-      ts: new Date(d.created).getTime()
-    }));
+      .desc {
+        font-size: 13px;
+        opacity: 0.7;
+      }
 
-    setupFilters();
-    setupDateSlider();
-    render();
-  });
+      .date {
+        font-size: 11px;
+        opacity: 0.45;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Red Reddington's Web Demos</h1>
+      <p>
+        High-performance Three.js demonstrations, procedural systems, and games
+      </p>
+    </header>
 
-function setupFilters() {
-  const filtersEl = document.getElementById('filters');
-  const categories = ["All", ...new Set(allDemos.map(d => d.category))];
+    <div class="filters" id="filters"></div>
 
-  categories.forEach(cat => {
-    const btn = document.createElement('button');
-    btn.dataset.cat = cat;
-    btn.onclick = () => {
-      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentFilter = cat;
-      render();
-    };
-    filtersEl.appendChild(btn);
-  });
+    <div class="sort-bar" id="sortBar">
+      <button data-sort="az">A–Z</button>
+      <button data-sort="za">Z–A</button>
+      <button data-sort="date-desc">Newest</button>
+      <button data-sort="date-asc">Oldest</button>
+    </div>
 
-  updateFilterLabels();
-}
-
-function updateFilterLabels(shownCount = null) {
-  const buttons = document.querySelectorAll('.filters button');
-
-  const total = allDemos.length;
-
-  const counts = {
-    "All": total,
-  };
-
-  for (const d of allDemos) {
-    counts[d.category] = (counts[d.category] || 0) + 1;
-  }
-
-  buttons.forEach(btn => {
-    const cat = btn.dataset.cat;
-    const base = counts[cat];
-
-    if (shownCount && cat === currentFilter) {
-      btn.textContent = `${cat} (${shownCount}/${base})`;
-    } else {
-      btn.textContent = `${cat} (${base})`;
-    }
-  });
-}
-
-function formatDate(iso) {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
-}
-
-function setupDateSlider() {
-  const timestamps = allDemos.map(d => d.ts);
-  const sorted = [...timestamps].sort((a,b)=>a-b);
-
-  minDate = sorted[0];
-  maxDate = sorted[sorted.length - 1];
-
-  const minInput = document.getElementById('minDate');
-  const maxInput = document.getElementById('maxDate');
-  const rangeFill = document.getElementById('rangeFill');
-  const label = document.getElementById('rangeLabel');
-
-  minInput.min = maxInput.min = 0;
-  minInput.max = maxInput.max = sorted.length - 1;
-
-  minInput.value = 0;
-  maxInput.value = sorted.length - 1;
-
-  function updateSlider() {
-    let minIdx = parseInt(minInput.value);
-    let maxIdx = parseInt(maxInput.value);
-
-    if (minIdx > maxIdx) {
-      [minIdx, maxIdx] = [maxIdx, minIdx];
-      minInput.value = minIdx;
-      maxInput.value = maxIdx;
-    }
-
-    minDate = sorted[minIdx];
-    maxDate = sorted[maxIdx];
-
-    const pctMin = (minIdx / (sorted.length - 1)) * 100;
-    const pctMax = (maxIdx / (sorted.length - 1)) * 100;
-
-    rangeFill.style.left = pctMin + "%";
-    rangeFill.style.width = (pctMax - pctMin) + "%";
-
-    label.textContent =
-      formatDate(new Date(minDate).toISOString()) +
-      " — " +
-      formatDate(new Date(maxDate).toISOString());
-
-    render();
-  }
-
-  minInput.oninput = updateSlider;
-  maxInput.oninput = updateSlider;
-
-  updateSlider();
-}
-
-function render() {
-  const grid = document.getElementById('grid');
-  grid.innerHTML = '';
-
-  const filtered = allDemos.filter(d =>
-    (currentFilter === "All" || d.category === currentFilter) &&
-    d.ts >= minDate &&
-    d.ts <= maxDate
-  );
-
-  updateFilterLabels(filtered.length);
-
-  filtered.forEach(demo => {
-    const a = document.createElement('a');
-    a.className = 'card';
-    a.href = `./${demo.folder}/index.html`;
-    a.target = "_blank";
-
-    a.innerHTML = `
-      <div class="thumb"></div>
-      <div class="content">
-        <div class="tag">${demo.category}</div>
-        <div class="title">${demo.title}</div>
-        <div class="desc">${demo.description}</div>
-        <div class="date">${formatDate(demo.created)}</div>
+    <div class="range-container">
+      <div class="range-labels" id="rangeLabel"></div>
+      <div class="range-slider">
+        <div class="track"></div>
+        <div class="range" id="rangeFill"></div>
+        <input type="range" id="minDate" step="1" />
+        <input type="range" id="maxDate" step="1" />
       </div>
-    `;
+    </div>
 
-    grid.appendChild(a);
-  });
-}
-</script>
+    <div class="grid" id="grid"></div>
 
-</body>
+    <script>
+      let allDemos = [];
+      let currentFilter = "All";
+      let minDate = null;
+      let maxDate = null;
+      let currentSort = "date-desc"; // default: newest first
+
+      fetch("./data.json")
+        .then((res) => res.json())
+        .then((demos) => {
+          allDemos = demos.map((d) => ({
+            ...d,
+            ts: new Date(d.created).getTime(),
+          }));
+
+          setupFilters();
+          setupSort();
+          setupDateSlider();
+          render();
+        });
+
+      function setupFilters() {
+        const filtersEl = document.getElementById("filters");
+        const categories = ["All", ...new Set(allDemos.map((d) => d.category))];
+
+        categories.forEach((cat) => {
+          const btn = document.createElement("button");
+          btn.dataset.cat = cat;
+          btn.onclick = () => {
+            document
+              .querySelectorAll(".filters button")
+              .forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentFilter = cat;
+            render();
+          };
+          filtersEl.appendChild(btn);
+
+          if (cat === currentFilter) btn.classList.add("active");
+        });
+
+        updateFilterLabels();
+      }
+
+      function updateFilterLabels(shownCount = null) {
+        const buttons = document.querySelectorAll(".filters button");
+
+        const total = allDemos.length;
+
+        const counts = {
+          All: total,
+        };
+
+        for (const d of allDemos) {
+          counts[d.category] = (counts[d.category] || 0) + 1;
+        }
+
+        buttons.forEach((btn) => {
+          const cat = btn.dataset.cat;
+          const base = counts[cat];
+
+          if (shownCount && cat === currentFilter) {
+            btn.textContent = `${cat} (${shownCount}/${base})`;
+          } else {
+            btn.textContent = `${cat} (${base})`;
+          }
+        });
+      }
+
+      function formatDate(iso) {
+        const d = new Date(iso);
+        return d.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      }
+
+      function setupDateSlider() {
+        const timestamps = allDemos.map((d) => d.ts);
+        const sorted = [...timestamps].sort((a, b) => a - b);
+
+        minDate = sorted[0];
+        maxDate = sorted[sorted.length - 1];
+
+        const minInput = document.getElementById("minDate");
+        const maxInput = document.getElementById("maxDate");
+        const rangeFill = document.getElementById("rangeFill");
+        const label = document.getElementById("rangeLabel");
+
+        minInput.min = maxInput.min = 0;
+        minInput.max = maxInput.max = sorted.length - 1;
+
+        minInput.value = 0;
+        maxInput.value = sorted.length - 1;
+
+        function updateSlider() {
+          let minIdx = parseInt(minInput.value);
+          let maxIdx = parseInt(maxInput.value);
+
+          if (minIdx > maxIdx) {
+            [minIdx, maxIdx] = [maxIdx, minIdx];
+            minInput.value = minIdx;
+            maxInput.value = maxIdx;
+          }
+
+          minDate = sorted[minIdx];
+          maxDate = sorted[maxIdx];
+
+          const pctMin = (minIdx / (sorted.length - 1)) * 100;
+          const pctMax = (maxIdx / (sorted.length - 1)) * 100;
+
+          rangeFill.style.left = pctMin + "%";
+          rangeFill.style.width = pctMax - pctMin + "%";
+
+          label.textContent =
+            formatDate(new Date(minDate).toISOString()) +
+            " — " +
+            formatDate(new Date(maxDate).toISOString());
+
+          render();
+        }
+
+        minInput.oninput = updateSlider;
+        maxInput.oninput = updateSlider;
+
+        updateSlider();
+      }
+
+      function setupSort() {
+        const sortBar = document.getElementById("sortBar");
+        const buttons = sortBar.querySelectorAll("button");
+
+        buttons.forEach((btn) => {
+          btn.onclick = () => {
+            buttons.forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentSort = btn.dataset.sort;
+            render();
+          };
+        });
+
+        sortBar
+          .querySelector(`[data-sort="${currentSort}"]`)
+          .classList.add("active");
+      }
+
+      function render() {
+        const grid = document.getElementById("grid");
+        grid.innerHTML = "";
+
+        let filtered = allDemos.filter(
+          (d) =>
+            (currentFilter === "All" || d.category === currentFilter) &&
+            d.ts >= minDate &&
+            d.ts <= maxDate,
+        );
+
+        // --- SORTING ---
+        switch (currentSort) {
+          case "az":
+            filtered.sort((a, b) => a.title.localeCompare(b.title));
+            break;
+
+          case "za":
+            filtered.sort((a, b) => b.title.localeCompare(a.title));
+            break;
+
+          case "date-asc":
+            filtered.sort((a, b) => a.ts - b.ts); // oldest first
+            break;
+
+          case "date-desc":
+            filtered.sort((a, b) => b.ts - a.ts); // newest first
+            break;
+        }
+
+        updateFilterLabels(filtered.length);
+
+        filtered.forEach((demo) => {
+          const a = document.createElement("a");
+          a.className = "card";
+          a.href = `./${demo.folder}/index.html`;
+          a.target = "_blank";
+
+          const thumbHTML = demo.thumb
+            ? `<div class="thumb" style="background-image:url('./thumbs/${demo.thumb}')"></div>`
+            : "";
+
+          a.innerHTML = `
+    ${thumbHTML}
+    <div class="content">
+      <div class="tag">${demo.category}</div>
+      <div class="title">${demo.title}</div>
+      <div class="desc">${demo.description}</div>
+      <div class="date">${formatDate(demo.created)}</div>
+    </div>
+  `;
+
+          grid.appendChild(a);
+        });
+      }
+    </script>
+  </body>
 </html>
