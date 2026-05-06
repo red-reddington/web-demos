@@ -2,11 +2,19 @@
 <!DOCTYPE html>
 <html>
 <body style="height:100dvh;margin:0;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;font-family:monospace;color:#fff;">
-<canvas id="c" width="640" height="400" style="background:#101040;border:2px solid #444;aspect-ratio:640/400;max-width:100dvw;max-height:100dvh;width:100%;image-rendering:pixelated;"></canvas>
+<canvas id="c" width="640" height="400" style="background:#101040;border:2px solid #444;width:auto;height:auto;width:100%;image-rendering:pixelated;"></canvas>
 <p style="color:#888;font-family:monospace;font-size:12px;margin:0 auto;width:100%;position:absolute;bottom:5px;text-align:center;mix-blend-mode:difference;">← → / A/D angle &nbsp; ↑ ↓ / W/S power &nbsp; SPACE fire<br />drag left half = angle &nbsp; drag right half = power &nbsp; tap right = fire</p>
 <script>
 // Phases: 0=aim, 1=in flight, 2=round over.
 const W = 640, H = 400, ctx = c.getContext('2d'), k = {};
+function resize() {
+  const scale = Math.min(innerWidth / W, innerHeight / H);
+  c.style.width  = (W * scale) + 'px';
+  c.style.height = (H * scale) + 'px';
+}
+addEventListener('resize', resize);
+resize();
+
 ctx.imageSmoothingEnabled = false;
 onkeydown = e => { k[e.code] = 1; if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault(); };
 onkeyup = e => k[e.code] = 0;
