@@ -31,7 +31,6 @@
     "created": "2025-10-20",
     "thumb": "threejs-xzfog.jpg"
   },
-
   {
     "folder": "nibbles",
     "title": "Nibbles.BAS JS",
@@ -40,6 +39,14 @@
     "created": "2026-05-03",
     "thumb": "nibbles.jpg"
   },
+  {
+    "folder": "gorillas",
+    "title": "Gorillas.BAS JS",
+    "category": "Game",
+    "description": "Canvas 2D tribute to classic QBasic game",
+    "created": "2026-05-05",
+    "thumb": "gorillas.jpg"
+  },  
   {
     "folder": "jumping-jack",
     "title": "Jumping Jack",
