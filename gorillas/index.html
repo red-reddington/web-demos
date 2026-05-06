@@ -1,210 +1,573 @@
 <!-- https://codepen.io/the-red-reddington/full/NPbGXKL -->
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"></head>
-<body style="height:100dvh;margin:0;background:#000;display:flex;align-items:center;justify-content:center;overflow:hidden;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;font-family:monospace;color:#fff;">
-<canvas id="c" width="640" height="400" style="background:#101040;border:2px solid #444;width:auto;height:auto;width:100%;image-rendering:pixelated;"></canvas>
-<p style="color:#888;font-family:monospace;font-size:12px;margin:0 auto;width:100%;position:absolute;bottom:5px;text-align:center;mix-blend-mode:difference;">← → / A/D angle &nbsp; ↑ ↓ / W/S power &nbsp; SPACE fire<br />drag left half = angle &nbsp; drag right half = power &nbsp; tap right = fire</p>
-<script>
-// Phases: 0=aim, 1=in flight, 2=round over.
-const W = 640, H = 400, ctx = c.getContext('2d'), k = {};
-function resize() {
-  const scale = Math.min(innerWidth / W, innerHeight / H);
-  c.style.width  = (W * scale) + 'px';
-  c.style.height = (H * scale) + 'px';
-}
-addEventListener('resize', resize);
-resize();
-
-ctx.imageSmoothingEnabled = false;
-onkeydown = e => { k[e.code] = 1; if ([' ','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault(); };
-onkeyup = e => k[e.code] = 0;
-
-// touch: drag left half = angle, drag right half = power, tap right side = fire
-let touchStart = null, touchSide = 0;
-const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
-addEventListener('pointerdown', e => { const [x,y] = pos(e); touchStart = [x,y,performance.now()]; touchSide = x < .5 ? -1 : 1; });
-addEventListener('pointermove', e => {
-  if (!touchStart || phase !== 0 || turn !== 0) return;
-  const [,y] = pos(e), dy = (touchStart[1] - y) * 60; // drag distance scaled to angle/power range
-  if (touchSide < 0) players[0].angle = Math.max(10, Math.min(170, players[0].baseAngle + dy));
-  else players[0].power = Math.max(10, Math.min(150, players[0].basePower + dy));
-});
-addEventListener('pointerup', e => {
-  if (!touchStart) return;
-  const dt = performance.now() - touchStart[2], [x,y] = pos(e), moved = Math.hypot(x-touchStart[0], y-touchStart[1]);
-  if (dt < 250 && moved < .03 && touchSide > 0 && phase === 0 && turn === 0) fire(); // short stationary tap on right side = fire
-  players[0].baseAngle = players[0].angle; players[0].basePower = players[0].power;
-  touchStart = null;
-});
-
-let buildings, players, turn, banana, phase, msg, msgT, wind, particles, stars;
-
-function init() {
-  // generate variable-width skyline that fills the canvas
-  buildings = []; let x = 0;
-  while (x < W) {
-    const w = 40 + (Math.random()*40|0), h = 80 + (Math.random()*180|0);
-    const wins = []; // [wx, wy, lit] — lit-window state baked in, occasionally toggled in update()
-    for (let wy = 8; wy < h - 4; wy += 12)
-      for (let wx = 4; wx < w - 6; wx += 10)
-        wins.push([wx, wy, Math.random() < .5]);
-    buildings.push({x, y: H-h, w, h, color: ['#a85','#588','#a55','#755'][Math.random()*4|0], wins});
-    x += w;
-  }
-  // place gorillas on the second building from each side for a fair starting distance
-  const b1 = buildings[1], b2 = buildings[buildings.length-3];
-  players = [{x: b1.x+b1.w/2, y: b1.y, angle: 45, power: 70, baseAngle: 45, basePower: 70, hp: 1},
-             {x: b2.x+b2.w/2, y: b2.y, angle: 135, power: 70, baseAngle: 135, basePower: 70, hp: 1}];
-  turn = 0; banana = null; phase = 0; particles = [];
-  wind = (Math.random() - .5) * 20; // -10..+10, positive = pushes banana right
-  // stars: random positions in upper sky, each with its own flicker phase
-  stars = Array.from({length: 60}, () => [Math.random()*W, Math.random() * (H * .6), Math.random() * 7]);
-  // destruction mask: white = solid, transparent = blown out. created once, reset per round.
-  if (!c.mask) { c.mask = document.createElement('canvas'); c.mask.width = W; c.mask.height = H; c.mctx = c.mask.getContext('2d'); }
-  c.mctx.globalCompositeOperation = 'source-over'; c.mctx.fillStyle = '#fff'; c.mctx.fillRect(0,0,W,H);
-}
-
-function fire() {
-  const p = players[turn], rad = p.angle * Math.PI / 180;
-  banana = { x: p.x, y: p.y - 16, vx: Math.cos(rad) * p.power * .12, vy: -Math.sin(rad) * p.power * .12, t: 0 };
-  phase = 1;
-}
-
-// punch a circular hole in the destruction mask + spawn debris particles
-function explode(x, y, big) {
-  const r = big ? 28 : 18;
-  c.mctx.globalCompositeOperation = 'destination-out';
-  c.mctx.beginPath(); c.mctx.arc(x, y, r, 0, 7); c.mctx.fill();
-  for (let i = 0; i < 20; i++) particles.push({x, y, vx:(Math.random()-.5)*4, vy:(Math.random()-.5)*4-1, life:30});
-}
-
-// returns index of player struck by a point, or -1
-function hit(x, y) {
-  for (let i = 0; i < players.length; i++) if (Math.hypot(players[i].x - x, players[i].y - y - 8) < 14) return i;
-  return -1;
-}
-
-// terrain collision: point is solid iff inside a building AND mask pixel is opaque
-function solid(x, y) {
-  for (const b of buildings) if (x >= b.x && x < b.x+b.w && y >= b.y && y < b.y+b.h) {
-    const d = c.mctx.getImageData(x|0, y|0, 1, 1).data;
-    return d[3] > 128;
-  }
-  return false;
-}
-
-function update() {
-  if (phase === 0) {
-    const p = players[turn];
-    if (turn === 1) {
-      // CPU: iterative refinement. First shot: distance/wind estimate. Later shots: correct from last miss.
-      if (!p.aiTimer) p.aiTimer = 90;
-      if (--p.aiTimer === 0) {
-        const tx = players[0].x;
-        p.angle = 130;
-        if (p.lastMissX !== undefined) {
-          const err = p.lastMissX - tx; // banana landed at lastMissX, want tx; positive err = undershot, need more power
-          p.power = Math.max(40, Math.min(140, p.lastPower + err * .15 + (Math.random()-.5) * 4));
-        } else {
-          p.power = Math.max(40, Math.min(140, Math.abs(tx - p.x) * .42 + wind * 2 + (Math.random()-.5) * 10));
-        }
-        p.lastPower = p.power; p.aiTimer = 0; fire();
+  <head>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+  </head>
+  <body
+    style="
+      height: 100dvh;
+      margin: 0;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      font-family: monospace;
+      color: #fff;
+    "
+  >
+    <canvas
+      id="c"
+      width="640"
+      height="400"
+      style="
+        background: #101040;
+        border: 2px solid #444;
+        image-rendering: pixelated;
+      "
+    ></canvas>
+    <p
+      style="
+        color: #888;
+        font-family: monospace;
+        font-size: 12px;
+        margin: 0 auto;
+        width: 100%;
+        position: absolute;
+        bottom: 5px;
+        text-align: center;
+        mix-blend-mode: difference;
+      "
+    >
+      ← → / A/D angle &nbsp; ↑ ↓ / W/S power &nbsp; SPACE fire<br />drag left
+      half = angle &nbsp; drag right half = power &nbsp; tap right = fire
+    </p>
+    <script>
+      // Phases: 0=aim, 1=in flight, 2=round over.
+      const W = 640,
+        H = 400,
+        ctx = c.getContext("2d"),
+        k = {};
+      function resize() {
+        const scale = Math.min(innerWidth / W, innerHeight / H);
+        c.style.width = W * scale + "px";
+        c.style.height = H * scale + "px";
       }
-    } else {
-      if (k.ArrowLeft || k.KeyA) p.angle = Math.min(170, p.angle + 1);
-      if (k.ArrowRight || k.KeyD) p.angle = Math.max(10, p.angle - 1);
-      if (k.ArrowUp || k.KeyW) p.power = Math.min(150, p.power + 1);
-      if (k.ArrowDown || k.KeyS) p.power = Math.max(10, p.power - 1);
-      if (k.Space && !k._sp) { k._sp = 1; fire(); }
-      if (!k.Space) k._sp = 0;
-    }
-  } else if (phase === 1 && banana) {
-    banana.vx += wind * .002; banana.vy += .15; banana.x += banana.vx; banana.y += banana.vy; banana.t++;
-    if (banana.x < -50 || banana.x > W+50 || banana.y > H) { if (turn === 1) players[1].lastMissX = banana.x; banana = null; phase = 0; turn = 1 - turn; return; } // off-screen, pass turn
-    // launch grace: skip collision checks for the first few frames so the banana clears its own shooter and rooftop
-    const h = banana.t > 8 ? hit(banana.x, banana.y) : -1;
-    if (h >= 0) { explode(banana.x, banana.y, true); players[h].hp = 0; banana = null; phase = 2; msg = h === turn ? 'SELF-DESTRUCT!' : (turn === 0 ? 'YOU WIN!' : 'CPU WINS!'); msgT = 0; return; }
-    if (banana.t > 3 && solid(banana.x, banana.y)) { if (turn === 1) players[1].lastMissX = banana.x; explode(banana.x, banana.y, false); banana = null; phase = 0; turn = 1 - turn; }
-  } else if (phase === 2) {
-    // round over: wait for input after a delay so an accidental press doesn't skip the message
-    msgT++;
-    if (msgT > 150 && (k.Space || (touchStart && performance.now() - touchStart[2] > 100))) { init(); }
-  }
-  // particle physics (debris from explosions)
-  for (let i = particles.length-1; i >= 0; i--) { const p = particles[i]; p.x += p.vx; p.y += p.vy; p.vy += .2; if (--p.life <= 0) particles.splice(i, 1); }
-  // ambient: occasionally toggle one random window in one random building
-  if (Math.random() < .04) { const b = buildings[Math.random()*buildings.length|0]; if (b.wins.length) { const w = b.wins[Math.random()*b.wins.length|0]; w[2] = !w[2]; } }
-}
+      addEventListener("resize", resize);
+      resize();
 
-function drawGorilla(p, idx) {
-  ctx.fillStyle = p.hp ? '#3a2' : '#633';
-  ctx.fillRect(p.x-6, p.y-16, 12, 8);
-  ctx.fillRect(p.x-8, p.y-8, 16, 10);
-  ctx.fillRect(p.x-6, p.y+2, 5, 6); ctx.fillRect(p.x+1, p.y+2, 5, 6);
-  // aim line on active player
-  if (phase === 0 && idx === turn && p.hp) {
-    const rad = p.angle * Math.PI / 180, len = 12 + p.power * .15;
-    ctx.strokeStyle = '#ff0'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(p.x, p.y - 8);
-    ctx.lineTo(p.x + Math.cos(rad)*len, p.y - 8 - Math.sin(rad)*len); ctx.stroke();
-    ctx.fillStyle = '#ff0'; ctx.fillRect(p.x + Math.cos(rad)*len - 2, p.y - 8 - Math.sin(rad)*len - 2, 4, 4);
-  }
-}
+      ctx.imageSmoothingEnabled = false;
+      onkeydown = (e) => {
+        k[e.code] = 1;
+        if (
+          [" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
+            e.key,
+          )
+        )
+          e.preventDefault();
+      };
+      onkeyup = (e) => (k[e.code] = 0);
 
-function render() {
-  ctx.fillStyle = '#101040'; ctx.fillRect(0,0,W,H);
-  // stars: brightness oscillates per-star using its phase offset and a shared time base
-  const t = performance.now() * .003;
-  for (const [sx, sy, ph] of stars) {
-    const a = .4 + .6 * (Math.sin(t + ph) * .5 + .5);
-    ctx.fillStyle = `rgba(255,255,255,${a})`;
-    ctx.fillRect(sx|0, sy|0, 1, 1);
-  }
-  ctx.fillStyle = '#fd0'; ctx.beginPath(); ctx.arc(W/2, 50, 20, 0, 7); ctx.fill(); // sun
+      // touch: drag left half = angle, drag right half = power, tap right side = fire
+      let touchStart = null,
+        touchSide = 0;
+      const pos = (e) => {
+        const r = c.getBoundingClientRect();
+        return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+      };
+      addEventListener("pointerdown", (e) => {
+        const [x, y] = pos(e);
+        if (mode === -1) {
+          mode = x < 0.5 ? 0 : 1;
+          init();
+          return;
+        } // mode select screen
+        touchStart = [x, y, performance.now()];
+        touchSide = x < 0.5 ? -1 : 1;
+      });
+      addEventListener("pointermove", (e) => {
+        if (!touchStart || phase !== 0 || turn !== 0) return;
+        const [, y] = pos(e),
+          dy = (touchStart[1] - y) * 60; // drag distance scaled to angle/power range
+        if (touchSide < 0)
+          players[0].angle = Math.max(
+            10,
+            Math.min(170, players[0].baseAngle + dy),
+          );
+        else
+          players[0].power = Math.max(
+            10,
+            Math.min(150, players[0].basePower + dy),
+          );
+      });
+      addEventListener("pointerup", (e) => {
+        if (!touchStart) return;
+        const dt = performance.now() - touchStart[2],
+          [x, y] = pos(e),
+          moved = Math.hypot(x - touchStart[0], y - touchStart[1]);
+        if (
+          dt < 250 &&
+          moved < 0.03 &&
+          touchSide > 0 &&
+          phase === 0 &&
+          turn === 0
+        )
+          fire(); // short stationary tap on right side = fire
+        players[0].baseAngle = players[0].angle;
+        players[0].basePower = players[0].power;
+        touchStart = null;
+      });
 
-  // buildings on offscreen canvas, masked against destruction layer for pixel-perfect destructible terrain
-  if (!c.tmp) { c.tmp = document.createElement('canvas'); c.tmp.width = W; c.tmp.height = H; c.tctx = c.tmp.getContext('2d'); }
-  const tctx = c.tctx; tctx.globalCompositeOperation = 'source-over'; tctx.clearRect(0, 0, W, H);
-  for (const b of buildings) {
-    tctx.fillStyle = b.color; tctx.fillRect(b.x, b.y, b.w, b.h);
-    tctx.fillStyle = 'rgba(255,255,100,.6)';
-    for (const [wx, wy, lit] of b.wins) if (lit) tctx.fillRect(b.x + wx, b.y + wy, 4, 6);
-  }
-  tctx.globalCompositeOperation = 'destination-in'; tctx.drawImage(c.mask, 0, 0);
-  ctx.drawImage(c.tmp, 0, 0);
+      let buildings,
+        players,
+        turn,
+        banana,
+        phase,
+        msg,
+        msgT,
+        wind,
+        particles,
+        stars;
+      let mode = -1; // -1 = choose, 0 = PvCPU, 1 = PvP
+      let score = [0, 0];
+      let worldReady = false;
 
-  players.forEach(drawGorilla);
-  // banana: spinning crescent, rotation driven by flight time
-  if (banana) {
-    ctx.save(); ctx.translate(banana.x, banana.y); ctx.rotate(banana.t * .25);
-    ctx.fillStyle = '#fd0'; ctx.beginPath();
-    ctx.arc(0, 3, 9, Math.PI*1.1, Math.PI*1.9);
-    ctx.arc(0, -2, 6, Math.PI*1.85, Math.PI*1.15, true);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#a70'; ctx.fillRect(-1, -7, 2, 2); // stem
-    ctx.restore();
-  }
-  ctx.fillStyle = '#fa0'; for (const p of particles) ctx.fillRect(p.x|0, p.y|0, 2, 2);
+      function init() {
+        // generate variable-width skyline that fills the canvas
+        if (!worldReady) {
+          buildings = [];
+          let x = 0;
+          while (x < W) {
+            const w = 40 + ((Math.random() * 40) | 0),
+              h = 80 + ((Math.random() * 180) | 0);
+            const wins = []; // [wx, wy, lit] — lit-window state baked in, occasionally toggled in update()
+            for (let wy = 8; wy < h - 4; wy += 12)
+              for (let wx = 4; wx < w - 6; wx += 10)
+                wins.push([wx, wy, Math.random() < 0.5]);
+            buildings.push({
+              x,
+              y: H - h,
+              w,
+              h,
+              color: ["#a85", "#588", "#a55", "#755"][(Math.random() * 4) | 0],
+              wins,
+            });
+            x += w;
+            worldReady = true;
+          }
+        }
+        // place gorillas on the second building from each side for a fair starting distance
+        const b1 = buildings[1],
+          b2 = buildings[buildings.length - 3];
+        players = [
+          {
+            x: b1.x + b1.w / 2,
+            y: b1.y,
+            angle: 45,
+            power: 70,
+            baseAngle: 45,
+            basePower: 70,
+            hp: 1,
+          },
+          {
+            x: b2.x + b2.w / 2,
+            y: b2.y,
+            angle: 135,
+            power: 70,
+            baseAngle: 135,
+            basePower: 70,
+            hp: 1,
+          },
+        ];
+        turn = 0;
+        banana = null;
+        phase = 0;
+        particles = [];
+        wind = (Math.random() - 0.5) * 20; // -10..+10, positive = pushes banana right
+        // stars: random positions in upper sky, each with its own flicker phase
+        if (!worldReady || !stars) {
+          stars = Array.from({ length: 60 }, () => [
+            Math.random() * W,
+            Math.random() * (H * 0.6),
+            Math.random() * 7,
+          ]);
+        }
+        // destruction mask: white = solid, transparent = blown out. created once, reset per round.
+        if (!c.mask) {
+          c.mask = document.createElement("canvas");
+          c.mask.width = W;
+          c.mask.height = H;
+          c.mctx = c.mask.getContext("2d", { willReadFrequently: true });
+        }
+        c.mctx.globalCompositeOperation = "source-over";
+        c.mctx.fillStyle = "#fff";
+        if (!c.maskReady) {
+          c.mctx.fillStyle = "#fff";
+          c.mctx.fillRect(0, 0, W, H);
+          c.maskReady = true;
+        }
+      }
 
-  // HUD
-  ctx.fillStyle = '#fff'; ctx.font = '12px monospace';
-  const p = players[turn];
-  ctx.fillText(`${turn === 0 ? 'YOU' : 'CPU'}  ANGLE: ${p.angle|0}  POWER: ${p.power|0}`, 8, 16);
-  ctx.fillText(`WIND: ${wind > 0 ? '→' : '←'} ${Math.abs(wind)|0}`, W-110, 16);
-  if (phase === 2) {
-    ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(80, 160, W-160, 80);
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-    ctx.fillText(msg, W/2, 195);
-    if (msgT > 150) ctx.fillText('SPACE / TAP to play again', W/2, 220);
-    ctx.textAlign = 'start';
-  }
-}
+      function fire() {
+        const p = players[turn],
+          rad = (p.angle * Math.PI) / 180;
+        banana = {
+          x: p.x,
+          y: p.y - 16,
+          vx: Math.cos(rad) * p.power * 0.12,
+          vy: -Math.sin(rad) * p.power * 0.12,
+          t: 0,
+        };
+        phase = 1;
+      }
 
-init();
-// fixed-timestep loop: update at 60Hz regardless of render rate, with catch-up cap to prevent freeze after tab inactivity
-let acc = 0, last = performance.now();
-(function loop(t) { requestAnimationFrame(loop); acc = Math.min(acc + t - last, 100); last = t; while (acc >= 16.67) { update(); acc -= 16.67; } render(); })(performance.now());
-</script>
-</body>
+      // punch a circular hole in the destruction mask + spawn debris particles
+      function explode(x, y, big) {
+        const r = big ? 28 : 18;
+        c.mctx.globalCompositeOperation = "destination-out";
+        c.mctx.beginPath();
+        c.mctx.arc(x, y, r, 0, 7);
+        c.mctx.fill();
+        for (let i = 0; i < 20; i++)
+          particles.push({
+            x,
+            y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4 - 1,
+            life: 30,
+          });
+      }
+
+      // returns index of player struck by a point, or -1
+      function hit(x, y) {
+        for (let i = 0; i < players.length; i++)
+          if (Math.hypot(players[i].x - x, players[i].y - y - 8) < 14) return i;
+        return -1;
+      }
+
+      // terrain collision: point is solid iff inside a building AND mask pixel is opaque
+      function solid(x, y) {
+        for (const b of buildings)
+          if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) {
+            const d = c.mctx.getImageData(x | 0, y | 0, 1, 1).data;
+            return d[3] > 128;
+          }
+        return false;
+      }
+
+      function update() {
+        if (mode === -1) return;
+
+        if (phase === 0) {
+          const p = players[turn];
+          if (turn === 1 && mode === 0) {
+            // CPU: iterative refinement. First shot: distance/wind estimate. Later shots: correct from last miss.
+            if (!p.aiTimer) p.aiTimer = 90;
+            if (--p.aiTimer === 0) {
+              const tx = players[0].x;
+              p.angle = 130;
+              if (p.lastMissX !== undefined) {
+                const err = p.lastMissX - tx; // banana landed at lastMissX, want tx; positive err = undershot, need more power
+                p.power = Math.max(
+                  40,
+                  Math.min(
+                    140,
+                    p.lastPower + err * 0.15 + (Math.random() - 0.5) * 4,
+                  ),
+                );
+              } else {
+                p.power = Math.max(
+                  40,
+                  Math.min(
+                    140,
+                    Math.abs(tx - p.x) * 0.42 +
+                      wind * 2 +
+                      (Math.random() - 0.5) * 10,
+                  ),
+                );
+              }
+              p.lastPower = p.power;
+              p.aiTimer = 0;
+              fire();
+            }
+          } else {
+            const p = players[turn];
+
+            if (k.ArrowLeft || k.KeyA) p.angle = Math.min(170, p.angle + 1);
+            if (k.ArrowRight || k.KeyD) p.angle = Math.max(10, p.angle - 1);
+            if (k.ArrowUp || k.KeyW) p.power = Math.min(150, p.power + 1);
+            if (k.ArrowDown || k.KeyS) p.power = Math.max(10, p.power - 1);
+
+            if (k.Space && !k._sp) {
+              k._sp = 1;
+              fire();
+            }
+            if (!k.Space) k._sp = 0;
+          }
+        } else if (phase === 1 && banana) {
+          banana.vx += wind * 0.002;
+          banana.vy += 0.15;
+          banana.x += banana.vx;
+          banana.y += banana.vy;
+          banana.t++;
+          if (banana.x < -50 || banana.x > W + 50 || banana.y > H) {
+            if (turn === 1) players[1].lastMissX = banana.x;
+            banana = null;
+            phase = 0;
+            turn = 1 - turn;
+            return;
+          } // off-screen, pass turn
+          // launch grace: skip collision checks for the first few frames so the banana clears its own shooter and rooftop
+          const h = banana.t > 8 ? hit(banana.x, banana.y) : -1;
+          if (h >= 0) {
+            explode(banana.x, banana.y, true);
+            players[h].hp = 0;
+
+            const winner = h === turn ? 1 - turn : turn;
+            score[winner]++;
+
+            banana = null;
+            phase = 2;
+
+            msg =
+              h === turn
+                ? "SELF-DESTRUCT!"
+                : mode === 0
+                  ? winner === 0
+                    ? "YOU WIN!"
+                    : "CPU WINS!"
+                  : winner === 0
+                    ? "P1 WINS!"
+                    : "P2 WINS!";
+
+            msgT = 0;
+            return;
+          }
+          if (banana.t > 3 && solid(banana.x, banana.y)) {
+            if (turn === 1) players[1].lastMissX = banana.x;
+            explode(banana.x, banana.y, false);
+            banana = null;
+            phase = 0;
+            turn = 1 - turn;
+          }
+        } else if (phase === 2) {
+          // round over: wait for input after a delay so an accidental press doesn't skip the message
+          msgT++;
+          if (
+            msgT > 150 &&
+            (k.Space || (touchStart && performance.now() - touchStart[2] > 100))
+          ) {
+            init();
+          }
+        }
+        // particle physics (debris from explosions)
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.2;
+          if (--p.life <= 0) particles.splice(i, 1);
+        }
+        // ambient: occasionally toggle one random window in one random building
+        if (Math.random() < 0.04) {
+          const b = buildings[(Math.random() * buildings.length) | 0];
+          if (b.wins.length) {
+            const w = b.wins[(Math.random() * b.wins.length) | 0];
+            w[2] = !w[2];
+          }
+        }
+      }
+
+      function drawGorilla(p, idx) {
+        ctx.fillStyle = p.hp ? "#3a2" : "#633";
+        ctx.fillRect(p.x - 6, p.y - 16, 12, 8);
+        ctx.fillRect(p.x - 8, p.y - 8, 16, 10);
+        ctx.fillRect(p.x - 6, p.y + 2, 5, 6);
+        ctx.fillRect(p.x + 1, p.y + 2, 5, 6);
+        // aim line on active player
+        if (phase === 0 && idx === turn && p.hp) {
+          const rad = (p.angle * Math.PI) / 180,
+            len = 12 + p.power * 0.15;
+          ctx.strokeStyle = "#ff0";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y - 8);
+          ctx.lineTo(p.x + Math.cos(rad) * len, p.y - 8 - Math.sin(rad) * len);
+          ctx.stroke();
+          ctx.fillStyle = "#ff0";
+          ctx.fillRect(
+            p.x + Math.cos(rad) * len - 2,
+            p.y - 8 - Math.sin(rad) * len - 2,
+            4,
+            4,
+          );
+        }
+      }
+
+      function render() {
+        ctx.fillStyle = "#101040";
+        ctx.fillRect(0, 0, W, H);
+        // stars: brightness oscillates per-star using its phase offset and a shared time base
+        const t = performance.now() * 0.003;
+        for (const [sx, sy, ph] of stars) {
+          const a = 0.4 + 0.6 * (Math.sin(t + ph) * 0.5 + 0.5);
+          ctx.fillStyle = `rgba(255,255,255,${a})`;
+          ctx.fillRect(sx | 0, sy | 0, 1, 1);
+        }
+        ctx.fillStyle = "#fd0";
+        ctx.beginPath();
+        ctx.arc(W / 2, 50, 20, 0, 7);
+        ctx.fill(); // sun
+
+        // buildings on offscreen canvas, masked against destruction layer for pixel-perfect destructible terrain
+        if (!c.tmp) {
+          c.tmp = document.createElement("canvas");
+          c.tmp.width = W;
+          c.tmp.height = H;
+          c.tctx = c.tmp.getContext("2d");
+        }
+        const tctx = c.tctx;
+        tctx.globalCompositeOperation = "source-over";
+        tctx.clearRect(0, 0, W, H);
+        for (const b of buildings) {
+          tctx.fillStyle = b.color;
+          tctx.fillRect(b.x, b.y, b.w, b.h);
+          tctx.fillStyle = "rgba(255,255,100,.6)";
+          for (const [wx, wy, lit] of b.wins)
+            if (lit) tctx.fillRect(b.x + wx, b.y + wy, 4, 6);
+        }
+        tctx.globalCompositeOperation = "destination-in";
+        tctx.drawImage(c.mask, 0, 0);
+        ctx.drawImage(c.tmp, 0, 0);
+
+        players.forEach(drawGorilla);
+        // banana: spinning crescent, rotation driven by flight time
+        if (banana) {
+          ctx.save();
+          ctx.translate(banana.x, banana.y);
+          ctx.rotate(banana.t * 0.25);
+          ctx.fillStyle = "#fd0";
+          ctx.beginPath();
+          ctx.arc(0, 3, 9, Math.PI * 1.1, Math.PI * 1.9);
+          ctx.arc(0, -2, 6, Math.PI * 1.85, Math.PI * 1.15, true);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "#a70";
+          ctx.fillRect(-1, -7, 2, 2); // stem
+          ctx.restore();
+        }
+        ctx.fillStyle = "#fa0";
+        for (const p of particles) ctx.fillRect(p.x | 0, p.y | 0, 2, 2);
+
+        // HUD
+        if (mode !== -1) {
+          ctx.fillStyle = "#fff";
+          ctx.font = "12px monospace";
+
+          const leftLabel =
+            mode === 0
+              ? turn === 0
+                ? "YOU"
+                : "CPU"
+              : turn === 0
+                ? "P1"
+                : "P2";
+
+          const rightLabel = mode === 0 ? "CPU" : "P2";
+
+          const p = players[turn];
+          ctx.textAlign = "left";
+          ctx.fillText(leftLabel, 8, 14);
+          ctx.fillText(`ANGLE: ${p.angle | 0}`, 8, 28);
+          ctx.fillText(`POWER: ${p.power | 0}`, 8, 42);
+
+          const other = players[1];
+          ctx.textAlign = "right";
+          ctx.fillText(rightLabel, W - 8, 14);
+          ctx.fillText(`ANGLE: ${other.angle | 0}`, W - 8, 28);
+          ctx.fillText(`POWER: ${other.power | 0}`, W - 8, 42);
+
+          ctx.textAlign = "center";
+          ctx.fillText(
+            `WIND: ${wind > 0 ? "→" : "←"} ${Math.abs(wind) | 0}`,
+            W / 2,
+            16,
+          );
+
+          const scoreText = `${score[0]} > SCORE < ${score[1]}`;
+
+          const padX = 8,
+            padY = 4;
+          const textW = ctx.measureText(scoreText).width;
+          const boxW = textW + padX * 2;
+          const boxH = 12 + padY * 2;
+
+          const sx = (W - boxW) / 2;
+          const sy = H - boxH - 6;
+
+          ctx.fillStyle = "#101040";
+          ctx.fillRect(sx, sy, boxW, boxH);
+
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(scoreText, W / 2, sy + boxH / 2);
+          ctx.textBaseline = "alphabetic";
+        }
+
+        ctx.textAlign = "start";
+
+        if (mode === -1) {
+          // subtle darken (keeps scene visible)
+          ctx.fillStyle = "rgba(0,0,0,.4)";
+          ctx.fillRect(0, 0, W, H);
+
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+
+          ctx.fillText("CHOOSE MODE", W / 2, 120);
+
+          ctx.fillText("LEFT SIDE", W / 4, 190);
+          ctx.fillText("P1 vs CPU", W / 4, 210);
+
+          ctx.fillText("RIGHT SIDE", (W * 3) / 4, 190);
+          ctx.fillText("P1 vs P2", (W * 3) / 4, 210);
+
+          ctx.textAlign = "start";
+        } else if (phase === 2) {
+          ctx.fillStyle = "rgba(0,0,0,.7)";
+          ctx.fillRect(80, 160, W - 160, 80);
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.fillText(msg, W / 2, 195);
+          if (msgT > 150) ctx.fillText("SPACE / TAP to play again", W / 2, 220);
+          ctx.textAlign = "start";
+        }
+      }
+
+      init();
+      // fixed-timestep loop: update at 60Hz regardless of render rate, with catch-up cap to prevent freeze after tab inactivity
+      let acc = 0,
+        last = performance.now();
+      (function loop(t) {
+        requestAnimationFrame(loop);
+        acc = Math.min(acc + t - last, 100);
+        last = t;
+        while (acc >= 16.67) {
+          update();
+          acc -= 16.67;
+        }
+        render();
+      })(performance.now());
+    </script>
+  </body>
 </html>
