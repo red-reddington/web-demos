@@ -4,28 +4,32 @@
     "title": "Interactive Grass",
     "category": "Three.js",
     "description": "Grass reacting to player + wind simulation",
-    "created": "2025-11-06"
+    "created": "2025-11-06",
+    "thumb": "threejs-interactive-grass.jpg"
   },
   {
     "folder": "threejs-complete-sky-system",
     "title": "Complete Sky System",
     "category": "Three.js",
     "description": "Full dynamic day/night sky system",
-    "created": "2025-11-04"
+    "created": "2025-11-04",
+    "thumb": "threejs-complete-sky-system.jpg"
   },
   {
     "folder": "threejs-water-ripples",
     "title": "Water Ripples",
     "category": "Three.js",
     "description": "Screen-space water ripple system",
-    "created": "2025-10-28"
+    "created": "2025-10-28",
+    "thumb": "threejs-water-ripples.jpg"
   },
   {
     "folder": "threejs-xzfog",
     "title": "XZ Fog",
     "category": "Three.js",
     "description": "Horizontal distance-based fog",
-    "created": "2025-10-20"
+    "created": "2025-10-20",
+    "thumb": "threejs-xzfog.jpg"
   },
 
   {
@@ -33,125 +37,143 @@
     "title": "Nibbles.BAS JS",
     "category": "Game",
     "description": "Canvas 2D tribute to classic QBasic game",
-    "created": "2026-05-03"
+    "created": "2026-05-03",
+    "thumb": "nibbles.jpg"
   },
   {
     "folder": "jumping-jack",
     "title": "Jumping Jack",
     "category": "Game",
     "description": "Retro 2D platformer",
-    "created": "2026-04-28"
+    "created": "2026-04-28",
+    "thumb": "jumping-jack.jpg"
   },
   {
     "folder": "velvetshuffle-cards",
     "title": "VelvetShuffle — Card Games",
     "category": "Game",
     "description": "Original procedural card games",
-    "created": "2026-04-20"
+    "created": "2026-04-20",
+    "thumb": "velvetshuffle-cards.jpg"
   },
   {
     "folder": "threejs-instanced-windmills",
     "title": "Instanced Windmills",
     "category": "Three.js",
     "description": "Large-scale instanced windmill rendering",
-    "created": "2026-02-18"
+    "created": "2026-02-18",
+    "thumb": "threejs-instanced-windmills.jpg"
   },
   {
     "folder": "wheres-walter",
     "title": "Where’s Walter?",
     "category": "Game",
     "description": "Instanced crowd engine + search gameplay",
-    "created": "2026-02-16"
+    "created": "2026-02-16",
+    "thumb": "wheres-walter.jpg"
   },
   {
     "folder": "calendar-cubes",
     "title": "Calendar Cubes",
     "category": "Other",
     "description": "Date cubes with clever 6↔9 flipping logic",
-    "created": "2026-02-13"
+    "created": "2026-02-13",
+    "thumb": "calendar-cubes.jpg"
   },
   {
     "folder": "threejs-procedural-rocks-100k",
     "title": "100K Procedural Rocks",
     "category": "Three.js",
     "description": "Massive marching cubes + LOD system",
-    "created": "2026-02-01"
+    "created": "2026-02-01",
+    "thumb": "threejs-procedural-rocks-100k.jpg"
   },
   {
     "folder": "hiss-highness-snake",
     "title": "Hiss Highness Snake",
     "category": "Game",
     "description": "Procedural snake with terrain-following animation",
-    "created": "2025-12-25"
+    "created": "2025-12-25",
+    "thumb": "hiss-highness-snake.jpg"
   },
   {
     "folder": "threejs-cylinder-plane-align",
     "title": "Cylinder Plane Align",
     "category": "Three.js",
     "description": "Cylinder aligned to arbitrary plane in world space",
-    "created": "2025-12-21"
+    "created": "2025-12-21",
+    "thumb": "threejs-cylinder-plane-align.jpg"
   },
   {
-    "folder": "graveyard",
+    "folder": "threejs-screen-recording",
     "title": "Graveyard",
     "category": "Three.js",
-    "description": "Canvas + audio recording experiment",
-    "created": "2025-12-18"
+    "description": "Canvas + audio recording demonstration",
+    "created": "2025-12-18",
+    "thumb": "threejs-screen-recording.jpg"
   },
   {
     "folder": "ravenfall",
     "title": "RAVENFALL",
     "category": "Game",
     "description": "First-person raven shooter with physics",
-    "created": "2025-12-17"
+    "created": "2025-12-17",
+    "thumb": "ravenfall.jpg"
   },
   {
     "folder": "snow-brawl",
     "title": "Snow Brawl",
     "category": "Game",
     "description": "Snowball fight with AI opponents",
-    "created": "2025-12-12"
+    "created": "2025-12-12",
+    "thumb": "snow-brawl.jpg"
   },
   {
-    "folder": "threejs-procedural-forest",
+    "folder": "threejs-forest-culling",
     "title": "Procedural Instanced Forest — Culling",
     "category": "Three.js",
     "description": "Per-tree frustum culling",
-    "created": "2025-12-11"
+    "created": "2025-12-11",
+    "thumb": "threejs-forest-culling.jpg"
   },
   {
-    "folder": "threejs-procedural-forest-trees",
+    "folder": "threejs-procedural-forest",
     "title": "Procedural Instanced Forest — Real Trees",
     "category": "Three.js",
     "description": "High-performance instanced tree rendering",
-    "created": "2025-12-10"
+    "created": "2025-12-10",
+    "thumb": "threejs-procedural-forest.jpg"
   },
   {
     "folder": "threejs-ground-fog",
     "title": "Ground Fog",
     "category": "Three.js",
     "description": "High-performance ground fog effect",
-    "created": "2025-12-06"
+    "created": "2025-12-06",
+    "thumb": "threejs-ground-fog.jpg"
   },
   {
     "folder": "threejs-multi-boat-water",
     "title": "Multi-Boat Water Simulation",
     "category": "Three.js",
     "description": "Multiple boats interacting with water",
-    "created": "2025-11-27"
+    "created": "2025-11-27",
+    "thumb": "threejs-multi-boat-water.jpg"
   },
   {
     "folder": "threejs-parametric-boat",
     "title": "Parametric Boat",
     "category": "Three.js",
     "description": "Procedural boat with dynamic water physics",
-    "created": "2025-11-13"
+    "created": "2025-11-13",
+    "thumb": "threejs-parametric-boat.jpg"
   },
   {
     "folder": "threejs-volumetric-fire",
     "title": "Volumetric Fire",
     "category": "Three.js",
     "description": "Instanced volumetric fire simulation",
-    "created": "2025-11-12"
+    "created": "2025-11-12",
+    "thumb": "threejs-volumetric-fire.jpg"
   }
 ]
