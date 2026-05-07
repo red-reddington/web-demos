@@ -363,6 +363,37 @@
           padding: 28px 20px;
         }
       }
+
+      /* Custom Scrollbar Styling */
+      ::-webkit-scrollbar {
+        width: 10px; /* Thin scrollbar */
+        background-color: rgba(0, 0, 0, 0.2); /* Subtle background */
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background-color: rgba(
+          255,
+          255,
+          255,
+          0.3
+        ); /* Light, semi-transparent thumb */
+        border-radius: 5px; /* Rounded corners */
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(
+          255,
+          255,
+          255,
+          0.5
+        ); /* Slightly more visible on hover */
+      }
+
+      /* Optional: For Firefox scrollbar */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.3) rgba(0, 0, 0, 0.2);
+      }
     </style>
   </head>
 
