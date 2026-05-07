@@ -65,6 +65,17 @@
       addEventListener("resize", resize);
       resize();
 
+      // prevent iOS Safari double-tap zoom everywhere
+      ["touchstart", "touchend"].forEach((ev) => {
+        document.addEventListener(
+          ev,
+          (e) => {
+            e.preventDefault();
+          },
+          { passive: false },
+        );
+      });
+
       ctx.imageSmoothingEnabled = false;
       onkeydown = (e) => {
         k[e.code] = 1;
