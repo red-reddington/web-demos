@@ -1,0 +1,1276 @@
+<!-- https://codepen.io/the-red-reddington/full/vEyLYQX -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kokoro TTS Demo</title>
+
+    <style>
+      :root {
+        --accent: #eab308;
+        --bg: #050505;
+        --card: #101012;
+        --border: #27272a;
+        --muted: #8b8b95;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        background:
+          radial-gradient(circle at top, #1a1400 0%, #0a0a0a 40%), #050505;
+        color: #f5f5f5;
+        padding: 24px;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+      }
+
+      .card {
+        background:
+          linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.02),
+            rgba(255, 255, 255, 0)
+          ),
+          var(--card);
+        border: 1px solid var(--border);
+        border-radius: 34px;
+        overflow: hidden;
+        box-shadow:
+          0 40px 120px rgba(0, 0, 0, 0.7),
+          inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(20px);
+      }
+
+      .header {
+        position: relative;
+        padding: 54px 44px 40px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .glow {
+        position: absolute;
+        top: -120px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 600px;
+        height: 240px;
+        background: radial-gradient(
+          circle,
+          rgba(234, 179, 8, 0.25) 0%,
+          rgba(234, 179, 8, 0) 70%
+        );
+        pointer-events: none;
+      }
+
+      h1 {
+        font-size: clamp(3rem, 10vw, 6rem);
+        font-weight: 900;
+        letter-spacing: -0.09em;
+        text-align: center;
+        background: linear-gradient(
+          180deg,
+          #fff7d1 0%,
+          #facc15 45%,
+          #eab308 100%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .subtitle {
+        text-align: center;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 1.05rem;
+        letter-spacing: 0.03em;
+      }
+
+      .status-wrap {
+        display: flex;
+        justify-content: center;
+        margin-top: 24px;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 999px;
+        padding: 12px 18px;
+        color: #ddd;
+        font-size: 0.95rem;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #22c55e;
+        box-shadow: 0 0 12px #22c55e;
+        animation: pulse 1.8s infinite;
+      }
+
+      @keyframes pulse {
+        0% {
+          transform: scale(0.95);
+          opacity: 0.7;
+        }
+        70% {
+          transform: scale(1.2);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(0.95);
+          opacity: 0.7;
+        }
+      }
+
+      .main {
+        padding: 40px;
+      }
+
+      .input-grid {
+        display: grid;
+        grid-template-columns: 1fr 2fr auto;
+        gap: 14px;
+      }
+
+      select,
+      input {
+        width: 100%;
+        background: #18181b;
+        color: white;
+        border: 1px solid #303036;
+        border-radius: 18px;
+        padding: 18px 20px;
+        font-size: 1.05rem;
+        outline: none;
+        transition:
+          border-color 0.2s,
+          box-shadow 0.2s;
+      }
+
+      select:focus,
+      input:focus {
+        border-color: rgba(234, 179, 8, 0.6);
+        box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.08);
+      }
+
+      input::placeholder {
+        color: #6d6d76;
+      }
+
+      #speak-btn {
+        border: none;
+        border-radius: 18px;
+        padding: 18px 34px;
+        background: linear-gradient(180deg, #facc15, #eab308);
+        color: black;
+        font-size: 1.05rem;
+        font-weight: 800;
+        cursor: pointer;
+        transition:
+          transform 0.18s ease,
+          box-shadow 0.18s ease;
+        box-shadow:
+          0 15px 30px rgba(234, 179, 8, 0.25),
+          inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      }
+
+      #speak-btn:hover {
+        transform: translateY(-2px);
+      }
+
+      #speak-btn.stop {
+        background: linear-gradient(180deg, #fb7185, #e11d48);
+        color: white;
+        box-shadow:
+          0 15px 30px rgba(225, 29, 72, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      }
+
+      .subtitle-box {
+        position: relative;
+        margin-top: 28px;
+        min-height: 220px;
+        border-radius: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background:
+          linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.03),
+            rgba(255, 255, 255, 0)
+          ),
+          #090909;
+        overflow: hidden;
+        padding: 40px 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .subtitle-bg {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          circle at center,
+          rgba(234, 179, 8, 0.08),
+          transparent 60%
+        );
+        pointer-events: none;
+      }
+
+      #subtitle-text {
+        position: relative;
+        font-size: clamp(1.4rem, 3vw, 2rem);
+        line-height: 1.9;
+        text-align: center;
+        max-width: 92%;
+        font-weight: 500;
+        color: #f4f4f5;
+        word-wrap: break-word;
+      }
+
+      .word {
+        display: inline-block;
+        opacity: 0.45;
+        transition:
+          opacity 0.12s ease,
+          color 0.12s ease,
+          background 0.12s ease;
+        white-space: pre;
+      }
+
+      .word.spoken {
+        opacity: 0.22;
+        text-decoration: line-through;
+      }
+
+      .word.active {
+        opacity: 1;
+        color: black;
+        background: linear-gradient(180deg, #fde047, #eab308);
+        border-radius: 10px;
+        text-decoration: none;
+        box-shadow: 0 0 20px rgba(234, 179, 8, 0.25);
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+        margin-top: 20px;
+      }
+
+      .bottom-btn {
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: #161618;
+        color: #d4d4d8;
+        border-radius: 18px;
+        padding: 16px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 600;
+        transition:
+          transform 0.15s ease,
+          background 0.15s ease,
+          color 0.15s ease;
+      }
+
+      .bottom-btn:hover {
+        transform: translateY(-2px);
+        background: #222226;
+        color: white;
+      }
+
+      .console-wrap {
+        padding: 0 40px 40px;
+      }
+
+      .console-title {
+        margin-bottom: 10px;
+        color: #6d6d76;
+        font-size: 0.9rem;
+      }
+
+      .log {
+        height: 260px;
+        overflow-y: auto;
+        border-radius: 24px;
+        background: #090909;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 22px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.92rem;
+        line-height: 1.8;
+      }
+
+      .log-entry {
+        margin-bottom: 8px;
+      }
+
+      .log-time {
+        color: #5b5b63;
+      }
+
+      @media (max-width: 900px) {
+        .input-grid {
+          grid-template-columns: 1fr;
+        }
+
+        #speak-btn {
+          width: 100%;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .main,
+        .console-wrap {
+          padding-left: 20px;
+          padding-right: 20px;
+        }
+
+        .header {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+
+        .controls {
+          grid-template-columns: 1fr;
+        }
+
+        .subtitle-box {
+          padding: 28px 20px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="card">
+        <div class="header">
+          <div class="glow"></div>
+
+          <h1>KOKORO</h1>
+
+          <p class="subtitle">Local • Private • Real-Time Browser TTS</p>
+
+          <div class="status-wrap">
+            <div class="status">
+              <div class="dot"></div>
+              <span id="status-text">Loading model...</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="main">
+          <div class="input-grid">
+            <select id="voice-select"></select>
+
+            <input
+              id="text-input"
+              type="text"
+              placeholder="Type something to say..."
+            />
+
+            <button id="speak-btn">SPEAK</button>
+          </div>
+
+          <div class="subtitle-box">
+            <div class="subtitle-bg"></div>
+            <div id="subtitle-text"></div>
+          </div>
+
+          <div class="controls">
+            <button class="bottom-btn" id="random-btn">🎲 Random Demo</button>
+
+            <button class="bottom-btn" id="stop-btn">⏹ Stop</button>
+
+            <button class="bottom-btn" id="mute-btn">🔊 Mute</button>
+          </div>
+        </div>
+
+        <div class="console-wrap">
+          <div class="console-title">Console</div>
+
+          <div id="log" class="log"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const isMobile =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent,
+        );
+
+      const CONFIG = {
+        MODEL_URL:
+          "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.min.js",
+        DEFAULT_VOICE: "bm_lewis",
+      };
+
+      let ttsWorker = null;
+      let currentAudio = null;
+      let isReady = false;
+      let isSpeaking = false;
+      let isMuted = false;
+      let subtitleAnimationFrame = null;
+
+      const voiceGroups = {
+        "American English": [
+          { id: "af_heart", name: "Heart" },
+          { id: "af_alloy", name: "Alloy" },
+          { id: "af_aoede", name: "Aoede" },
+          { id: "af_bella", name: "Bella" },
+          { id: "af_jessica", name: "Jessica" },
+          { id: "af_kore", name: "Kore" },
+          { id: "af_nicole", name: "Nicole" },
+          { id: "af_nova", name: "Nova" },
+          { id: "af_river", name: "River" },
+          { id: "af_sarah", name: "Sarah" },
+          { id: "af_sky", name: "Sky" },
+          { id: "am_adam", name: "Adam" },
+          { id: "am_echo", name: "Echo" },
+          { id: "am_eric", name: "Eric" },
+          { id: "am_fenrir", name: "Fenrir" },
+          { id: "am_liam", name: "Liam" },
+          { id: "am_michael", name: "Michael" },
+          { id: "am_onyx", name: "Onyx" },
+          { id: "am_puck", name: "Puck" },
+          { id: "am_santa", name: "Santa" },
+        ],
+
+        "British English": [
+          { id: "bf_alice", name: "Alice" },
+          { id: "bf_emma", name: "Emma" },
+          { id: "bf_isabella", name: "Isabella" },
+          { id: "bf_lily", name: "Lily" },
+          { id: "bm_daniel", name: "Daniel" },
+          { id: "bm_fable", name: "Fable" },
+          { id: "bm_george", name: "George" },
+          { id: "bm_lewis", name: "Lewis" },
+        ],
+      };
+
+      const sampleSayings = [
+        "The quality from an 82 million parameter model is remarkable. Running this entirely in the browser with no server is pure magic.",
+        "This entire demo runs 100% locally in your browser. No data ever leaves your device — complete privacy by design.",
+        "Although the initial model download is around 85MB, it pays for itself many times over. You no longer need to ship large audio assets.",
+        "Local TTS like this is a game changer for game development. Imagine dynamic dialogue, reactive NPCs, and immersive audio all generated on the fly.",
+        "Many people are intimidated by local AI. This single HTML file shows how accessible and powerful it can be right now.",
+      ];
+
+      function log(message, type = "info") {
+        const logEl = document.getElementById("log");
+
+        const time = new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+
+        let color = "#c4c4cb";
+
+        if (type === "error") color = "#fb7185";
+        if (type === "warn") color = "#facc15";
+        if (type === "success") color = "#4ade80";
+
+        const div = document.createElement("div");
+
+        div.className = "log-entry";
+
+        div.innerHTML = `
+    <span class="log-time">[${time}]</span>
+    <span style="color:${color}">
+      ${message}
+    </span>
+  `;
+
+        logEl.appendChild(div);
+
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      function floatToWav(pcm, sampleRate) {
+        const buffer = new ArrayBuffer(44 + pcm.length * 2);
+        const view = new DataView(buffer);
+
+        let offset = 0;
+
+        const writeString = (str) => {
+          for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset++, str.charCodeAt(i));
+          }
+        };
+
+        writeString("RIFF");
+
+        view.setUint32(offset, 36 + pcm.length * 2, true);
+        offset += 4;
+
+        writeString("WAVE");
+        writeString("fmt ");
+
+        view.setUint32(offset, 16, true);
+        offset += 4;
+
+        view.setUint16(offset, 1, true);
+        offset += 2;
+
+        view.setUint16(offset, 1, true);
+        offset += 2;
+
+        view.setUint32(offset, sampleRate, true);
+        offset += 4;
+
+        view.setUint32(offset, sampleRate * 2, true);
+        offset += 4;
+
+        view.setUint16(offset, 2, true);
+        offset += 2;
+
+        view.setUint16(offset, 16, true);
+        offset += 2;
+
+        writeString("data");
+
+        view.setUint32(offset, pcm.length * 2, true);
+        offset += 4;
+
+        for (let i = 0; i < pcm.length; i++, offset += 2) {
+          const s = Math.max(-1, Math.min(1, pcm[i]));
+
+          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        }
+
+        return buffer;
+      }
+
+      function renderSubtitles(timestamps) {
+        const container = document.getElementById("subtitle-text");
+
+        container.innerHTML = "";
+
+        timestamps.forEach((t, i) => {
+          const span = document.createElement("span");
+
+          span.className = "word";
+          span.dataset.index = i;
+
+          span.textContent = t.word + " ";
+
+          container.appendChild(span);
+        });
+      }
+
+      function animateSubtitles(timestamps) {
+        if (!currentAudio) return;
+
+        cancelAnimationFrame(subtitleAnimationFrame);
+
+        const words = document.querySelectorAll(".word");
+
+        const update = () => {
+          if (!currentAudio) return;
+
+          const currentTime = currentAudio.currentTime;
+
+          timestamps.forEach((t, i) => {
+            const el = words[i];
+
+            if (!el) return;
+
+            el.classList.remove("active", "spoken");
+
+            if (currentTime >= t.start && currentTime <= t.end) {
+              el.classList.add("active");
+            } else if (currentTime > t.end) {
+              el.classList.add("spoken");
+            }
+          });
+
+          if (!currentAudio.paused) {
+            subtitleAnimationFrame = requestAnimationFrame(update);
+          }
+        };
+
+        update();
+      }
+
+      function clearSubtitles() {
+        cancelAnimationFrame(subtitleAnimationFrame);
+        document.getElementById("subtitle-text").innerHTML = "";
+      }
+
+      function cleanup(url = null) {
+        cancelAnimationFrame(subtitleAnimationFrame);
+
+        if (currentAudio) {
+          currentAudio.pause();
+        }
+
+        currentAudio = null;
+
+        isSpeaking = false;
+
+        updateSpeakButton();
+
+        clearSubtitles();
+
+        if (url) {
+          URL.revokeObjectURL(url);
+        }
+      }
+
+      function playAudio(pcm, sampleRate, timestamps) {
+        cleanup();
+
+        isSpeaking = true;
+
+        updateSpeakButton();
+
+        renderSubtitles(timestamps);
+
+        const wav = floatToWav(pcm, sampleRate);
+
+        const blob = new Blob([wav], {
+          type: "audio/wav",
+        });
+
+        const url = URL.createObjectURL(blob);
+
+        currentAudio = new Audio(url);
+
+        currentAudio.volume = isMuted ? 0 : 1;
+
+        currentAudio.onplay = () => {
+          animateSubtitles(timestamps);
+        };
+
+        currentAudio.onended = () => {
+          cleanup(url);
+        };
+
+        currentAudio.play().catch((err) => {
+          log(err.message, "error");
+          cleanup(url);
+        });
+      }
+
+      function updateSpeakButton() {
+        const btn = document.getElementById("speak-btn");
+
+        btn.textContent = isSpeaking ? "STOP" : "SPEAK";
+
+        btn.classList.toggle("stop", isSpeaking);
+      }
+
+      function stopSpeech() {
+        cleanup();
+      }
+
+      function toggleMute() {
+        isMuted = !isMuted;
+
+        const btn = document.getElementById("mute-btn");
+
+        btn.textContent = isMuted ? "🔇 Unmute" : "🔊 Mute";
+
+        if (currentAudio) {
+          currentAudio.volume = isMuted ? 0 : 1;
+        }
+      }
+
+      function randomSaying() {
+        if (!isReady) {
+          log("Model still loading...", "warn");
+          return;
+        }
+
+        const langs = Object.keys(voiceGroups);
+
+        const randomLang = langs[Math.floor(Math.random() * langs.length)];
+
+        const group = voiceGroups[randomLang];
+
+        const voice = group[Math.floor(Math.random() * group.length)];
+
+        let randomSentence =
+          sampleSayings[Math.floor(Math.random() * sampleSayings.length)];
+
+        if (
+          randomSentence === document.getElementById("text-input").value &&
+          sampleSayings.length > 1
+        ) {
+          randomSentence =
+            sampleSayings[
+              (sampleSayings.indexOf(randomSentence) + 1) % sampleSayings.length
+            ];
+        }
+
+        document.getElementById("voice-select").value = voice.id;
+
+        document.getElementById("text-input").value = randomSentence;
+
+        toggleSpeak();
+      }
+
+      function toggleSpeak() {
+        if (!isReady) {
+          log("Model still loading...", "warn");
+          return;
+        }
+
+        if (isSpeaking) {
+          stopSpeech();
+          return;
+        }
+
+        const text = document.getElementById("text-input").value.trim();
+
+        if (!text) {
+          log("Please enter text", "warn");
+          return;
+        }
+
+        const voice = document.getElementById("voice-select").value;
+
+        log(`Generating speech with ${voice}...`);
+
+        ttsWorker.postMessage({
+          cmd: "speak",
+          text,
+          voice,
+        });
+      }
+
+      async function initTTS() {
+        const deviceStr = isMobile
+          ? "MOBILE (WASM + q4)"
+          : "DESKTOP (WebGPU + fp32)";
+
+        log(`Device detected: ${deviceStr}`);
+
+        const workerCode = `
+let tts=null;
+let filesProgress={};
+let lastWordTimestamps=null;
+
+function progress(ev){
+
+  if(ev.status==="progress"){
+
+    if(!filesProgress.hasOwnProperty(ev.file)){
+      filesProgress[ev.file]={
+        loaded:0,
+        total:0
+      };
+    }
+
+    filesProgress[ev.file].loaded=ev.loaded;
+    filesProgress[ev.file].total=ev.total;
+
+    let loaded=0;
+    let total=0;
+
+    for(let key in filesProgress){
+      loaded+=filesProgress[key].loaded;
+      total+=filesProgress[key].total;
+    }
+
+    self.postMessage({
+      type:"progress",
+      loaded,
+      total,
+      percent:total>0?(loaded/total)*100:0
+    });
+  }
+}
+
+function normalizeText(text){
+
+  const split_num=(match)=>{
+
+    if(match.includes(".")) return match;
+
+    if(match.includes(":")){
+
+      let [h,m]=match.split(":").map(Number);
+
+      if(m===0) return \`\${h} o'clock\`;
+
+      if(m<10) return \`\${h} oh \${m}\`;
+
+      return \`\${h} \${m}\`;
+    }
+
+    let year=parseInt(match.slice(0,4),10);
+
+    if(year<1100||year%1000<10){
+      return match;
+    }
+
+    let left=match.slice(0,2);
+
+    let right=parseInt(match.slice(2,4),10);
+
+    let suffix=match.endsWith("s")?"s":"";
+
+    if(year%1000>=100&&year%1000<=999){
+
+      if(right===0){
+        return \`\${left} hundred\${suffix}\`;
+      }
+
+      if(right<10){
+        return \`\${left} oh \${right}\${suffix}\`;
+      }
+    }
+
+    return \`\${left} \${right}\${suffix}\`;
+  };
+
+  const flip_money=(match)=>{
+
+    const bill=match[0]==="$"
+      ?"dollar"
+      :"pound";
+
+    if(isNaN(Number(match.slice(1)))){
+      return \`\${match.slice(1)} \${bill}s\`;
+    }
+
+    if(!match.includes(".")){
+
+      let suffix=match.slice(1)==="1"
+        ?""
+        :"s";
+
+      return \`\${match.slice(1)} \${bill}\${suffix}\`;
+    }
+
+    const [b,c]=match.slice(1).split(".");
+
+    const d=parseInt(c.padEnd(2,"0"),10);
+
+    let coins=
+      match[0]==="$"
+        ?d===1?"cent":"cents"
+        :d===1?"penny":"pence";
+
+    return \`\${b} \${bill}\${b==="1"?"":"s"} and \${d} \${coins}\`;
+  };
+
+  const point_num=(match)=>{
+
+    let [a,b]=match.split(".");
+
+    return \`\${a} point \${b.split("").join(" ")}\`;
+  };
+
+  return (
+    text
+      .replace(/['']/g,"'")
+      .replace(/[""]/g,'"')
+      .replace(/、/g,", ")
+      .replace(/。/g,". ")
+      .replace(/！/g,"! ")
+      .replace(/，/g,", ")
+      .replace(/：/g,": ")
+      .replace(/；/g,"; ")
+      .replace(/？/g,"? ")
+      .replace(/[^\\S \\n]/g," ")
+      .replace(/  +/g," ")
+      .replace(/\\bD[Rr]\\.(?= [A-Z])/g,"Doctor")
+      .replace(/\\b(?:Mr\\.|MR\\.(?= [A-Z]))/g,"Mister")
+      .replace(/\\b(?:Ms\\.|MS\\.(?= [A-Z]))/g,"Miss")
+      .replace(/\\b(?:Mrs\\.|MRS\\.(?= [A-Z]))/g,"Mrs")
+      .replace(/\\betc\\.(?! [A-Z])/gi,"etc")
+      .replace(/\\d*\\.\\d+|\\b\\d{4}s?\\b/g,split_num)
+      .replace(/[$£]\\d+(?:\\.\\d+)?(?:\\s*(?:hundred|thousand|(?:[bm]|tr)illion))*\\b/gi,flip_money)
+      .replace(/\\d+\\.\\d+/g,point_num)
+      .trim()
+  );
+}
+
+self.onmessage=async(e)=>{
+
+  const {
+    cmd,
+    text,
+    voice
+  }=e.data;
+
+  if(cmd==="init"){
+
+    try{
+
+      self.postMessage({
+        type:"status",
+        text:"Downloading model..."
+      });
+
+      const { KokoroTTS }=await import("${CONFIG.MODEL_URL}");
+
+      try{
+
+        tts=await KokoroTTS.from_pretrained(
+          "onnx-community/Kokoro-82M-v1.0-ONNX-timestamped",
+          {
+            dtype:${isMobile ? '"q4"' : '"fp32"'},
+            device:${isMobile ? '"wasm"' : '"webgpu"'},
+            progress_callback:progress
+          }
+        );
+
+      }catch(err){
+
+        self.postMessage({
+          type:"status",
+          text:"WebGPU failed — falling back to WASM..."
+        });
+
+        tts=await KokoroTTS.from_pretrained(
+          "onnx-community/Kokoro-82M-v1.0-ONNX-timestamped",
+          {
+            dtype:"q4",
+            device:"wasm",
+            progress_callback:progress
+          }
+        );
+      }
+
+      const model=tts.model;
+
+      const originalCall=model._call.bind(model);
+
+      model._call=async function(...args){
+
+        const output=await originalCall(...args);
+
+        if(output.durations){
+
+          const durations=Array.from(output.durations.data);
+
+          const inputIds=args[0]?.input_ids
+            ?Array.from(args[0].input_ids.data)
+            :[];
+
+          const sampleRate=24000;
+
+          const samplesPerUnit=
+            output.waveform.data.length/
+            durations.reduce((a,b)=>a+b,0);
+
+          const durationsInSeconds=durations.map(
+            d=>(d*samplesPerUnit)/sampleRate
+          );
+
+          const decodedTokens=inputIds.map((id)=>{
+
+            try{
+              return tts.tokenizer.decode(
+                [id],
+                {skip_special_tokens:false}
+              );
+            }catch{
+              return "["+id+"]";
+            }
+          });
+
+          let cumulative=0;
+
+          const phonemeTimestamps=durationsInSeconds.map((dur,i)=>{
+
+            const start=cumulative;
+
+            cumulative+=dur;
+
+            return {
+              index:i,
+              token:decodedTokens[i],
+              start,
+              end:cumulative,
+              duration:dur
+            };
+          });
+
+          const wordTimestamps=[];
+
+          let currentWord={
+            phonemes:[],
+            start:null,
+            end:null
+          };
+
+          for(const p of phonemeTimestamps){
+
+            if(p.token==="$"||p.token===" "){
+
+              if(currentWord.phonemes.length>0){
+
+                currentWord.end=
+                  currentWord.phonemes[
+                    currentWord.phonemes.length-1
+                  ].end;
+
+                wordTimestamps.push(currentWord);
+
+                currentWord={
+                  phonemes:[],
+                  start:null,
+                  end:null
+                };
+              }
+
+            }else{
+
+              if(currentWord.start===null){
+                currentWord.start=p.start;
+              }
+
+              currentWord.phonemes.push(p);
+            }
+          }
+
+          if(currentWord.phonemes.length>0){
+
+            currentWord.end=
+              currentWord.phonemes[
+                currentWord.phonemes.length-1
+              ].end;
+
+            wordTimestamps.push(currentWord);
+          }
+
+          lastWordTimestamps=wordTimestamps;
+        }
+
+        return output;
+      };
+
+      self.postMessage({
+        type:"ready"
+      });
+
+    }catch(err){
+
+      self.postMessage({
+        type:"error",
+        error:err.message
+      });
+    }
+
+    return;
+  }
+
+  if(cmd==="speak"){
+
+    if(!tts) return;
+
+    try{
+
+      lastWordTimestamps=null;
+
+      const result=await tts.generate(text,{
+        voice:voice||"bm_lewis",
+        speed:1
+      });
+
+      const pcm=result.audio;
+
+      const sampleRate=result.sampling_rate;
+
+      const normalizedText=normalizeText(text);
+
+      const displayWords=
+        normalizedText
+          .match(/\\b[\\w']+[.,!?;:…]*|\\S+/g)
+          ?.filter(Boolean)??[];
+
+      let timestamps;
+
+      if(lastWordTimestamps&&lastWordTimestamps.length>0){
+
+        const numModelWords=lastWordTimestamps.length;
+
+        const numDisplayWords=displayWords.length;
+
+        if(numModelWords===numDisplayWords){
+
+          timestamps=displayWords.map((word,i)=>({
+            word,
+            start:lastWordTimestamps[i].start,
+            end:lastWordTimestamps[i].end
+          }));
+
+        }else{
+
+          timestamps=displayWords.map((word,i)=>{
+
+            const modelIdx=Math.min(
+              Math.floor((i*numModelWords)/numDisplayWords),
+              numModelWords-1
+            );
+
+            return {
+              word,
+              start:lastWordTimestamps[modelIdx].start,
+              end:lastWordTimestamps[modelIdx].end
+            };
+          });
+        }
+
+      }else{
+
+        const totalDuration=pcm.length/sampleRate;
+
+        const avgDuration=totalDuration/displayWords.length;
+
+        timestamps=displayWords.map((word,i)=>({
+          word,
+          start:i*avgDuration,
+          end:(i+1)*avgDuration
+        }));
+      }
+
+      self.postMessage(
+        {
+          type:"audio",
+          pcm,
+          sampleRate,
+          timestamps
+        },
+        [pcm.buffer]
+      );
+
+    }catch(err){
+
+      self.postMessage({
+        type:"error",
+        error:err.message
+      });
+    }
+  }
+};
+`;
+
+        const blob = new Blob([workerCode], { type: "application/javascript" });
+
+        ttsWorker = new Worker(URL.createObjectURL(blob), { type: "module" });
+
+        ttsWorker.onmessage = (e) => {
+          const d = e.data;
+
+          if (d.type === "status") {
+            document.getElementById("status-text").textContent = d.text;
+
+            log(d.text);
+          }
+
+          if (d.type === "progress") {
+            document.getElementById("status-text").textContent =
+              "Downloading model... " + d.percent.toFixed(1) + "%";
+          }
+
+          if (d.type === "ready") {
+            isReady = true;
+
+            document.getElementById("status-text").innerHTML = "✅ Model Ready";
+
+            log("Kokoro TTS initialized successfully", "success");
+          }
+
+          if (d.type === "audio") {
+            playAudio(d.pcm, d.sampleRate, d.timestamps);
+          }
+
+          if (d.type === "error") {
+            log("ERROR: " + d.error, "error");
+
+            document.getElementById("status-text").textContent =
+              "Initialization failed";
+          }
+        };
+
+        ttsWorker.postMessage({
+          cmd: "init",
+        });
+      }
+
+      window.addEventListener("load", () => {
+        const select = document.getElementById("voice-select");
+
+        Object.keys(voiceGroups).forEach((lang) => {
+          const optgroup = document.createElement("optgroup");
+
+          optgroup.label = lang;
+
+          voiceGroups[lang].forEach((v) => {
+            const option = document.createElement("option");
+
+            option.value = v.id;
+
+            option.textContent = v.name;
+
+            if (v.id === CONFIG.DEFAULT_VOICE) {
+              option.selected = true;
+            }
+
+            optgroup.appendChild(option);
+          });
+
+          select.appendChild(optgroup);
+        });
+
+        document
+          .getElementById("speak-btn")
+          .addEventListener("click", toggleSpeak);
+
+        document
+          .getElementById("stop-btn")
+          .addEventListener("click", stopSpeech);
+
+        document
+          .getElementById("mute-btn")
+          .addEventListener("click", toggleMute);
+
+        document
+          .getElementById("random-btn")
+          .addEventListener("click", randomSaying);
+
+        document
+          .getElementById("text-input")
+          .addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              toggleSpeak();
+            }
+          });
+
+        initTTS();
+      });
+    </script>
+  </body>
+</html>
