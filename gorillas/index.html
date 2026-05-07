@@ -84,46 +84,60 @@
         const r = c.getBoundingClientRect();
         return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
       };
+
       addEventListener("pointerdown", (e) => {
         const [x, y] = pos(e);
         if (mode === -1) {
           mode = x < 0.5 ? 0 : 1;
           init();
           return;
-        } // mode select screen
+        }
+
         touchStart = [x, y, performance.now()];
         touchSide = x < 0.5 ? -1 : 1;
       });
+
       addEventListener("pointermove", (e) => {
-        if (!touchStart || phase !== 0 || turn !== 0) return;
+        if (!touchStart || phase !== 0) return;
+
+        const currentPlayer = players[turn];
+        if (!currentPlayer.hp) return;
+
         const [, y] = pos(e),
-          dy = (touchStart[1] - y) * 60; // drag distance scaled to angle/power range
-        if (touchSide < 0)
-          players[0].angle = Math.max(
+          dy = (touchStart[1] - y) * 60; // drag distance scaled
+
+        if (touchSide < 0) {
+          // left side = angle
+          currentPlayer.angle = Math.max(
             10,
-            Math.min(170, players[0].baseAngle + dy),
+            Math.min(170, currentPlayer.baseAngle + dy),
           );
-        else
-          players[0].power = Math.max(
+        } else {
+          // right side = power
+          currentPlayer.power = Math.max(
             10,
-            Math.min(150, players[0].basePower + dy),
+            Math.min(150, currentPlayer.basePower + dy),
           );
+        }
       });
+
       addEventListener("pointerup", (e) => {
         if (!touchStart) return;
+
         const dt = performance.now() - touchStart[2],
           [x, y] = pos(e),
           moved = Math.hypot(x - touchStart[0], y - touchStart[1]);
-        if (
-          dt < 250 &&
-          moved < 0.03 &&
-          touchSide > 0 &&
-          phase === 0 &&
-          turn === 0
-        )
-          fire(); // short stationary tap on right side = fire
-        players[0].baseAngle = players[0].angle;
-        players[0].basePower = players[0].power;
+
+        // tap right side = fire
+        if (dt < 250 && moved < 0.03 && touchSide > 0 && phase === 0) {
+          fire();
+        }
+
+        // save base values for current player
+        const currentPlayer = players[turn];
+        currentPlayer.baseAngle = currentPlayer.angle;
+        currentPlayer.basePower = currentPlayer.power;
+
         touchStart = null;
       });
 
