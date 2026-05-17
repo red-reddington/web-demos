@@ -1,0 +1,1412 @@
+<!-- https://codepen.io/the-red-reddington/full/VYmmdGp -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>English → Romanian Phonetic Transcriber</title>
+    <style>
+      :root {
+        --ro-blue: #002b7f;
+        --ro-yellow: #fcd116;
+        --ro-red: #ce1126;
+        --bg: #050505;
+        --card: #101012;
+        --border: #27272a;
+        --muted: #8b8b95;
+        --text: #f5f5f5;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+      body {
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        background:
+          radial-gradient(circle at top, #0d1426 0%, #0a0a0a 35%),
+          radial-gradient(circle at bottom right, #1a0510 0%, transparent 50%),
+          var(--bg);
+        color: var(--text);
+        padding: 16px;
+        padding-top: max(16px, env(safe-area-inset-top));
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+        overflow-x: hidden;
+      }
+      .container {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .card {
+        background:
+          linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.02),
+            rgba(255, 255, 255, 0)
+          ),
+          var(--card);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        overflow: hidden;
+        box-shadow:
+          0 40px 120px rgba(0, 0, 0, 0.7),
+          inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        position: relative;
+      }
+      /* Tri-color flag stripe across the top of the card */
+      .flag-stripe {
+        height: 4px;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+      .flag-stripe span:nth-child(1) {
+        background: var(--ro-blue);
+      }
+      .flag-stripe span:nth-child(2) {
+        background: var(--ro-yellow);
+      }
+      .flag-stripe span:nth-child(3) {
+        background: var(--ro-red);
+      }
+      .header {
+        padding: 28px 32px 20px;
+        text-align: center;
+        position: relative;
+      }
+      .glow {
+        position: absolute;
+        top: -80px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 520px;
+        height: 200px;
+        background: radial-gradient(
+          circle,
+          rgba(252, 209, 22, 0.18) 0%,
+          rgba(252, 209, 22, 0) 70%
+        );
+        pointer-events: none;
+      }
+      h1 {
+        font-size: clamp(1.6rem, 4vw, 2.4rem);
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        background: linear-gradient(
+          180deg,
+          #fff 0%,
+          var(--ro-yellow) 60%,
+          #c79c12 100%
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .subtitle {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+      .status-wrap {
+        display: flex;
+        justify-content: center;
+        margin-top: 16px;
+      }
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 999px;
+        padding: 8px 16px;
+        color: #ddd;
+        font-size: 0.85rem;
+        max-width: 90%;
+      }
+      .status-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 70vw;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #22c55e;
+        box-shadow: 0 0 10px #22c55e;
+        flex-shrink: 0;
+      }
+      .dot.busy {
+        background: var(--ro-yellow);
+        box-shadow: 0 0 10px var(--ro-yellow);
+        animation: pulse 1.4s infinite;
+      }
+      .dot.bad {
+        background: var(--ro-red);
+        box-shadow: 0 0 10px var(--ro-red);
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.5;
+          transform: scale(0.9);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.1);
+        }
+      }
+      .main {
+        padding: 8px 28px 28px;
+      }
+      .top-row {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+      .columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .col-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .flag-badge {
+        font-size: 1rem;
+      }
+      .speak-row {
+        display: flex;
+        gap: 8px;
+      }
+      .speak-row button {
+        flex: 1;
+      }
+      button {
+        border: none;
+        border-radius: 14px;
+        padding: 12px 18px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        font-family: inherit;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease,
+          opacity 0.15s ease;
+        -webkit-appearance: none;
+        appearance: none;
+        touch-action: manipulation;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+      .btn-primary {
+        background: linear-gradient(180deg, #fde047, var(--ro-yellow));
+        color: #1a1100;
+        box-shadow:
+          0 10px 24px rgba(252, 209, 22, 0.2),
+          inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      }
+      .btn-primary:hover:not(:disabled) {
+        transform: translateY(-2px);
+      }
+      .btn-primary:active:not(:disabled) {
+        transform: translateY(0);
+      }
+      .btn-convert {
+        padding: 14px 32px;
+        font-size: 1rem;
+      }
+      .btn-stop {
+        background: linear-gradient(180deg, #fb7185, var(--ro-red));
+        color: white;
+        box-shadow:
+          0 8px 20px rgba(206, 17, 38, 0.25),
+          inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      }
+      .btn-stop:hover:not(:disabled) {
+        transform: translateY(-2px);
+      }
+      .btn-icon {
+        font-size: 1rem;
+        line-height: 1;
+      }
+      .ta-wrap {
+        position: relative;
+        background: #0c0c0f;
+        border-radius: 14px;
+        border: 1px solid #2a2a30;
+        overflow: hidden;
+      }
+      textarea {
+        position: relative;
+        z-index: 2;
+        width: 100%;
+        height: 48vh;
+        height: 48dvh;
+        padding: 14px;
+        background: transparent;
+        color: var(--text);
+        border: none;
+        outline: none;
+        font-size: 15px;
+        line-height: 1.55;
+        resize: none;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          sans-serif;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .ta-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        padding: 14px;
+        font-size: 15px;
+        line-height: 1.55;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          sans-serif;
+        color: transparent;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .ta-overlay mark {
+        background: linear-gradient(
+          180deg,
+          rgba(0, 43, 127, 0.55) 0%,
+          rgba(0, 43, 127, 0.55) 33%,
+          rgba(252, 209, 22, 0.6) 33%,
+          rgba(252, 209, 22, 0.6) 66%,
+          rgba(206, 17, 38, 0.55) 66%,
+          rgba(206, 17, 38, 0.55) 100%
+        );
+        color: transparent;
+        border-radius: 3px;
+        padding: 0 1px;
+        box-shadow: 0 0 8px rgba(252, 209, 22, 0.25);
+      }
+      .console-wrap {
+        padding: 0 28px 24px;
+      }
+      .console-title {
+        margin-bottom: 8px;
+        color: var(--muted);
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .log {
+        max-height: 160px;
+        overflow-y: auto;
+        border-radius: 14px;
+        background: #08080a;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        padding: 14px 16px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.65;
+        color: #b4b4be;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      @media (max-width: 760px) {
+        .columns {
+          grid-template-columns: 1fr;
+        }
+        .main {
+          padding: 8px 16px 20px;
+        }
+        .header {
+          padding: 24px 20px 16px;
+        }
+        .console-wrap {
+          padding: 0 16px 20px;
+        }
+        textarea {
+          height: 32vh;
+          height: 32dvh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="card">
+        <div class="flag-stripe"><span></span><span></span><span></span></div>
+        <div class="header">
+          <div class="glow"></div>
+          <h1>English → Romanian Transcriber</h1>
+          <div class="subtitle">
+            phonetic transcription · spoken with Piper TTS
+          </div>
+          <div class="status-wrap">
+            <div class="status">
+              <span id="dot" class="dot busy"></span>
+              <span id="status" class="status-text">loading phonemize…</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="main">
+          <div class="top-row">
+            <button id="btn" class="btn-primary btn-convert" disabled>
+              <span class="btn-icon">→</span>
+              <span>Convert to Romanian</span>
+            </button>
+            <button id="stopBtn" class="btn-stop">
+              <span class="btn-icon">⏹</span>
+              <span>Stop</span>
+            </button>
+          </div>
+
+          <div class="columns">
+            <!-- English side -->
+            <div class="col">
+              <div class="col-label">
+                <span class="flag-badge">🇬🇧</span>
+                <span>English (source)</span>
+              </div>
+              <div class="speak-row">
+                <button id="speakEn" class="btn-primary">
+                  <span class="btn-icon">▶</span>
+                  <span class="speak-label">Speak English</span>
+                </button>
+              </div>
+              <div class="ta-wrap">
+                <div id="inputOverlay" class="ta-overlay"></div>
+                <textarea
+                  id="input"
+                  autocapitalize="off"
+                  autocorrect="off"
+                  spellcheck="false"
+                >
+Once upon a time, there was a sweet little girl loved by everyone who met her—but most of all by her grandmother. The old woman adored her so much that she made her a small red velvet hood. It suited her perfectly, and from that day on, everyone called her Little Red Riding Hood.
+
+One morning, her mother said, “Come, Little Red Riding Hood, here’s a piece of cake and a bottle of wine. Take them to your grandmother—she’s sick and weak, and this will do her good. Go before it gets too hot, and remember to walk carefully. Don’t stray from the path, or you might fall and break the bottle. And when you arrive, don’t forget to say good morning before you peek around her room.”
+
+“I’ll be careful, Mother,” said Little Red Riding Hood, and she promised with a smile.
+</textarea
+                >
+              </div>
+            </div>
+
+            <!-- Romanian side -->
+            <div class="col">
+              <div class="col-label">
+                <span class="flag-badge">🇷🇴</span>
+                <span>Romanian (phonetic)</span>
+              </div>
+              <div class="speak-row">
+                <button id="speakRo" class="btn-primary">
+                  <span class="btn-icon">▶</span>
+                  <span class="speak-label">Speak Romanian</span>
+                </button>
+              </div>
+              <div class="ta-wrap">
+                <div id="outputOverlay" class="ta-overlay"></div>
+                <textarea id="output" readonly></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="console-wrap">
+          <div class="console-title">Console</div>
+          <div id="log" class="log"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { phonemize } from "https://esm.sh/phonemize@1.2.0";
+
+      // Piper TTS loading (lazy — first Speak press kicks it off)
+      let tts = null;
+      let piperReady = null;
+
+      async function loadPiper() {
+        log("loading vits-web…");
+        tts =
+          await import("https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm");
+        log("vits-web ready");
+      }
+      function ensurePiper() {
+        if (!piperReady) {
+          piperReady = loadPiper().catch((e) => {
+            piperReady = null;
+            throw e;
+          });
+        }
+        return piperReady;
+      }
+
+      // iOS audio unlock; iOS Safari requires a synchronous user-gesture sound before any audio plays
+      // without this, the WAV synthesizes fine but no sound comes out and there's no error to catch
+      let audioUnlocked = false;
+      function unlockAudio() {
+        if (audioUnlocked) return;
+        try {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (!Ctx) return;
+          const ctx = new Ctx();
+          const src = ctx.createBufferSource();
+          src.buffer = ctx.createBuffer(1, 1, 22050);
+          src.connect(ctx.destination);
+          src.start(0);
+          if (ctx.state === "suspended") ctx.resume();
+          audioUnlocked = true;
+        } catch (e) {}
+      }
+
+      // ============================================================
+      // Voice config
+      // ============================================================
+      const VOICES = {
+        ro: { id: "ro_RO-mihai-medium", label: "Mihai (RO)" },
+        en: { id: "en_US-ryan-medium", label: "Ryan (EN)" },
+      };
+
+      // ============================================================
+      // TUNABLE PARAMETERS
+      // ============================================================
+      const TUNE = {
+        // Boundary-snapped down to a sentence / comma/space, so actual chunks come in a bit under
+        chunkChars: 120,
+
+        // How far back from the targetLen mark I look for a clean break
+        chunkLookback: 50,
+
+        // Fraction of current chunk's playback completed before I start synthesizing the next chunk
+        prefetchTriggerFraction: 0.3,
+
+        // Poll interval (ms) checking whether to start the prefetch.
+        prefetchPollMs: 250,
+
+        // First poll delay (ms) — gives audioEl metadata time to load so I can read its duration
+        prefetchInitialDelayMs: 250,
+      };
+
+      // ============================================================
+      // Token regexes
+      // ============================================================
+      const APOS_CHARS = "\\u0027\\u2018\\u2019\\u201A\\u201B\\u2032\\u2035";
+      const APOS_RE = new RegExp(`[${APOS_CHARS}]`, "g");
+      const TOKEN_RE = new RegExp(`([a-zA-Z${APOS_CHARS}]+)`);
+      const TOKEN_TEST_RE = new RegExp(`^[a-zA-Z${APOS_CHARS}]+$`);
+      const I_CONTRACTION_RE = new RegExp(`^I([${APOS_CHARS}][a-z]+)?$`);
+
+      // ============================================================
+      // DOM refs
+      // ============================================================
+      const inputEl = document.getElementById("input");
+      const outputEl = document.getElementById("output");
+      const inputOverlay = document.getElementById("inputOverlay");
+      const outputOverlay = document.getElementById("outputOverlay");
+      const statusEl = document.getElementById("status");
+      const dotEl = document.getElementById("dot");
+      const btn = document.getElementById("btn");
+      const speakEnBtn = document.getElementById("speakEn");
+      const speakRoBtn = document.getElementById("speakRo");
+      const stopBtn = document.getElementById("stopBtn");
+      const logEl = document.getElementById("log");
+
+      // ============================================================
+      // Logging + status indicator
+      // ============================================================
+      function log(msg) {
+        const t = Date.now() % 100000;
+        logEl.textContent += `[${t}] ${msg}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+      function setStatus(text, kind) {
+        statusEl.textContent = text; // kind: "ok" | "busy" | "bad"
+        dotEl.className = "dot" + (kind && kind !== "ok" ? " " + kind : "");
+      }
+
+      window.addEventListener("error", (e) => log("ERR: " + e.message));
+      window.addEventListener("unhandledrejection", (e) =>
+        log("REJ: " + (e.reason?.message || e.reason)),
+      );
+
+      try {
+        log("testing phonemize…");
+        const r = phonemize("hello");
+        log("phonemize ok: " + JSON.stringify(r));
+        btn.disabled = false;
+        setStatus("ready", "ok");
+      } catch (e) {
+        log("init failed: " + e.message);
+        setStatus("load failed: " + e.message, "bad");
+      }
+
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(
+        navigator.userAgent,
+      );
+      if (isMobile) {
+        log(
+          "mobile detected — Piper may be slow or get killed by the OS for memory pressure",
+        );
+      }
+
+      // ============================================================
+      // IPA → Romanian transcription
+      // ============================================================
+      function cleanStress(s) {
+        return s.replace(/ˈ/g, "").replace(/ˌ/g, "").replace(/ː/g, "");
+      }
+
+      function ipaToRomanian(str) {
+        let out = str.toLowerCase();
+
+        out = out.replace(/i$/g, "ii");
+
+        out = out
+          .replace(/ɔː/g, "o")
+          .replace(/ɑː/g, "a")
+          .replace(/ɜː/g, "ăr")
+          .replace(/iː/g, "ii")
+          .replace(/uː/g, "u")
+          .replace(/eə/g, "e")
+          .replace(/ɾ/g, "t")
+          .replace(/ɚ/g, "ăr");
+        out = cleanStress(out);
+        out = out.replace(/ɫ/g, "l").replace(/ɝ/g, "ăr");
+        out = out
+          .replace(/ᵻ/g, "i")
+          .replace(/ɪ/g, "i")
+          .replace(/ʌ/g, "a")
+          .replace(/ə/g, "ă")
+          .replace(/ɐ/g, "ă");
+        const m = [
+          [/aɪ/g, "ai"],
+          [/oʊ/g, "ău"],
+          [/eɪ/g, "ei"],
+          [/aʊ/g, "au"],
+          [/ju/g, "iu"],
+          [/tʃ/g, "č"],
+          [/dʒ/g, "ǧ"],
+          [/ʃ/g, "ș"],
+          [/ʒ/g, "j"],
+          [/ŋ/g, "ng"],
+          [/θ/g, "t"],
+          [/ð/g, "d"],
+          [/æ/g, "e"],
+        ];
+        for (const [re, rep] of m) out = out.replace(re, rep);
+        out = out
+          .replace(/ɡ/g, "g")
+          .replace(/ɔ/g, "o")
+          .replace(/ɑ/g, "a")
+          .replace(/ʊ/g, "u")
+          .replace(/ɛ/g, "e")
+          .replace(/ɹ/g, "r")
+          .replace(/w/g, "u")
+          .replace(/v/g, "v");
+
+        out = out.replace(/ge/g, "ghe").replace(/gi/g, "ghi");
+
+        out = out
+          .replace(/ks/g, "x")
+          .replace(/gs/g, "x")
+          .replace(/ts/g, "ț")
+          .replace(/dz/g, "ț")
+          .replace(/ke/g, "che")
+          .replace(/ki/g, "chi")
+          .replace(/k/g, "c")
+          .replace(/č([aouă])/g, "ci$1")
+          .replace(/če/g, "ce")
+          .replace(/či/g, "ci")
+          .replace(/č/g, "ci")
+          .replace(/ǧ([aouă])/g, "gi$1")
+          .replace(/ǧe/g, "ge")
+          .replace(/ǧi/g, "gi")
+          .replace(/ǧ/g, "gi");
+        if (out.startsWith("j")) out = out.replace(/^j/, "i");
+        out = out.replace(/av\b/g, "of").trim();
+        let c = "";
+        for (let i = 0; i < out.length; i++) {
+          if (out[i] === out[i + 1] && out[i] !== "i") continue;
+          c += out[i];
+        }
+        return c;
+      }
+
+      // ============================================================
+      // Word mapping + overlay rendering
+      // ============================================================
+      // wordMap[i] = { enStart, enEnd, roStart, roEnd, syllables, t0?, t1? }
+      let wordMap = [];
+      let lastEnText = "";
+      let lastRoText = "";
+      let activeWordIdx = -1;
+      let activeLang = null; // "en" | "ro" - which side is currently being spoken
+
+      function countVowels(s) {
+        const m = s.toLowerCase().match(/[aeiouăâî]/g);
+        return m ? m.length : 1;
+      }
+      function escapeHtml(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+      function renderOverlay(overlay, text, hlStart, hlEnd) {
+        if (hlStart < 0 || hlStart >= text.length) {
+          overlay.textContent = text;
+          return;
+        }
+        const before = escapeHtml(text.slice(0, hlStart));
+        const middle = escapeHtml(text.slice(hlStart, hlEnd));
+        const after = escapeHtml(text.slice(hlEnd));
+        overlay.innerHTML = before + "<mark>" + middle + "</mark>" + after;
+      }
+      function syncOverlayScroll(textarea, overlay) {
+        overlay.scrollTop = textarea.scrollTop;
+        overlay.scrollLeft = textarea.scrollLeft;
+      }
+      function clearHighlight() {
+        activeWordIdx = -1;
+        renderOverlay(inputOverlay, lastEnText || inputEl.value, -1, -1);
+        renderOverlay(outputOverlay, lastRoText || outputEl.value, -1, -1);
+      }
+
+      // ============================================================
+      // Convert (English → Romanian + build word map)
+      // ============================================================
+      function convert() {
+        try {
+          btn.disabled = true;
+          logEl.textContent = "";
+          log("converting…");
+          const t0 = Date.now();
+
+          const text = inputEl.value;
+          const tokens = text.split(TOKEN_RE);
+          let result = "";
+          const newMap = [];
+          let enPos = 0;
+          let roPos = 0;
+
+          for (const token of tokens) {
+            if (TOKEN_TEST_RE.test(token)) {
+              const cleanToken = token.replace(APOS_RE, "");
+              let ipa = phonemize(cleanToken);
+              if (Array.isArray(ipa)) ipa = ipa.join("");
+              let converted = ipaToRomanian(ipa);
+
+              const trimmed = result.trim();
+              const atSentenceStart =
+                trimmed.length === 0 ||
+                /[.!?]$/.test(trimmed) ||
+                /[“"„«‹]$/.test(trimmed);
+
+              if (token === "I") {
+                converted = atSentenceStart ? "Ai" : "ai";
+              } else if (I_CONTRACTION_RE.test(token)) {
+                converted = "a" + converted.toLowerCase();
+                if (atSentenceStart)
+                  converted =
+                    converted.charAt(0).toUpperCase() + converted.slice(1);
+              } else if (/^[A-Z]/.test(token)) {
+                converted =
+                  converted.charAt(0).toUpperCase() + converted.slice(1);
+              }
+
+              newMap.push({
+                enStart: enPos,
+                enEnd: enPos + token.length,
+                roStart: roPos,
+                roEnd: roPos + converted.length,
+                syllables: countVowels(converted),
+              });
+              result += converted;
+              enPos += token.length;
+              roPos += converted.length;
+            } else {
+              result += token;
+              enPos += token.length;
+              roPos += token.length;
+            }
+          }
+
+          outputEl.value = result;
+          wordMap = newMap;
+          lastEnText = text;
+          lastRoText = result;
+          renderOverlay(inputOverlay, text, -1, -1);
+          renderOverlay(outputOverlay, result, -1, -1);
+          syncOverlayScroll(inputEl, inputOverlay);
+          syncOverlayScroll(outputEl, outputOverlay);
+          log(
+            "done in " + (Date.now() - t0) + "ms, " + wordMap.length + " words",
+          );
+          setStatus("ready", "ok");
+        } catch (e) {
+          log("error: " + e.message);
+          setStatus("error: " + e.message, "bad");
+        } finally {
+          btn.disabled = false;
+        }
+      }
+
+      // ============================================================
+      // Audio playback + timing-based highlighting
+      // ============================================================
+      // CHUNKING: split the text into sentence-sized chunks, synthesize each separately, play back-to-back
+      //
+      // chunks[i] = {
+      //   text:       string spoken in this chunk
+      //   startOff:   char offset where this chunk begins in lastEnText/lastRoText
+      //   endOff:     char offset where it ends (exclusive)
+      //   wordRange:  [firstWordIdx, lastWordIdx+1] indices into wordMap
+      //   blobUrl:    object-URL once synthesized (null until then)
+      //   duration:   audio duration (set after metadata loads)
+      // }
+      let chunks = [];
+      let chunkIdx = 0;
+      let nextSynthPromise = null; // Promise for the *next* chunk's synthesis (prefetch while current plays)
+      // Per-chunk t0/t1 are stored in a parallel array — wordMap stays the
+      // single source of truth for offsets, but timings are stored here so
+      // each chunk has its own time origin (0 = chunk start, not whole text).
+      let wordTimings = []; // wordTimings[wordMapIdx] = { t0, t1, chunkIdx }
+
+      let ttsState = "idle"; // "idle" | "loading" | "synthesizing" | "speaking" | "paused"
+      let audioEl = null;
+      let currentUrl = null;
+      // Token incremented every time I cleanup or switch sides
+      // Event handlers compare against the token they were registered under to detect stale events when I keep the element alive across chunks
+      let playbackToken = 0;
+
+      // iOS requires <audio>.play() to be inside a user gesture for the FIRST playback
+      // After that, the SAME element can be reused freely — but a brand-new Audio() element loses that grace
+      // So I keep one persistent <audio> element across all chunks and switch its src instead of creating a new one
+      function getPersistentAudio() {
+        if (!audioEl) {
+          audioEl = new Audio();
+          // Touch playsInline so iOS doesn't try to go fullscreen
+          audioEl.playsInline = true;
+        }
+        return audioEl;
+      }
+
+      // Split text into sentence-sized chunks (~targetLen chars each).
+      // Boundaries preferred: paragraph break > sentence-end > comma > space.
+      // Returns array of { text, startOff, endOff }.
+      function chunkText(text, targetLen = TUNE.chunkChars) {
+        const out = [];
+        let i = 0;
+        while (i < text.length) {
+          let end = Math.min(i + targetLen, text.length);
+          if (end < text.length) {
+            // Walk backwards within the lookback window, looking for the highest-priority break point
+            const windowStart = Math.max(i + 1, end - TUNE.chunkLookback);
+            let best = -1;
+            let bestRank = 0; // 4=paragraph, 3=sentence, 2=comma, 1=space
+            for (let j = end; j > windowStart; j--) {
+              const c = text[j - 1];
+              const next = text[j];
+              if (c === "\n" && next === "\n") {
+                best = j;
+                bestRank = 4;
+                break; // paragraph wins immediately
+              }
+              if (bestRank < 3 && /[.!?]/.test(c) && /\s/.test(next || " ")) {
+                best = j;
+                bestRank = 3;
+              } else if (
+                bestRank < 2 &&
+                /[,;:]/.test(c) &&
+                /\s/.test(next || " ")
+              ) {
+                best = j;
+                bestRank = 2;
+              } else if (bestRank < 1 && /\s/.test(c)) {
+                best = j;
+                bestRank = 1;
+              }
+            }
+            if (best > 0) end = best;
+          }
+          out.push({
+            text: text.slice(i, end).trim(),
+            startOff: i,
+            endOff: end,
+          });
+          i = end;
+        }
+        // Drop any empty chunks produced by trim()
+        return out.filter((c) => c.text.length > 0);
+      }
+
+      // Given a chunk and an offset key ("en" or "ro"), find which wordMap entries fall within this chunk's [startOff, endOff) range
+      function wordRangeForChunk(chunk, key) {
+        const sKey = key + "Start";
+        const eKey = key + "End";
+        let lo = -1,
+          hi = -1;
+        for (let i = 0; i < wordMap.length; i++) {
+          const ws = wordMap[i][sKey];
+          const we = wordMap[i][eKey];
+          if (we <= chunk.startOff) continue;
+          if (ws >= chunk.endOff) break;
+          if (lo === -1) lo = i;
+          hi = i + 1;
+        }
+        return [Math.max(0, lo), hi];
+      }
+
+      // Build timings for words in ONE chunk, given its measured duration.
+      // Stores into the global wordTimings array.
+      function buildTimingsForChunk(cIdx, durationSec) {
+        const chunk = chunks[cIdx];
+        if (!chunk) return;
+        const [lo, hi] = chunk.wordRange;
+        if (lo >= hi) return;
+        const PAUSE_END = 1.6;
+        const PAUSE_COMMA = 1.2;
+        const fullText = activeLang === "en" ? lastEnText : lastRoText;
+        const eKey = (activeLang === "en" ? "en" : "ro") + "End";
+        const sKey = (activeLang === "en" ? "en" : "ro") + "Start";
+        const weights = [];
+        for (let i = lo; i < hi; i++) {
+          const w = wordMap[i];
+          const trailing = fullText.slice(w[eKey], w[eKey] + 4);
+          let mult = 1;
+          if (/^[.!?]/.test(trailing)) mult = PAUSE_END;
+          else if (/^[,;:]/.test(trailing)) mult = PAUSE_COMMA;
+          const syllables =
+            activeLang === "en"
+              ? countVowels(fullText.slice(w[sKey], w[eKey]))
+              : w.syllables;
+          weights.push(syllables * mult);
+        }
+        const total = weights.reduce((a, b) => a + b, 0);
+        const secPerUnit = durationSec / total;
+        let acc = 0;
+        for (let i = lo; i < hi; i++) {
+          wordTimings[i] = {
+            t0: acc,
+            t1: acc + weights[i - lo] * secPerUnit,
+            chunkIdx: cIdx,
+          };
+          acc = wordTimings[i].t1;
+        }
+      }
+
+      // Find which word the highlight should be on, given the CURRENT chunk and time within that chunk
+      // I only consider wordTimings entries that belong to the chunk being played,
+      // thus avoiding accidentally lighting up words from a future chunk whose timings haven't been computed yet
+      function findActiveWord(secInChunk) {
+        const cIdx = chunkIdx;
+        // Iterate just the slice owned by this chunk (small loop, fast)
+        const chunk = chunks[cIdx];
+        if (!chunk) return -1;
+        const [lo, hi] = chunk.wordRange;
+        let last = lo;
+        for (let i = lo; i < hi; i++) {
+          const wt = wordTimings[i];
+          if (!wt) continue;
+          if (secInChunk < wt.t1) return i;
+          last = i;
+        }
+        return last;
+      }
+
+      function updateHighlightForTime(secInChunk) {
+        if (!wordMap.length) return;
+        const idx = findActiveWord(secInChunk);
+        if (idx < 0 || idx === activeWordIdx) return;
+        activeWordIdx = idx;
+        const w = wordMap[idx];
+        // Highlight both sides
+        renderOverlay(inputOverlay, lastEnText, w.enStart, w.enEnd);
+        renderOverlay(outputOverlay, lastRoText, w.roStart, w.roEnd);
+        if (document.activeElement !== inputEl) {
+          ensureWordVisible(inputEl, inputOverlay);
+        }
+        if (document.activeElement !== outputEl) {
+          ensureWordVisible(outputEl, outputOverlay);
+        }
+      }
+
+      function ensureWordVisible(textarea, overlay) {
+        const mark = overlay.querySelector("mark");
+        if (!mark) return;
+        const oRect = overlay.getBoundingClientRect();
+        const mRect = mark.getBoundingClientRect();
+        const topWithin = mRect.top - oRect.top;
+        const botWithin = mRect.bottom - oRect.top;
+        const h = overlay.clientHeight;
+        const PAD = 24;
+        let delta = 0;
+        if (topWithin < PAD) delta = topWithin - PAD;
+        else if (botWithin > h - PAD) delta = botWithin - (h - PAD);
+        if (delta !== 0) textarea.scrollTop += delta;
+      }
+
+      function cleanupAudio() {
+        // Bump the token so any in-flight event handlers from previous chunks immediately become no-ops on next fire
+        playbackToken += 1;
+        if (audioEl) {
+          // Detach handlers and pause, but DO NOT null out audioEl
+          // I keep the persistent element alive across stops so iOS keeps its gesture-grace for subsequent Speak presses
+          audioEl.ontimeupdate = null;
+          audioEl.onended = null;
+          audioEl.onerror = null;
+          audioEl.onloadedmetadata = null;
+          try {
+            audioEl.pause();
+          } catch (e) {}
+          // Setting src to empty stops playback and releases the buffer
+          audioEl.removeAttribute("src");
+          audioEl.load();
+        }
+        if (currentUrl) {
+          URL.revokeObjectURL(currentUrl);
+          currentUrl = null;
+        }
+        // Revoke any URLs the queue had pre-allocated for upcoming chunks
+        for (const ch of chunks) {
+          if (ch.blobUrl) {
+            URL.revokeObjectURL(ch.blobUrl);
+            ch.blobUrl = null;
+          }
+        }
+        chunks = [];
+        chunkIdx = 0;
+        nextSynthPromise = null;
+        wordTimings = [];
+        clearHighlight();
+      }
+
+      function updateButtonStates() {
+        const busy = ttsState === "loading" || ttsState === "synthesizing";
+        const speaking = ttsState === "speaking";
+        const paused = ttsState === "paused";
+
+        stopBtn.disabled = ttsState === "idle";
+
+        for (const [el, lang] of [
+          [speakEnBtn, "en"],
+          [speakRoBtn, "ro"],
+        ]) {
+          const isMine = activeLang === lang;
+          const icon = el.querySelector(".btn-icon");
+          const label = el.querySelector(".speak-label");
+          // While busy, only the active side's button stays "live" (showing the busy state)
+          // The other side is disabled to prevent races
+          el.disabled = busy && !isMine;
+          if (busy && isMine) {
+            icon.textContent = "⋯";
+            label.textContent =
+              ttsState === "loading" ? "Loading…" : "Synthesizing…";
+          } else if (speaking && isMine) {
+            icon.textContent = "⏸";
+            label.textContent = "Pause";
+          } else if (paused && isMine) {
+            icon.textContent = "▶";
+            label.textContent = "Resume";
+          } else {
+            icon.textContent = "▶";
+            label.textContent =
+              lang === "en" ? "Speak English" : "Speak Romanian";
+          }
+        }
+      }
+
+      // Synthesize one chunk's text into a WAV Blob
+      // Returns the blob URL or throws
+      async function synthesizeOneChunk(chunkText, voiceId, voiceLabel) {
+        const t0 = Date.now();
+        const wavBlob = await tts.predict({ text: chunkText, voiceId }, (p) => {
+          if (p && p.total) {
+            const pct = Math.round((p.loaded / p.total) * 100);
+            setStatus(`downloading ${voiceLabel}: ${pct}%`, "busy");
+          }
+        });
+        log(
+          "synthesized chunk: " +
+            chunkText.length +
+            " chars → " +
+            wavBlob.size +
+            " bytes in " +
+            (Date.now() - t0) +
+            "ms",
+        );
+        return URL.createObjectURL(wavBlob);
+      }
+
+      // Play the chunk at `chunkIdx`. Wires up handlers that advance to the next chunk on end, or finish playback on the last chunk
+      function playCurrentChunk() {
+        const chunk = chunks[chunkIdx];
+        if (!chunk || !chunk.blobUrl) {
+          log("playCurrentChunk: no blob for chunk " + chunkIdx);
+          return;
+        }
+        // Free the previous chunk's URL if any (I already advanced past it)
+        if (currentUrl && currentUrl !== chunk.blobUrl) {
+          URL.revokeObjectURL(currentUrl);
+        }
+        currentUrl = chunk.blobUrl;
+
+        // Reuse the persistent audio element (created during first gesture in handleSpeakClick
+        const a = getPersistentAudio();
+        const myToken = playbackToken;
+        const myChunkIdx = chunkIdx;
+
+        // Detach any previous chunk's handlers before assigning new ones
+        a.ontimeupdate = null;
+        a.onended = null;
+        a.onerror = null;
+        a.onloadedmetadata = null;
+
+        a.onloadedmetadata = () => {
+          if (
+            myToken !== playbackToken ||
+            isNaN(a.duration) ||
+            !isFinite(a.duration)
+          ) {
+            return;
+          }
+          chunk.duration = a.duration;
+          buildTimingsForChunk(myChunkIdx, a.duration);
+          log(
+            "chunk " +
+              (myChunkIdx + 1) +
+              "/" +
+              chunks.length +
+              " timings built (" +
+              a.duration.toFixed(2) +
+              "s)",
+          );
+        };
+        a.ontimeupdate = () => {
+          if (myToken !== playbackToken) return;
+          updateHighlightForTime(a.currentTime);
+        };
+        a.onended = () => {
+          if (myToken !== playbackToken) return;
+          // Free this chunk's blob URL — I won't replay it
+          if (chunk.blobUrl) {
+            URL.revokeObjectURL(chunk.blobUrl);
+            chunk.blobUrl = null;
+          }
+          currentUrl = null;
+
+          if (chunkIdx + 1 < chunks.length) {
+            chunkIdx += 1;
+            advancePlayback();
+          } else {
+            // All done. Keep the audio element alive, but reset state
+            ttsState = "idle";
+            activeLang = null;
+            cleanupAudio();
+            updateButtonStates();
+            setStatus("ready", "ok");
+          }
+        };
+        a.onerror = () => {
+          if (myToken !== playbackToken) return;
+          log("audio error on chunk " + (myChunkIdx + 1));
+          ttsState = "idle";
+          activeLang = null;
+          cleanupAudio();
+          updateButtonStates();
+        };
+        // Assign src + play
+        a.src = chunk.blobUrl;
+        a.play().catch((e) => {
+          if (myToken !== playbackToken) return;
+          log("play() rejected: " + (e.message || e));
+          ttsState = "idle";
+          activeLang = null;
+          cleanupAudio();
+          updateButtonStates();
+        });
+      }
+
+      // Wait until the currently-playing audio is past `triggerFraction` of its duration, then kick off synthesis of the given chunk
+      function scheduleNextPrefetch(nextIdx, myLang, voice) {
+        const triggerFraction = TUNE.prefetchTriggerFraction;
+        const startedAt = audioEl;
+        const startedChunkIdx = chunkIdx;
+
+        const check = () => {
+          // Bail if user stopped, switched language, or moved to a new chunk
+          if (
+            activeLang !== myLang ||
+            chunkIdx !== startedChunkIdx ||
+            audioEl !== startedAt ||
+            !audioEl ||
+            !chunks[nextIdx] ||
+            chunks[nextIdx].blobUrl
+          ) {
+            return;
+          }
+          const dur = audioEl.duration;
+          const t = audioEl.currentTime;
+          if (!isNaN(dur) && isFinite(dur) && t / dur >= triggerFraction) {
+            // Time to prefetch
+            log(
+              "prefetching chunk " +
+                (nextIdx + 1) +
+                " at " +
+                t.toFixed(1) +
+                "s (" +
+                Math.round((t / dur) * 100) +
+                "% through current)",
+            );
+            const nextChunk = chunks[nextIdx];
+            nextSynthPromise = synthesizeOneChunk(
+              nextChunk.text,
+              voice.id,
+              voice.label,
+            )
+              .then((url) => {
+                if (activeLang !== myLang || !chunks[nextIdx]) {
+                  URL.revokeObjectURL(url);
+                  return;
+                }
+                chunks[nextIdx].blobUrl = url;
+                log("prefetched chunk " + (nextIdx + 1));
+              })
+              .catch((e) => {
+                log("prefetch error: " + (e.message || e));
+              });
+            return; // done polling
+          }
+          // Not far enough yet, poll again
+          setTimeout(check, TUNE.prefetchPollMs);
+        };
+        setTimeout(check, TUNE.prefetchInitialDelayMs);
+      }
+
+      // Advance to the chunk at `chunkIdx`: make sure it's synthesized (await if not), schedule prefetch of chunkIdx+1, then play
+      async function advancePlayback() {
+        const voice = VOICES[activeLang];
+        const myChunkIdx = chunkIdx;
+        const myLang = activeLang;
+        const chunk = chunks[myChunkIdx];
+        if (!chunk) return;
+
+        try {
+          // If this chunk isn't synthesized yet, do it now (blocking)
+          if (!chunk.blobUrl) {
+            ttsState = "synthesizing";
+            setStatus(
+              `synthesizing ${myChunkIdx + 1}/${chunks.length}…`,
+              "busy",
+            );
+            updateButtonStates();
+            chunk.blobUrl = await synthesizeOneChunk(
+              chunk.text,
+              voice.id,
+              voice.label,
+            );
+            // Bail if state changed during the await (user pressed stop or switched language)
+            if (chunkIdx !== myChunkIdx || activeLang !== myLang) {
+              if (chunk.blobUrl) URL.revokeObjectURL(chunk.blobUrl);
+              chunk.blobUrl = null;
+              return;
+            }
+          }
+
+          // Schedule prefetch of the NEXT chunk to start partway through the current chunk's playback
+          const nextIdx = myChunkIdx + 1;
+          if (nextIdx < chunks.length && !chunks[nextIdx].blobUrl) {
+            scheduleNextPrefetch(nextIdx, myLang, voice);
+          }
+
+          // Now play the current chunk
+          ttsState = "speaking";
+          setStatus(
+            `speaking ${voice.label} (${myChunkIdx + 1}/${chunks.length})`,
+            "ok",
+          );
+          updateButtonStates();
+          playCurrentChunk();
+        } catch (e) {
+          log("tts error: " + (e.message || e));
+          setStatus("tts error: " + (e.message || e), "bad");
+          ttsState = "idle";
+          activeLang = null;
+          cleanupAudio();
+          updateButtonStates();
+        }
+      }
+
+      async function synthesizeAndPlay(text, lang) {
+        // Cancel any existing playback first (e.g., the other side)
+        cleanupAudio();
+        ttsState = "loading";
+        activeLang = lang;
+        const voice = VOICES[lang];
+        setStatus(`preparing ${voice.label}…`, "busy");
+        updateButtonStates();
+
+        try {
+          await ensurePiper();
+
+          // Build chunks from the spoken text. Compute each chunk's word range over the global wordMap (using en/ro offsets per side)
+          const rawChunks = chunkText(text);
+          chunks = rawChunks.map((c) => ({
+            ...c,
+            wordRange: wordRangeForChunk(c, lang === "en" ? "en" : "ro"),
+            blobUrl: null,
+            duration: 0,
+          }));
+          chunkIdx = 0;
+          wordTimings = new Array(wordMap.length);
+          log(
+            "split into " +
+              chunks.length +
+              " chunks (avg " +
+              Math.round(text.length / Math.max(1, chunks.length)) +
+              " chars)",
+          );
+
+          if (chunks.length === 0) {
+            ttsState = "idle";
+            activeLang = null;
+            updateButtonStates();
+            setStatus("ready", "ok");
+            return;
+          }
+
+          // Kick off the playback pipeline. advancePlayback handles synthesize-current, prefetch-next, then play
+          await advancePlayback();
+        } catch (e) {
+          log("tts error: " + (e.message || e));
+          setStatus("tts error: " + (e.message || e), "bad");
+          ttsState = "idle";
+          activeLang = null;
+          cleanupAudio();
+          updateButtonStates();
+        }
+      }
+
+      function handleSpeakClick(lang) {
+        // Must run synchronously inside the click handler. iOS won't accept the audio gesture if I await anything first
+        unlockAudio();
+        // Eagerly create (or touch) the persistent <audio> element here too.
+        // iOS grants playback grace to <audio> elements that are first touched inside a user gesture; later chunks reuse this same element and inherit that grace
+        getPersistentAudio();
+        ensurePiper();
+
+        // If this side is the active speaker, toggle pause/resume
+        if (activeLang === lang) {
+          if (ttsState === "paused") {
+            audioEl && audioEl.play();
+            ttsState = "speaking";
+            updateButtonStates();
+            return;
+          }
+          if (ttsState === "speaking") {
+            audioEl && audioEl.pause();
+            ttsState = "paused";
+            updateButtonStates();
+            return;
+          }
+        }
+        // If user presses Speak Romanian without having converted (or after editing the English source, which invalidated the wordMap), run the conversion now as a silent pre-step
+        if (lang === "ro" && (!outputEl.value.trim() || wordMap.length === 0)) {
+          log("auto-converting first…");
+          convert();
+        }
+        const text = lang === "en" ? inputEl.value : outputEl.value;
+        if (!text.trim()) {
+          log(
+            lang === "en"
+              ? "English textbox is empty"
+              : "nothing to speak — please add English text first",
+          );
+          return;
+        }
+        synthesizeAndPlay(text, lang);
+      }
+
+      function handleStopClick() {
+        cleanupAudio();
+        ttsState = "idle";
+        activeLang = null;
+        updateButtonStates();
+        setStatus("ready", "ok");
+      }
+
+      // ============================================================
+      // Wire up events
+      // ============================================================
+      btn.addEventListener("click", convert);
+      speakEnBtn.addEventListener("click", () => handleSpeakClick("en"));
+      speakRoBtn.addEventListener("click", () => handleSpeakClick("ro"));
+      stopBtn.addEventListener("click", handleStopClick);
+
+      inputEl.addEventListener("scroll", () =>
+        syncOverlayScroll(inputEl, inputOverlay),
+      );
+      outputEl.addEventListener("scroll", () =>
+        syncOverlayScroll(outputEl, outputOverlay),
+      );
+      inputEl.addEventListener("input", () => {
+        // Re-edit invalidates the word map. They'll need to re-convert.
+        lastEnText = inputEl.value;
+        wordMap = [];
+        activeWordIdx = -1;
+        renderOverlay(inputOverlay, lastEnText, -1, -1);
+        syncOverlayScroll(inputEl, inputOverlay);
+      });
+
+      // Initial overlay seed + button state
+      renderOverlay(inputOverlay, inputEl.value, -1, -1);
+      renderOverlay(outputOverlay, outputEl.value, -1, -1);
+      updateButtonStates();
+    </script>
+  </body>
+</html>

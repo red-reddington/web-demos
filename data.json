@@ -88,6 +88,14 @@
     "thumb": "browser-local-tts.jpg"
   },
   {
+    "folder": "browser-local-tts-piper",
+    "title": "Browser Local TTS — Piper",
+    "category": "AI / Browser ML",
+    "description": "Smaller/faster local TTS with a Romanian-accent demo",
+    "created": "2026-05-16",
+    "thumb": "browser-local-tts-piper.jpg"
+  },
+  {
     "folder": "calendar-cubes",
     "title": "Calendar Cubes",
     "category": "Other",

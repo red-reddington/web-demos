@@ -55,6 +55,7 @@ This repo is a **curated mirror** of my [CodePen](https://codepen.io/the-red-red
 ### AI / Browser ML
 
 - [`browser-local-tts`](browser-local-tts/) — Fully local real-time AI voice synthesis in the browser using Kokoro with synchronized word-level subtitles
+- [`browser-local-tts-piper`](browser-local-tts-piper/) — Fully local real-time AI voice synthesis in the browser using Piper, with an English-to-Romanian phonetic transcriber for accented speech and synchronized word-level subtitles
 
 ### Others
 
