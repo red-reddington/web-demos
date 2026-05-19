@@ -198,5 +198,13 @@
     "description": "Instanced volumetric fire simulation",
     "created": "2025-11-12",
     "thumb": "threejs-volumetric-fire.jpg"
-  }
+  },
+  {
+  "folder": "deathchase-3d",
+  "title": "Deathchase 3D",
+  "category": "Game",
+  "description": "Three.js homage to the 1983 ZX Spectrum chase classic",
+  "created": "2026-05-18",
+  "thumb": "deathchase-3d.jpg"
+}
 ]
