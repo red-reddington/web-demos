@@ -4603,9 +4603,23 @@
             this._joySteer = clamp(v.x, -1, 1);
             this._joyThrottle = clamp(v.y, -1, 1);
           });
-          joy.on("end", () => {
-            this._joySteer = 0;
-            this._joyThrottle = 0;
+          let joyTouches = 0;
+          const onTouchStart = (e) => {
+            joyTouches += e.changedTouches.length;
+          };
+          const onTouchEndOrCancel = (e) => {
+            joyTouches = Math.max(0, joyTouches - e.changedTouches.length);
+            if (joyTouches === 0) {
+              this._joySteer = 0;
+              this._joyThrottle = 0;
+            }
+          };
+          joyEl.addEventListener("touchstart", onTouchStart, { passive: true });
+          joyEl.addEventListener("touchend", onTouchEndOrCancel, {
+            passive: true,
+          });
+          joyEl.addEventListener("touchcancel", onTouchEndOrCancel, {
+            passive: true,
           });
 
           // Fire pad: tap to fire. changedTouches filter so a joystick finger drifting over the right half doesn't trigger a shot.
