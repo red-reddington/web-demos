@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Red Reddington's Web Demos</title>
+
     <link rel="icon" type="image/png" href="RRfavicon.png" />
     <link rel="apple-touch-icon" href="RRavicon.png" />
     <link rel="apple-touch-icon" type="image/png" href="RRfavicon.png" />
@@ -13,6 +14,7 @@
     />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="icon" type="image/x-icon" href="RRfavicon.ico" />
+
     <style>
       body {
         margin: 0;
@@ -45,39 +47,43 @@
         margin-top: 8px;
       }
 
+      .toolbar {
+        width: min(1200px, calc(100dvw - 40px));
+        margin: 0 auto;
+        padding: 0 20px;
+        box-sizing: border-box;
+      }
+
+      .search-bar {
+        display: flex;
+        justify-content: center;
+        margin: 20px 0;
+      }
+
+      .search-bar input {
+        width: min(500px, 100%);
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid #2a2f3a;
+        background: #1a1d24;
+        color: #e6e6e6;
+        font-size: 14px;
+        outline: none;
+        box-sizing: border-box;
+      }
+
+      .search-bar input:focus {
+        border-color: #4c8bf5;
+      }
+
       .filters {
         text-align: center;
         margin: 20px 0;
       }
 
-      .filters button {
-        margin: 5px;
-        padding: 6px 12px;
-        border-radius: 999px;
-        border: none;
-        background: #1f232b;
-        color: #ccc;
-        cursor: pointer;
-      }
-
-      .filters button.active {
-        background: #4c8bf5;
-        color: white;
-      }
-
       .sort-bar {
         text-align: center;
         margin: 10px 0 20px;
-      }
-
-      .sort-bar button {
-        margin: 5px;
-        padding: 6px 12px;
-        border-radius: 999px;
-        border: none;
-        background: #1f232b;
-        color: #ccc;
-        cursor: pointer;
       }
 
       .filters button,
@@ -122,6 +128,7 @@
       }
 
       /* --- Dual Range Slider --- */
+
       .range-container {
         max-width: min(300px, 80dvw);
         margin: 0 auto 20px;
@@ -209,7 +216,7 @@
 
       .thumb {
         width: 100%;
-        aspect-ratio: 16 / 9; /* auto height */
+        aspect-ratio: 16 / 9;
         background: #2a2f3a;
         background-size: cover;
         background-position: center;
@@ -242,6 +249,12 @@
         margin-top: 8px;
       }
 
+      .empty {
+        text-align: center;
+        opacity: 0.6;
+        padding: 50px 20px;
+      }
+
       .footer {
         text-align: center;
         margin: 40px 0;
@@ -259,32 +272,48 @@
       }
     </style>
   </head>
+
   <body>
     <header>
       <img src="RRfavicon.png" alt="Red Reddington" />
+
       <h1>Red Reddington's Web Demos</h1>
+
       <p>
         High-performance Three.js demos, browser AI experiments, procedural
         systems, and games
       </p>
     </header>
 
-    <div class="filters" id="filters"></div>
+    <div class="toolbar">
+      <div class="search-bar">
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Search demos..."
+          autocomplete="off"
+        />
+      </div>
 
-    <div class="sort-bar" id="sortBar">
-      <button data-sort="az">A–Z</button>
-      <button data-sort="za">Z–A</button>
-      <button data-sort="date-desc">Newest</button>
-      <button data-sort="date-asc">Oldest</button>
-    </div>
+      <div class="filters" id="filters"></div>
 
-    <div class="range-container">
-      <div class="range-labels" id="rangeLabel"></div>
-      <div class="range-slider">
-        <div class="track"></div>
-        <div class="range" id="rangeFill"></div>
-        <input type="range" id="minDate" step="1" />
-        <input type="range" id="maxDate" step="1" />
+      <div class="sort-bar" id="sortBar">
+        <button data-sort="az">A–Z</button>
+        <button data-sort="za">Z–A</button>
+        <button data-sort="date-desc">Newest</button>
+        <button data-sort="date-asc">Oldest</button>
+      </div>
+
+      <div class="range-container">
+        <div class="range-labels" id="rangeLabel"></div>
+
+        <div class="range-slider">
+          <div class="track"></div>
+          <div class="range" id="rangeFill"></div>
+
+          <input type="range" id="minDate" step="1" />
+          <input type="range" id="maxDate" step="1" />
+        </div>
       </div>
     </div>
 
@@ -297,205 +326,436 @@
     </footer>
 
     <script>
+      /***********************
+       * STATE
+       ***********************/
+      const state = {
+        filter: "All",
+        sort: "date-desc",
+        search: "",
+        minDate: null,
+        maxDate: null,
+      };
+
       let allDemos = [];
-      let currentFilter = "All";
-      let minDate = null;
-      let maxDate = null;
-      let currentSort = "date-desc"; // default: newest first
+      let sortedDates = [];
+      let categoryTotals = {};
 
-      fetch("./data.json")
-        .then((res) => res.json())
-        .then((demos) => {
-          allDemos = demos.map((d) => ({
-            ...d,
-            ts: new Date(d.created).getTime(),
-          }));
+      /***********************
+       * DOM CACHE
+       ***********************/
+      const DOM = {
+        grid: document.getElementById("grid"),
+        filters: document.getElementById("filters"),
+        sortButtons: [...document.querySelectorAll("#sortBar button")],
+        searchInput: document.getElementById("searchInput"),
+        minDate: document.getElementById("minDate"),
+        maxDate: document.getElementById("maxDate"),
+        rangeFill: document.getElementById("rangeFill"),
+      };
 
-          setupFilters();
-          setupSort();
-          setupDateSlider();
-          render();
+      /***********************
+       * URL SYNC (batched)
+       ***********************/
+      let urlQueued = false;
+
+      function scheduleURLUpdate() {
+        if (urlQueued) return;
+        urlQueued = true;
+
+        requestAnimationFrame(() => {
+          updateURL();
+          urlQueued = false;
         });
-
-      function setupFilters() {
-        const filtersEl = document.getElementById("filters");
-        const categories = ["All", ...new Set(allDemos.map((d) => d.category))];
-
-        categories.forEach((cat) => {
-          const btn = document.createElement("button");
-          btn.dataset.cat = cat;
-          btn.onclick = () => {
-            document
-              .querySelectorAll(".filters button")
-              .forEach((b) => b.classList.remove("active"));
-            btn.classList.add("active");
-            currentFilter = cat;
-            render();
-          };
-          filtersEl.appendChild(btn);
-
-          if (cat === currentFilter) btn.classList.add("active");
-        });
-
-        updateFilterLabels();
       }
 
-      function updateFilterLabels(shownCount = null) {
-        const buttons = document.querySelectorAll(".filters button");
+      function setState(patch, { skipURL = false } = {}) {
+        Object.assign(state, patch);
+        normalizeState();
+        render();
+        if (!skipURL) scheduleURLUpdate();
+      }
 
-        const total = allDemos.length;
+      /***********************
+       * URL HELPERS
+       ***********************/
+      function getParam(name, fallback = "") {
+        const params = new URLSearchParams(window.location.search);
+        return params.get(name) || fallback;
+      }
 
-        const counts = {
-          All: total,
-        };
+      function updateURL() {
+        const params = new URLSearchParams();
 
-        for (const d of allDemos) {
-          counts[d.category] = (counts[d.category] || 0) + 1;
+        if (state.filter !== "All") params.set("category", state.filter);
+        if (state.sort !== "date-desc") params.set("sort", state.sort);
+        if (state.search) params.set("search", state.search);
+
+        if (state.minDate !== sortedDates[0]) {
+          params.set("minDate", formatDateParam(state.minDate));
         }
 
-        buttons.forEach((btn) => {
-          const cat = btn.dataset.cat;
-          const base = counts[cat];
+        if (state.maxDate !== sortedDates.at(-1)) {
+          params.set("maxDate", formatDateParam(state.maxDate));
+        }
 
-          if (shownCount && cat === currentFilter) {
-            btn.textContent = `${cat} (${shownCount}/${base})`;
-          } else {
-            btn.textContent = `${cat} (${base})`;
-          }
-        });
+        const query = params.toString();
+        const url = query ? `${location.pathname}?${query}` : location.pathname;
+        history.replaceState(null, "", url);
+      }
+
+      /***********************
+       * DATE HELPERS
+       ***********************/
+      function formatDateParam(ts) {
+        const d = new Date(ts);
+        return (
+          d.getFullYear() +
+          String(d.getMonth() + 1).padStart(2, "0") +
+          String(d.getDate()).padStart(2, "0")
+        );
+      }
+
+      function parseDateParam(v, endOfDay = false) {
+        if (!v || !/^\d{8}$/.test(v)) return null;
+
+        const y = +v.slice(0, 4);
+        const m = +v.slice(4, 6) - 1;
+        const d = +v.slice(6, 8);
+
+        return new Date(
+          y,
+          m,
+          d,
+          endOfDay ? 23 : 0,
+          endOfDay ? 59 : 0,
+          endOfDay ? 59 : 0,
+          endOfDay ? 999 : 0,
+        ).getTime();
       }
 
       function formatDate(iso) {
-        const d = new Date(iso);
-        return d.toLocaleDateString("en-US", {
+        return new Date(iso).toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
         });
       }
 
-      function setupDateSlider() {
-        const timestamps = allDemos.map((d) => d.ts);
-        const sorted = [...timestamps].sort((a, b) => a - b);
+      /***********************
+       * SORT HELPERS
+       ***********************/
+      const sortFn = {
+        az: (a, b) => a.title.localeCompare(b.title),
+        za: (a, b) => b.title.localeCompare(a.title),
+        "date-asc": (a, b) => a.ts - b.ts,
+        "date-desc": (a, b) => b.ts - a.ts,
+      };
 
-        minDate = sorted[0];
-        maxDate = sorted[sorted.length - 1];
+      function normalizeState() {
+        if (!sortedDates.length) return;
 
-        const minInput = document.getElementById("minDate");
-        const maxInput = document.getElementById("maxDate");
-        const rangeFill = document.getElementById("rangeFill");
-        const label = document.getElementById("rangeLabel");
+        if (!sortFn[state.sort]) state.sort = "date-desc";
 
-        minInput.min = maxInput.min = 0;
-        minInput.max = maxInput.max = sorted.length - 1;
+        const categories = new Set(["All", ...allDemos.map((d) => d.category)]);
+        if (!categories.has(state.filter)) state.filter = "All";
 
-        minInput.value = 0;
-        maxInput.value = sorted.length - 1;
+        if (state.minDate == null) state.minDate = sortedDates[0];
+        if (state.maxDate == null) state.maxDate = sortedDates.at(-1);
 
-        function updateSlider() {
-          let minIdx = parseInt(minInput.value);
-          let maxIdx = parseInt(maxInput.value);
-
-          if (minIdx > maxIdx) {
-            [minIdx, maxIdx] = [maxIdx, minIdx];
-            minInput.value = minIdx;
-            maxInput.value = maxIdx;
-          }
-
-          minDate = sorted[minIdx];
-          maxDate = sorted[maxIdx];
-
-          const pctMin = (minIdx / (sorted.length - 1)) * 100;
-          const pctMax = (maxIdx / (sorted.length - 1)) * 100;
-
-          rangeFill.style.left = pctMin + "%";
-          rangeFill.style.width = pctMax - pctMin + "%";
-
-          label.textContent =
-            formatDate(new Date(minDate).toISOString()) +
-            " — " +
-            formatDate(new Date(maxDate).toISOString());
-
-          render();
+        if (state.minDate > state.maxDate) {
+          const mid = (state.minDate + state.maxDate) / 2;
+          state.minDate = mid;
+          state.maxDate = mid;
         }
 
-        minInput.oninput = updateSlider;
-        maxInput.oninput = updateSlider;
+        state.minDate = Math.max(state.minDate, sortedDates[0]);
+        state.maxDate = Math.min(state.maxDate, sortedDates.at(-1));
+      }
 
-        updateSlider();
+      /***********************
+       * INIT
+       ***********************/
+      fetch("./data.json")
+        .then((r) => {
+          if (!r.ok) throw new Error("Failed to load data.json");
+          return r.json();
+        })
+        .then((demos) => {
+          allDemos = demos.map((d) => {
+            const ts = new Date(d.created).getTime();
+            return {
+              ...d,
+              ts,
+              _hay: (
+                d.title +
+                d.description +
+                d.category +
+                d.folder
+              ).toLowerCase(),
+            };
+          });
+
+          if (!allDemos.length) throw new Error("No demos in data.json");
+
+          sortedDates = allDemos.map((d) => d.ts).sort((a, b) => a - b);
+
+          categoryTotals = allDemos.reduce(
+            (acc, d) => {
+              acc.All++;
+              acc[d.category] = (acc[d.category] || 0) + 1;
+              return acc;
+            },
+            { All: 0 },
+          );
+
+          hydrateStateFromURL();
+          normalizeState();
+          setupUI();
+          render();
+          scheduleURLUpdate();
+        })
+        .catch((err) => {
+          console.error(err);
+          if (DOM.grid) {
+            DOM.grid.innerHTML =
+              '<div class="empty">Failed to load demos. Please try again later.</div>';
+          }
+        });
+
+      function hydrateStateFromURL() {
+        state.filter = getParam("category", "All");
+        state.sort = getParam("sort", "date-desc");
+        state.search = getParam("search", "").trim();
+
+        const min = parseDateParam(getParam("minDate"));
+        const max = parseDateParam(getParam("maxDate"), true);
+
+        state.minDate = min ?? sortedDates[0];
+        state.maxDate = max ?? sortedDates.at(-1);
+      }
+
+      /***********************
+       * UI SETUP
+       ***********************/
+      function setupUI() {
+        setupSearch();
+        setupFilters();
+        setupSort();
+        setupDateSlider();
+      }
+
+      function setupSearch() {
+        const input = DOM.searchInput;
+        if (!input) return;
+
+        input.value = state.search;
+
+        input.addEventListener("input", () => {
+          setState({ search: input.value.trim() });
+        });
+
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            input.value = "";
+            setState({ search: "" });
+          }
+        });
+      }
+
+      function setupFilters() {
+        const el = DOM.filters;
+        if (!el) return;
+
+        const cats = ["All", ...new Set(allDemos.map((d) => d.category))].sort(
+          (a, b) => (a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b)),
+        );
+
+        cats.forEach((cat) => {
+          const btn = document.createElement("button");
+          btn.dataset.cat = cat;
+          btn.textContent = cat;
+          btn.type = "button";
+
+          btn.onclick = () => {
+            setState({ filter: cat });
+          };
+
+          el.appendChild(btn);
+        });
+
+        updateFilterLabels();
       }
 
       function setupSort() {
-        const sortBar = document.getElementById("sortBar");
-        const buttons = sortBar.querySelectorAll("button");
+        const buttons = DOM.sortButtons;
+        if (!buttons.length) return;
 
         buttons.forEach((btn) => {
           btn.onclick = () => {
-            buttons.forEach((b) => b.classList.remove("active"));
-            btn.classList.add("active");
-            currentSort = btn.dataset.sort;
-            render();
+            const sort = btn.dataset.sort;
+            if (!sortFn[sort]) return;
+            setState({ sort });
           };
         });
-
-        sortBar
-          .querySelector(`[data-sort="${currentSort}"]`)
-          .classList.add("active");
       }
 
-      function render() {
-        const grid = document.getElementById("grid");
-        grid.innerHTML = "";
+      function setupDateSlider() {
+        const min = DOM.minDate;
+        const max = DOM.maxDate;
+        const fill = DOM.rangeFill;
+        if (!min || !max || !fill || !sortedDates.length) return;
 
-        let filtered = allDemos.filter(
-          (d) =>
-            (currentFilter === "All" || d.category === currentFilter) &&
-            d.ts >= minDate &&
-            d.ts <= maxDate,
-        );
+        min.min = max.min = 0;
+        min.max = max.max = sortedDates.length - 1;
 
-        // --- SORTING ---
-        switch (currentSort) {
-          case "az":
-            filtered.sort((a, b) => a.title.localeCompare(b.title));
+        let minIdx = 0;
+        let maxIdx = sortedDates.length - 1;
+
+        for (let i = 0; i < sortedDates.length; i++) {
+          if (sortedDates[i] >= state.minDate) {
+            minIdx = i;
             break;
-
-          case "za":
-            filtered.sort((a, b) => b.title.localeCompare(a.title));
-            break;
-
-          case "date-asc":
-            filtered.sort((a, b) => a.ts - b.ts); // oldest first
-            break;
-
-          case "date-desc":
-            filtered.sort((a, b) => b.ts - a.ts); // newest first
-            break;
+          }
         }
 
+        for (let i = sortedDates.length - 1; i >= 0; i--) {
+          if (sortedDates[i] <= state.maxDate) {
+            maxIdx = i;
+            break;
+          }
+        }
+
+        min.value = String(minIdx);
+        max.value = String(maxIdx);
+
+        const update = () => {
+          let a = +min.value;
+          let b = +max.value;
+
+          if (a > b) [a, b] = [b, a];
+
+          setState(
+            {
+              minDate: sortedDates[a],
+              maxDate: sortedDates[b],
+            },
+            { skipURL: true },
+          );
+
+          const span = sortedDates.length - 1 || 1;
+          const left = (a / span) * 100;
+          const width = ((b - a) / span) * 100;
+
+          fill.style.left = left + "%";
+          fill.style.width = width + "%";
+
+          scheduleURLUpdate();
+        };
+
+        min.oninput = update;
+        max.oninput = update;
+
+        update();
+      }
+
+      /***********************
+       * FILTER + SORT (MEMO)
+       ***********************/
+      let memo = { key: "", result: [] };
+
+      function getFilteredSorted() {
+        const key = JSON.stringify({
+          filter: state.filter,
+          sort: state.sort,
+          search: state.search,
+          minDate: state.minDate,
+          maxDate: state.maxDate,
+        });
+
+        if (memo.key === key) return memo.result;
+
+        const search = state.search.toLowerCase();
+
+        let result = allDemos.filter((d) => {
+          const matchesCat =
+            state.filter === "All" || d.category === state.filter;
+          const matchesDate = d.ts >= state.minDate && d.ts <= state.maxDate;
+          const matchesSearch = !search || d._hay.includes(search);
+          return matchesCat && matchesDate && matchesSearch;
+        });
+
+        result.sort(sortFn[state.sort] || sortFn["date-desc"]);
+
+        memo = { key, result };
+        return result;
+      }
+
+      /***********************
+       * RENDER
+       ***********************/
+      function render() {
+        const grid = DOM.grid;
+        if (!grid) return;
+
+        const filtered = getFilteredSorted();
         updateFilterLabels(filtered.length);
 
-        filtered.forEach((demo) => {
+        if (!filtered.length) {
+          grid.innerHTML = '<div class="empty">No demos found.</div>';
+          return;
+        }
+
+        const frag = document.createDocumentFragment();
+
+        for (const demo of filtered) {
           const a = document.createElement("a");
           a.className = "card";
           a.href = `./${demo.folder}/index.html`;
           a.target = "_blank";
-
-          const thumbHTML = demo.thumb
-            ? `<div class="thumb" style="background-image:url('./thumbs/${demo.thumb}')"></div>`
-            : "";
+          a.rel = "noopener noreferrer";
 
           a.innerHTML = `
-    ${thumbHTML}
-    <div class="content">
-      <div class="tag">${demo.category}</div>
-      <div class="title">${demo.title}</div>
-      <div class="desc">${demo.description}</div>
-      <div class="date">${formatDate(demo.created)}</div>
-    </div>
-  `;
+        ${
+          demo.thumb
+            ? `<div class="thumb" style="background-image:url('./thumbs/${demo.thumb}')"></div>`
+            : ""
+        }
+        <div class="content">
+          <div class="tag">${demo.category}</div>
+          <div class="title">${demo.title}</div>
+          <div class="desc">${demo.description}</div>
+          <div class="date">${formatDate(demo.created)}</div>
+        </div>
+      `;
 
-          grid.appendChild(a);
+          frag.appendChild(a);
+        }
+
+        grid.innerHTML = "";
+        grid.appendChild(frag);
+      }
+
+      function updateFilterLabels(currentCount = null) {
+        const buttons = DOM.filters
+          ? DOM.filters.querySelectorAll("button")
+          : [];
+
+        buttons.forEach((b) => {
+          const cat = b.dataset.cat;
+          const total = categoryTotals[cat] ?? 0;
+
+          let label = cat;
+          if (total) {
+            if (currentCount != null && cat === state.filter) {
+              label += ` (${currentCount}/${total})`;
+            } else {
+              label += ` (${total})`;
+            }
+          }
+
+          b.textContent = label;
+          b.classList.toggle("active", cat === state.filter);
         });
       }
     </script>
