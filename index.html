@@ -583,8 +583,6 @@
 
           el.appendChild(btn);
         });
-
-        updateFilterLabels();
       }
 
       function setupSort() {
@@ -700,6 +698,7 @@
 
         const filtered = getFilteredSorted();
         updateFilterLabels(filtered.length);
+        updateSortUI();
 
         if (!filtered.length) {
           grid.innerHTML = '<div class="empty">No demos found.</div>';
@@ -736,6 +735,12 @@
         grid.appendChild(frag);
       }
 
+      function updateSortUI() {
+        for (const btn of DOM.sortButtons) {
+          btn.classList.toggle("active", btn.dataset.sort === state.sort);
+        }
+      }
+
       function updateFilterLabels(currentCount = null) {
         const buttons = DOM.filters
           ? DOM.filters.querySelectorAll("button")
@@ -754,7 +759,9 @@
             }
           }
 
-          b.textContent = label;
+          if (b.textContent !== label) {
+            b.textContent = label;
+          }
           b.classList.toggle("active", cat === state.filter);
         });
       }
