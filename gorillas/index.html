@@ -236,11 +236,7 @@
         }
         c.mctx.globalCompositeOperation = "source-over";
         c.mctx.fillStyle = "#fff";
-        if (!c.maskReady) {
-          c.mctx.fillStyle = "#fff";
-          c.mctx.fillRect(0, 0, W, H);
-          c.maskReady = true;
-        }
+        c.mctx.fillRect(0, 0, W, H);
       }
 
       function fire() {
