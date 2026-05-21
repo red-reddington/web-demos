@@ -899,36 +899,34 @@
 
           try {
             await video.play();
+
             card.classList.add("preview-active");
-          } catch {}
+          } catch {
+            // ignore autoplay failures
+          }
         };
 
         const stopPreview = () => {
           card.classList.remove("preview-active");
+
           video.pause();
         };
 
-        let timer;
+        card.addEventListener("mouseenter", () => {
+          const timer = setTimeout(startPreview, 120);
 
-        const onDown = (e) => {
-          // prevent iOS long-press menu
-          e.preventDefault();
+          hoverTimers.set(card, timer);
+        });
 
-          timer = setTimeout(startPreview, 0); // instant
-        };
+        card.addEventListener("mouseleave", () => {
+          const timer = hoverTimers.get(card);
 
-        const onUp = () => {
-          clearTimeout(timer);
+          if (timer) {
+            clearTimeout(timer);
+          }
+
           stopPreview();
-        };
-
-        card.addEventListener("pointerdown", onDown);
-        card.addEventListener("pointerup", onUp);
-        card.addEventListener("pointercancel", onUp);
-        card.addEventListener("pointerleave", onUp);
-
-        // kill iOS context menu on long press
-        card.addEventListener("contextmenu", (e) => e.preventDefault());
+        });
       }
 
       /*************************
