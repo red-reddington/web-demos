@@ -166,10 +166,11 @@
       let mode = -1; // -1 = choose, 0 = PvCPU, 1 = PvP
       let score = [0, 0];
       let worldReady = false;
+      let gamesPlayed = 0;
 
       function init() {
         // generate variable-width skyline that fills the canvas
-        if (!worldReady) {
+        if (!worldReady || gamesPlayed > 0) {
           buildings = [];
           let x = 0;
           while (x < W) {
@@ -388,6 +389,7 @@
             msgT > 150 &&
             (k.Space || (touchStart && performance.now() - touchStart[2] > 100))
           ) {
+            gamesPlayed++;
             init();
           }
         }
