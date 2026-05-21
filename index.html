@@ -2,25 +2,46 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <title>Red Reddington's Web Demos</title>
 
     <link rel="icon" type="image/png" href="RRfavicon.png" />
-    <link rel="apple-touch-icon" href="RRavicon.png" />
+    <link rel="apple-touch-icon" href="RRfavicon.png" />
     <link rel="apple-touch-icon" type="image/png" href="RRfavicon.png" />
+
     <meta
       name="apple-mobile-web-app-title"
       content="Red Reddington's Web Demos"
     />
+
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
     <link rel="icon" type="image/x-icon" href="RRfavicon.ico" />
 
     <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #1a1d24;
+        --panel-hover: #20242d;
+        --border: #2a2f3a;
+        --text: #e6e6e6;
+        --muted: #9aa3b2;
+        --accent: #4c8bf5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         margin: 0;
         font-family: system-ui, sans-serif;
-        background: #0f1115;
-        color: #e6e6e6;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
       }
 
       header {
@@ -43,7 +64,7 @@
       }
 
       p {
-        opacity: 0.6;
+        opacity: 0.65;
         margin-top: 8px;
       }
 
@@ -51,7 +72,6 @@
         width: min(1200px, calc(100dvw - 40px));
         margin: 0 auto;
         padding: 0 20px;
-        box-sizing: border-box;
       }
 
       .search-bar {
@@ -64,25 +84,27 @@
         width: min(500px, 100%);
         padding: 12px 16px;
         border-radius: 999px;
-        border: 1px solid #2a2f3a;
-        background: #1a1d24;
-        color: #e6e6e6;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--text);
         font-size: 14px;
         outline: none;
-        box-sizing: border-box;
       }
 
       .search-bar input:focus {
-        border-color: #4c8bf5;
+        border-color: var(--accent);
+      }
+
+      .filters,
+      .sort-bar {
+        text-align: center;
       }
 
       .filters {
-        text-align: center;
         margin: 20px 0;
       }
 
       .sort-bar {
-        text-align: center;
         margin: 10px 0 20px;
       }
 
@@ -91,11 +113,12 @@
         margin: 5px;
         padding: 5px 10px;
         border-radius: 999px;
-        border: 1px solid #2a2f3a;
+        border: 1px solid var(--border);
         background: #1f232b;
         color: #ccc;
         cursor: pointer;
         opacity: 0.55;
+
         transition:
           opacity 0.15s ease,
           background 0.15s ease,
@@ -104,10 +127,10 @@
 
       .filters button.active,
       .sort-bar button.active {
-        background: #4c8bf5;
+        background: var(--accent);
         color: white;
         opacity: 1;
-        border-color: #4c8bf5;
+        border-color: var(--accent);
       }
 
       .filters button:hover:not(.active),
@@ -123,11 +146,13 @@
 
       .filters button:focus-visible,
       .sort-bar button:focus-visible {
-        outline: 2px solid #4c8bf5;
+        outline: 2px solid var(--accent);
         outline-offset: 2px;
       }
 
-      /* --- Dual Range Slider --- */
+      /* ------------------------- */
+      /* RANGE SLIDER */
+      /* ------------------------- */
 
       .range-container {
         max-width: min(300px, 80dvw);
@@ -164,7 +189,7 @@
         height: 16px;
         margin-top: -6px;
         border-radius: 50%;
-        background: #4c8bf5;
+        background: var(--accent);
         cursor: pointer;
         -webkit-appearance: none;
       }
@@ -182,45 +207,101 @@
       .range-slider .range {
         position: absolute;
         height: 4px;
-        background: #4c8bf5;
+        background: var(--accent);
         top: 50%;
         transform: translateY(-50%);
         border-radius: 2px;
       }
 
+      /* ------------------------- */
+      /* GRID */
+      /* ------------------------- */
+
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+
         gap: 16px;
-        padding: 20px;
-        width: min(1200px, 100dvw - 40px);
+
+        width: min(1200px, calc(100dvw - 40px));
+
         margin: 0 auto;
-        box-sizing: border-box;
+
+        padding: 20px;
       }
 
+      /* ------------------------- */
+      /* CARD */
+      /* ------------------------- */
+
       .card {
-        background: #1a1d24;
-        border-radius: 12px;
+        display: block;
         overflow: hidden;
-        text-decoration: none;
+
+        border-radius: 12px;
+
+        background: var(--panel);
+
         color: inherit;
+        text-decoration: none;
+
         transition:
           transform 0.15s ease,
-          box-shadow 0.15s ease;
+          box-shadow 0.15s ease,
+          background 0.15s ease;
       }
 
       .card:hover {
         transform: translateY(-4px);
+
+        background: var(--panel-hover);
+
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
       }
 
       .thumb {
+        position: relative;
+
         width: 100%;
+
         aspect-ratio: 16 / 9;
+
+        overflow: hidden;
+
         background: #2a2f3a;
-        background-size: cover;
-        background-position: center;
+
         border-bottom: 1px solid #0003;
+      }
+
+      .thumb img,
+      .thumb video {
+        position: absolute;
+        inset: 0;
+
+        width: 100%;
+        height: 100%;
+
+        object-fit: cover;
+      }
+
+      .thumb img {
+        z-index: 1;
+      }
+
+      .thumb video {
+        z-index: 2;
+
+        opacity: 0;
+
+        transition: opacity 0.2s ease;
+
+        pointer-events: none;
+
+        will-change: opacity;
+      }
+
+      .card.preview-active .thumb video {
+        opacity: 1;
       }
 
       .content {
@@ -270,6 +351,13 @@
       .footer a:hover {
         opacity: 0.8;
       }
+
+      @media (hover: none) {
+        .card:hover {
+          transform: none;
+          box-shadow: none;
+        }
+      }
     </style>
   </head>
 
@@ -309,6 +397,7 @@
 
         <div class="range-slider">
           <div class="track"></div>
+
           <div class="range" id="rangeFill"></div>
 
           <input type="range" id="minDate" step="1" />
@@ -326,9 +415,10 @@
     </footer>
 
     <script>
-      /***********************
+      /*************************
        * STATE
-       ***********************/
+       *************************/
+
       const state = {
         filter: "All",
         sort: "date-desc",
@@ -341,26 +431,33 @@
       let sortedDates = [];
       let categoryTotals = {};
 
-      /***********************
+      /*************************
        * DOM CACHE
-       ***********************/
+       *************************/
+
       const DOM = {
         grid: document.getElementById("grid"),
         filters: document.getElementById("filters"),
+
         sortButtons: [...document.querySelectorAll("#sortBar button")],
+
         searchInput: document.getElementById("searchInput"),
+
         minDate: document.getElementById("minDate"),
         maxDate: document.getElementById("maxDate"),
+
         rangeFill: document.getElementById("rangeFill"),
       };
 
-      /***********************
-       * URL SYNC (batched)
-       ***********************/
+      /*************************
+       * URL SYNC
+       *************************/
+
       let urlQueued = false;
 
       function scheduleURLUpdate() {
         if (urlQueued) return;
+
         urlQueued = true;
 
         requestAnimationFrame(() => {
@@ -371,25 +468,40 @@
 
       function setState(patch, { skipURL = false } = {}) {
         Object.assign(state, patch);
+
         normalizeState();
+
         render();
-        if (!skipURL) scheduleURLUpdate();
+
+        if (!skipURL) {
+          scheduleURLUpdate();
+        }
       }
 
-      /***********************
+      /*************************
        * URL HELPERS
-       ***********************/
+       *************************/
+
       function getParam(name, fallback = "") {
         const params = new URLSearchParams(window.location.search);
+
         return params.get(name) || fallback;
       }
 
       function updateURL() {
         const params = new URLSearchParams();
 
-        if (state.filter !== "All") params.set("category", state.filter);
-        if (state.sort !== "date-desc") params.set("sort", state.sort);
-        if (state.search) params.set("search", state.search);
+        if (state.filter !== "All") {
+          params.set("category", state.filter);
+        }
+
+        if (state.sort !== "date-desc") {
+          params.set("sort", state.sort);
+        }
+
+        if (state.search) {
+          params.set("search", state.search);
+        }
 
         if (state.minDate !== sortedDates[0]) {
           params.set("minDate", formatDateParam(state.minDate));
@@ -400,15 +512,19 @@
         }
 
         const query = params.toString();
+
         const url = query ? `${location.pathname}?${query}` : location.pathname;
+
         history.replaceState(null, "", url);
       }
 
-      /***********************
+      /*************************
        * DATE HELPERS
-       ***********************/
+       *************************/
+
       function formatDateParam(ts) {
         const d = new Date(ts);
+
         return (
           d.getFullYear() +
           String(d.getMonth() + 1).padStart(2, "0") +
@@ -416,12 +532,14 @@
         );
       }
 
-      function parseDateParam(v, endOfDay = false) {
-        if (!v || !/^\d{8}$/.test(v)) return null;
+      function parseDateParam(value, endOfDay = false) {
+        if (!value || !/^\d{8}$/.test(value)) {
+          return null;
+        }
 
-        const y = +v.slice(0, 4);
-        const m = +v.slice(4, 6) - 1;
-        const d = +v.slice(6, 8);
+        const y = +value.slice(0, 4);
+        const m = +value.slice(4, 6) - 1;
+        const d = +value.slice(6, 8);
 
         return new Date(
           y,
@@ -442,51 +560,68 @@
         });
       }
 
-      /***********************
+      /*************************
        * SORT HELPERS
-       ***********************/
+       *************************/
+
       const sortFn = {
         az: (a, b) => a.title.localeCompare(b.title),
+
         za: (a, b) => b.title.localeCompare(a.title),
+
         "date-asc": (a, b) => a.ts - b.ts,
+
         "date-desc": (a, b) => b.ts - a.ts,
       };
 
       function normalizeState() {
         if (!sortedDates.length) return;
 
-        if (!sortFn[state.sort]) state.sort = "date-desc";
+        if (!sortFn[state.sort]) {
+          state.sort = "date-desc";
+        }
 
         const categories = new Set(["All", ...allDemos.map((d) => d.category)]);
-        if (!categories.has(state.filter)) state.filter = "All";
 
-        if (state.minDate == null) state.minDate = sortedDates[0];
-        if (state.maxDate == null) state.maxDate = sortedDates.at(-1);
+        if (!categories.has(state.filter)) {
+          state.filter = "All";
+        }
 
-        if (state.minDate > state.maxDate) {
-          const mid = (state.minDate + state.maxDate) / 2;
-          state.minDate = mid;
-          state.maxDate = mid;
+        if (state.minDate == null) {
+          state.minDate = sortedDates[0];
+        }
+
+        if (state.maxDate == null) {
+          state.maxDate = sortedDates.at(-1);
         }
 
         state.minDate = Math.max(state.minDate, sortedDates[0]);
+
         state.maxDate = Math.min(state.maxDate, sortedDates.at(-1));
       }
 
-      /***********************
+      /*************************
        * INIT
-       ***********************/
+       *************************/
+
       fetch("./data.json")
         .then((r) => {
-          if (!r.ok) throw new Error("Failed to load data.json");
+          if (!r.ok) {
+            throw new Error("Failed to load data.json");
+          }
+
           return r.json();
         })
+
         .then((demos) => {
           allDemos = demos.map((d) => {
             const ts = new Date(d.created).getTime();
+
             return {
               ...d,
+
               ts,
+
               _hay: (
                 d.title +
                 d.description +
@@ -496,48 +631,65 @@
             };
           });
 
-          if (!allDemos.length) throw new Error("No demos in data.json");
+          if (!allDemos.length) {
+            throw new Error("No demos in data.json");
+          }
 
           sortedDates = allDemos.map((d) => d.ts).sort((a, b) => a - b);
 
           categoryTotals = allDemos.reduce(
             (acc, d) => {
               acc.All++;
+
               acc[d.category] = (acc[d.category] || 0) + 1;
+
               return acc;
             },
             { All: 0 },
           );
 
           hydrateStateFromURL();
+
           normalizeState();
+
           setupUI();
+
           render();
+
           scheduleURLUpdate();
         })
+
         .catch((err) => {
           console.error(err);
-          if (DOM.grid) {
-            DOM.grid.innerHTML =
-              '<div class="empty">Failed to load demos. Please try again later.</div>';
-          }
+
+          DOM.grid.innerHTML = `
+            <div class="empty">
+              Failed to load demos.
+              Please try again later.
+            </div>
+          `;
         });
 
       function hydrateStateFromURL() {
         state.filter = getParam("category", "All");
+
         state.sort = getParam("sort", "date-desc");
+
         state.search = getParam("search", "").trim();
 
         const min = parseDateParam(getParam("minDate"));
+
         const max = parseDateParam(getParam("maxDate"), true);
 
         state.minDate = min ?? sortedDates[0];
+
         state.maxDate = max ?? sortedDates.at(-1);
       }
 
-      /***********************
+      /*************************
        * UI SETUP
-       ***********************/
+       *************************/
+
       function setupUI() {
         setupSearch();
         setupFilters();
@@ -547,64 +699,81 @@
 
       function setupSearch() {
         const input = DOM.searchInput;
+
         if (!input) return;
 
         input.value = state.search;
 
         input.addEventListener("input", () => {
-          setState({ search: input.value.trim() });
+          setState({
+            search: input.value.trim(),
+          });
         });
 
         input.addEventListener("keydown", (e) => {
           if (e.key === "Escape") {
             input.value = "";
-            setState({ search: "" });
+
+            setState({
+              search: "",
+            });
           }
         });
       }
 
       function setupFilters() {
         const el = DOM.filters;
+
         if (!el) return;
 
         const cats = ["All", ...new Set(allDemos.map((d) => d.category))].sort(
           (a, b) => (a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b)),
         );
 
-        cats.forEach((cat) => {
+        for (const cat of cats) {
           const btn = document.createElement("button");
+
           btn.dataset.cat = cat;
+
           btn.textContent = cat;
+
           btn.type = "button";
 
           btn.onclick = () => {
-            setState({ filter: cat });
+            setState({
+              filter: cat,
+            });
           };
 
           el.appendChild(btn);
-        });
+        }
       }
 
       function setupSort() {
-        const buttons = DOM.sortButtons;
-        if (!buttons.length) return;
-
-        buttons.forEach((btn) => {
+        for (const btn of DOM.sortButtons) {
           btn.onclick = () => {
             const sort = btn.dataset.sort;
+
             if (!sortFn[sort]) return;
-            setState({ sort });
+
+            setState({
+              sort,
+            });
           };
-        });
+        }
       }
 
       function setupDateSlider() {
         const min = DOM.minDate;
         const max = DOM.maxDate;
         const fill = DOM.rangeFill;
-        if (!min || !max || !fill || !sortedDates.length) return;
+
+        if (!min || !max || !fill || !sortedDates.length) {
+          return;
+        }
 
         min.min = max.min = 0;
+
         min.max = max.max = sortedDates.length - 1;
 
         let minIdx = 0;
@@ -631,7 +800,9 @@
           let a = +min.value;
           let b = +max.value;
 
-          if (a > b) [a, b] = [b, a];
+          if (a > b) {
+            [a, b] = [b, a];
+          }
 
           setState(
             {
@@ -642,10 +813,13 @@
           );
 
           const span = sortedDates.length - 1 || 1;
+
           const left = (a / span) * 100;
+
           const width = ((b - a) / span) * 100;
 
           fill.style.left = left + "%";
+
           fill.style.width = width + "%";
 
           scheduleURLUpdate();
@@ -657,10 +831,14 @@
         update();
       }
 
-      /***********************
-       * FILTER + SORT (MEMO)
-       ***********************/
-      let memo = { key: "", result: [] };
+      /*************************
+       * FILTER + SORT
+       *************************/
+
+      let memo = {
+        key: "",
+        result: [],
+      };
 
       function getFilteredSorted() {
         const key = JSON.stringify({
@@ -671,67 +849,195 @@
           maxDate: state.maxDate,
         });
 
-        if (memo.key === key) return memo.result;
+        if (memo.key === key) {
+          return memo.result;
+        }
 
         const search = state.search.toLowerCase();
 
         let result = allDemos.filter((d) => {
           const matchesCat =
             state.filter === "All" || d.category === state.filter;
+
           const matchesDate = d.ts >= state.minDate && d.ts <= state.maxDate;
+
           const matchesSearch = !search || d._hay.includes(search);
+
           return matchesCat && matchesDate && matchesSearch;
         });
 
         result.sort(sortFn[state.sort] || sortFn["date-desc"]);
 
-        memo = { key, result };
+        memo = {
+          key,
+          result,
+        };
+
         return result;
       }
 
-      /***********************
+      /*************************
+       * HOVER PREVIEW
+       *************************/
+
+      const hoverTimers = new WeakMap();
+
+      function attachPreviewHandlers(card, video, preview) {
+        if (!video || !preview) return;
+
+        let loaded = false;
+
+        const startPreview = async () => {
+          if (!loaded) {
+            video.src = `./thumbs/${preview}`;
+            loaded = true;
+          }
+
+          try {
+            await video.play();
+
+            card.classList.add("preview-active");
+          } catch {
+            // ignore autoplay failures
+          }
+        };
+
+        const stopPreview = () => {
+          card.classList.remove("preview-active");
+
+          video.pause();
+        };
+
+        card.addEventListener("mouseenter", () => {
+          const timer = setTimeout(startPreview, 120);
+
+          hoverTimers.set(card, timer);
+        });
+
+        card.addEventListener("mouseleave", () => {
+          const timer = hoverTimers.get(card);
+
+          if (timer) {
+            clearTimeout(timer);
+          }
+
+          stopPreview();
+        });
+      }
+
+      /*************************
        * RENDER
-       ***********************/
+       *************************/
+
       function render() {
         const grid = DOM.grid;
+
         if (!grid) return;
 
         const filtered = getFilteredSorted();
+
         updateFilterLabels(filtered.length);
+
         updateSortUI();
 
         if (!filtered.length) {
-          grid.innerHTML = '<div class="empty">No demos found.</div>';
+          grid.innerHTML = `
+            <div class="empty">
+              No demos found.
+            </div>
+          `;
+
           return;
         }
 
         const frag = document.createDocumentFragment();
 
         for (const demo of filtered) {
-          const a = document.createElement("a");
-          a.className = "card";
-          a.href = `./${demo.folder}/index.html`;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
+          const card = document.createElement("a");
 
-          a.innerHTML = `
-        ${
-          demo.thumb
-            ? `<div class="thumb" style="background-image:url('./thumbs/${demo.thumb}')"></div>`
-            : ""
-        }
-        <div class="content">
-          <div class="tag">${demo.category}</div>
-          <div class="title">${demo.title}</div>
-          <div class="desc">${demo.description}</div>
-          <div class="date">${formatDate(demo.created)}</div>
-        </div>
-      `;
+          card.className = "card";
 
-          frag.appendChild(a);
+          card.href = `./${demo.folder}/index.html`;
+
+          card.target = "_blank";
+
+          card.rel = "noopener noreferrer";
+
+          const thumb = document.createElement("div");
+
+          thumb.className = "thumb";
+
+          if (demo.thumb) {
+            const img = document.createElement("img");
+
+            img.loading = "lazy";
+
+            img.decoding = "async";
+
+            img.src = `./thumbs/${demo.thumb}`;
+
+            img.alt = demo.title;
+
+            thumb.appendChild(img);
+          }
+
+          let video = null;
+
+          if (demo.preview) {
+            video = document.createElement("video");
+
+            video.muted = true;
+
+            video.loop = true;
+
+            video.playsInline = true;
+
+            video.preload = "none";
+
+            video.disablePictureInPicture = true;
+
+            video.setAttribute("muted", "");
+
+            video.setAttribute("playsinline", "");
+
+            thumb.appendChild(video);
+          }
+
+          const content = document.createElement("div");
+
+          content.className = "content";
+
+          content.innerHTML = `
+            <div class="tag">
+              ${demo.category}
+            </div>
+
+            <div class="title">
+              ${demo.title}
+            </div>
+
+            <div class="desc">
+              ${demo.description}
+            </div>
+
+            <div class="date">
+              ${formatDate(demo.created)}
+            </div>
+          `;
+
+          card.appendChild(thumb);
+
+          card.appendChild(content);
+
+          frag.appendChild(card);
+
+          if (video && demo.preview) {
+            attachPreviewHandlers(card, video, demo.preview);
+          }
         }
 
         grid.innerHTML = "";
+
         grid.appendChild(frag);
       }
 
@@ -742,15 +1048,15 @@
       }
 
       function updateFilterLabels(currentCount = null) {
-        const buttons = DOM.filters
-          ? DOM.filters.querySelectorAll("button")
-          : [];
+        const buttons = DOM.filters.querySelectorAll("button");
 
-        buttons.forEach((b) => {
+        for (const b of buttons) {
           const cat = b.dataset.cat;
+
           const total = categoryTotals[cat] ?? 0;
 
           let label = cat;
+
           if (total) {
             if (currentCount != null && cat === state.filter) {
               label += ` (${currentCount}/${total})`;
@@ -762,8 +1068,9 @@
           if (b.textContent !== label) {
             b.textContent = label;
           }
+
           b.classList.toggle("active", cat === state.filter);
-        });
+        }
       }
     </script>
   </body>

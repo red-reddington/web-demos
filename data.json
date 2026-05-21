@@ -45,7 +45,8 @@
     "category": "Game",
     "description": "Canvas 2D tribute to classic QBasic game",
     "created": "2026-05-05",
-    "thumb": "gorillas.jpg"
+    "thumb": "gorillas.jpg",
+    "preview": "gorillas.webm"
   },  
   {
     "folder": "jumping-jack",
@@ -61,7 +62,8 @@
     "category": "Game",
     "description": "Original procedural card games",
     "created": "2026-04-20",
-    "thumb": "velvetshuffle-cards.jpg"
+    "thumb": "velvetshuffle-cards.jpg",
+    "preview": "velvetshuffle-cards.webm"
   },
   {
     "folder": "threejs-instanced-windmills",
@@ -141,7 +143,8 @@
     "category": "Game",
     "description": "First-person raven shooter with physics",
     "created": "2025-12-17",
-    "thumb": "ravenfall.jpg"
+    "thumb": "ravenfall.jpg",
+    "preview": "ravenfall.webm"
   },
   {
     "folder": "snow-brawl",
@@ -200,11 +203,12 @@
     "thumb": "threejs-volumetric-fire.jpg"
   },
   {
-  "folder": "deathchase-3d",
-  "title": "Deathchase 3D",
-  "category": "Game",
-  "description": "Three.js homage to the 1983 ZX Spectrum chase classic",
-  "created": "2026-05-18",
-  "thumb": "deathchase-3d.jpg"
-}
+    "folder": "deathchase-3d",
+    "title": "Deathchase 3D",
+    "category": "Game",
+    "description": "Three.js homage to the 1983 ZX Spectrum chase classic",
+    "created": "2026-05-18",
+    "thumb": "deathchase-3d.jpg",
+    "preview": "deathchase-3d.webm"
+  }
 ]
