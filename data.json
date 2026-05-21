@@ -37,7 +37,8 @@
     "category": "Game",
     "description": "Canvas 2D tribute to classic QBasic game",
     "created": "2026-05-03",
-    "thumb": "nibbles.jpg"
+    "thumb": "nibbles.jpg",
+    "preview": "nibbles.webm"
   },
   {
     "folder": "gorillas",
@@ -54,7 +55,8 @@
     "category": "Game",
     "description": "Retro 2D platformer",
     "created": "2026-04-28",
-    "thumb": "jumping-jack.jpg"
+    "thumb": "jumping-jack.jpg",
+    "preview": "jumping-jack.webm"
   },
   {
     "folder": "velvetshuffle-cards",
@@ -71,7 +73,8 @@
     "category": "Three.js",
     "description": "Large-scale instanced windmill rendering",
     "created": "2026-02-18",
-    "thumb": "threejs-instanced-windmills.jpg"
+    "thumb": "threejs-instanced-windmills.jpg",
+    "preview": "threejs-instanced-windmills.webm"
   },
   {
     "folder": "wheres-walter",
@@ -79,7 +82,8 @@
     "category": "Game",
     "description": "Instanced crowd engine + search gameplay",
     "created": "2026-02-16",
-    "thumb": "wheres-walter.jpg"
+    "thumb": "wheres-walter.jpg",
+    "preview": "wheres-walter.webm"
   },
   {
     "folder": "browser-local-tts",
@@ -103,7 +107,8 @@
     "category": "Other",
     "description": "Date cubes with clever 6↔9 flipping logic",
     "created": "2026-02-13",
-    "thumb": "calendar-cubes.jpg"
+    "thumb": "calendar-cubes.jpg",
+    "preview": "calendar-cubes.webm"
   },
   {
     "folder": "threejs-procedural-rocks-100k",
