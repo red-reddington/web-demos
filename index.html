@@ -245,6 +245,10 @@
         color: inherit;
         text-decoration: none;
 
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+
         transition:
           transform 0.15s ease,
           box-shadow 0.15s ease,
@@ -895,34 +899,36 @@
 
           try {
             await video.play();
-
             card.classList.add("preview-active");
-          } catch {
-            // ignore autoplay failures
-          }
+          } catch {}
         };
 
         const stopPreview = () => {
           card.classList.remove("preview-active");
-
           video.pause();
         };
 
-        card.addEventListener("mouseenter", () => {
-          const timer = setTimeout(startPreview, 120);
+        let timer;
 
-          hoverTimers.set(card, timer);
-        });
+        const onDown = (e) => {
+          // prevent iOS long-press menu
+          e.preventDefault();
 
-        card.addEventListener("mouseleave", () => {
-          const timer = hoverTimers.get(card);
+          timer = setTimeout(startPreview, 0); // instant
+        };
 
-          if (timer) {
-            clearTimeout(timer);
-          }
-
+        const onUp = () => {
+          clearTimeout(timer);
           stopPreview();
-        });
+        };
+
+        card.addEventListener("pointerdown", onDown);
+        card.addEventListener("pointerup", onUp);
+        card.addEventListener("pointercancel", onUp);
+        card.addEventListener("pointerleave", onUp);
+
+        // kill iOS context menu on long press
+        card.addEventListener("contextmenu", (e) => e.preventDefault());
       }
 
       /*************************
