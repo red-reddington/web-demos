@@ -306,7 +306,8 @@
 
       .card.preview-active {
         box-shadow: 0 0 0 3px rgba(76, 139, 245, 0.6);
-        z-index: 2;
+        z-index: 10;
+        transition: box-shadow 0.1s ease;
       }
 
       .card.preview-active .thumb video {
@@ -593,27 +594,36 @@
 
         stop() {
           if (!this.activeCard) return;
+
           this.activeCard.classList.remove("preview-active");
           if (this.activeVideo) {
             this.activeVideo.pause();
+            // this.activeVideo.currentTime = 0; // reset on stop
           }
           this.activeCard = null;
           this.activeVideo = null;
         },
 
         activate(card, video, previewSrc) {
+          // Force stop any previous one first
           if (this.activeCard && this.activeCard !== card) {
             this.stop();
           }
+
           if (!video) return;
 
+          // Load video if needed
           if (!video.src || !video.src.endsWith(previewSrc)) {
             video.src = `./thumbs/${previewSrc}`;
           }
 
           this.activeCard = card;
           this.activeVideo = video;
+
+          // Force immediate style update
           card.classList.add("preview-active");
+          // Force reflow for immediate visual feedback
+          void card.offsetWidth;
 
           video.play().catch(() => {});
         },
@@ -630,7 +640,7 @@
 
         let loaded = false;
 
-        // Desktop Hover (unchanged)
+        // Desktop Hover
         const startPreview = async () => {
           if (!loaded) {
             video.src = `./thumbs/${preview}`;
@@ -662,23 +672,24 @@
         card.addEventListener(
           "touchstart",
           (e) => {
+            // If already active → second tap = navigate
             if (PreviewManager.activeCard === card) {
-              // Second tap → navigate
               PreviewManager.stop();
-              return; // Let <a> navigation happen
+              return; // let <a> navigate
             }
 
-            // First touch → preview
+            // First touch = preview only
             e.preventDefault();
+            e.stopImmediatePropagation();
             PreviewManager.activate(card, video, preview);
           },
           { passive: false },
         );
       }
 
-      // ==================== GLOBAL LISTENERS ====================
+      // ==================== GLOBAL SETUP =======================================
 
-      // Global touch outside to stop preview
+      // Touch outside anywhere → stop preview
       document.addEventListener(
         "touchstart",
         (e) => {
@@ -689,7 +700,7 @@
         { passive: true },
       );
 
-      // Intersection Observer for scroll cleanup
+      // Intersection Observer
       const previewObserver = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
@@ -701,7 +712,10 @@
             }
           });
         },
-        { threshold: 0.15 },
+        {
+          threshold: 0.2,
+          rootMargin: "-10px",
+        },
       );
 
       function observeCards() {
