@@ -596,16 +596,18 @@
             this.activeVideo.pause();
             this.activeVideo = null;
           }
-          // Nuke ALL preview-active classes and pause ALL videos
+          // Remove active classes from all cards
           document.querySelectorAll(".card.preview-active").forEach((card) => {
             card.classList.remove("preview-active");
-            const video = card.querySelector("video");
-            if (video) video.pause();
           });
         },
 
         activate(video) {
-          this.stop(); // Always stop everything first
+          // Stop previous if it's a different video
+          if (this.activeVideo && this.activeVideo !== video) {
+            this.stop();
+          }
+
           this.activeVideo = video;
           video.play().catch(() => {});
         },
@@ -650,12 +652,12 @@
           stopPreview();
         });
 
-        // Mobile Touch - Simple
+        // === MOBILE TOUCH ===
         card.addEventListener(
           "touchstart",
           (e) => {
             if (PreviewManager.activeVideo === video) {
-              // Second tap on same card → navigate
+              // Second tap → navigate
               PreviewManager.stop();
               return;
             }
