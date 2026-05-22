@@ -596,15 +596,16 @@
             this.activeVideo.pause();
             this.activeVideo = null;
           }
+          // Nuke ALL preview-active classes and pause ALL videos
           document.querySelectorAll(".card.preview-active").forEach((card) => {
             card.classList.remove("preview-active");
+            const video = card.querySelector("video");
+            if (video) video.pause();
           });
         },
 
         activate(video) {
-          if (this.activeVideo && this.activeVideo !== video) {
-            this.activeVideo.pause();
-          }
+          this.stop(); // Always stop everything first
           this.activeVideo = video;
           video.play().catch(() => {});
         },
