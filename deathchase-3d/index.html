@@ -842,6 +842,24 @@
       /* ============================================================================
        * UTILITIES
        * ============================================================================ */
+      // Prevent iOS Safari double-tap zoom WITHOUT interfering with joystick movement, multi-touch, or normal taps.
+      // Only cancel the SECOND tap of a rapid double-tap gesture.
+      let __lastTouchEnd = 0;
+
+      document.addEventListener(
+        "touchend",
+        (e) => {
+          const now = performance.now();
+
+          if (now - __lastTouchEnd <= 300) {
+            e.preventDefault();
+          }
+
+          __lastTouchEnd = now;
+        },
+        { passive: false },
+      );
+
       const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
       const lerp = (a, b, t) => a + (b - a) * t;
       // Resolve an asset path against CONFIG.ASSET_BASE. Absolute URLs (http://, https://, //) pass through unchanged.
