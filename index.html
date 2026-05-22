@@ -737,6 +737,22 @@
         state.maxDate = Math.min(state.maxDate, sortedDates.at(-1));
       }
 
+      function hydrateStateFromURL() {
+        state.filter = getParam("category", "All");
+
+        state.sort = getParam("sort", "date-desc");
+
+        state.search = getParam("search", "").trim();
+
+        const min = parseDateParam(getParam("minDate"));
+
+        const max = parseDateParam(getParam("maxDate"), true);
+
+        state.minDate = min ?? sortedDates[0];
+
+        state.maxDate = max ?? sortedDates.at(-1);
+      }
+
       /*************************
        * INIT
        *************************/
@@ -806,22 +822,6 @@
                   </div>
                 `;
         });
-
-      function hydrateStateFromURL() {
-        state.filter = getParam("category", "All");
-
-        state.sort = getParam("sort", "date-desc");
-
-        state.search = getParam("search", "").trim();
-
-        const min = parseDateParam(getParam("minDate"));
-
-        const max = parseDateParam(getParam("maxDate"), true);
-
-        state.minDate = min ?? sortedDates[0];
-
-        state.maxDate = max ?? sortedDates.at(-1);
-      }
 
       /*************************
        * UI SETUP
