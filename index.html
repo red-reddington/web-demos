@@ -585,58 +585,26 @@
       };
 
       /*************************
-       * PREVIEW MANAGER (Mobile + Global Coordination)
+       * PREVIEW MANAGER
        *************************/
 
       const PreviewManager = {
-        activeId: null,
         activeVideo: null,
 
-        getActiveCard() {
-          return this.activeId
-            ? document.querySelector(`[data-preview-id="${this.activeId}"]`)
-            : null;
-        },
-
         stop() {
-          const card = this.getActiveCard();
-          if (card) {
-            card.classList.remove("preview-active");
-          }
           if (this.activeVideo) {
             this.activeVideo.pause();
+            this.activeVideo = null;
           }
-          this.activeId = null;
-          this.activeVideo = null;
+          // Remove all active classes
+          document.querySelectorAll(".card.preview-active").forEach((card) => {
+            card.classList.remove("preview-active");
+          });
         },
 
-        activate(card, video, previewSrc) {
-          this.stop(); // Always stop previous first
-
-          if (!video) return;
-
-          if (!video.src || !video.src.endsWith(previewSrc)) {
-            video.src = `./thumbs/${previewSrc}`;
-          }
-
-          // Assign unique ID for tracking across re-renders
-          if (!card.hasAttribute("data-preview-id")) {
-            card.setAttribute(
-              "data-preview-id",
-              "preview-" + Math.random().toString(36).slice(2),
-            );
-          }
-
-          this.activeId = card.getAttribute("data-preview-id");
+        activate(video) {
+          this.stop();
           this.activeVideo = video;
-
-          // Strong visual feedback
-          card.classList.add("preview-active");
-          void card.offsetWidth; // force reflow
-          requestAnimationFrame(() => {
-            card.classList.add("preview-active"); // double tap for reliability
-          });
-
           video.play().catch(() => {});
         },
       };
@@ -680,21 +648,25 @@
           stopPreview();
         });
 
-        // MOBILE TOUCH
+        // Mobile Touch - Simple
         card.addEventListener(
           "touchstart",
           (e) => {
-            if (
-              PreviewManager.activeId &&
-              PreviewManager.getActiveCard() === card
-            ) {
+            if (PreviewManager.activeVideo === video) {
+              // Second tap → navigate
               PreviewManager.stop();
               return;
             }
 
             e.preventDefault();
             e.stopImmediatePropagation();
-            PreviewManager.activate(card, video, preview);
+
+            if (!video.src) {
+              video.src = `./thumbs/${preview}`;
+            }
+
+            card.classList.add("preview-active");
+            PreviewManager.activate(video);
           },
           { passive: false },
         );
@@ -702,6 +674,7 @@
 
       // ==================== GLOBAL SETUP ====================
 
+      // Touch outside cards
       document.addEventListener(
         "touchstart",
         (e) => {
@@ -712,29 +685,32 @@
         { passive: true },
       );
 
+      // Visibility cleanup (background tab, etc.)
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") PreviewManager.stop();
+      });
+      window.addEventListener("pagehide", () => PreviewManager.stop());
+
       // Intersection Observer
       const previewObserver = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
-            if (
-              !entry.isIntersecting &&
-              PreviewManager.getActiveCard() === entry.target
-            ) {
-              PreviewManager.stop();
+            if (!entry.isIntersecting) {
+              const video = entry.target.querySelector("video");
+              if (video && PreviewManager.activeVideo === video) {
+                PreviewManager.stop();
+              }
             }
           });
         },
-        {
-          threshold: 0.15,
-          rootMargin: "-20px 0px",
-        },
+        { threshold: 0.18, rootMargin: "-20px 0px" },
       );
 
       function observeCards() {
         previewObserver.disconnect();
-        document.querySelectorAll(".card").forEach((card) => {
-          previewObserver.observe(card);
-        });
+        document
+          .querySelectorAll(".card")
+          .forEach((card) => previewObserver.observe(card));
       }
 
       function normalizeState() {
@@ -1047,6 +1023,9 @@
         const grid = DOM.grid;
 
         if (!grid) return;
+
+        // Clean slate on every render (critical for correctness)
+        PreviewManager.stop();
 
         const filtered = getFilteredSorted();
 
