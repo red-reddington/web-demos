@@ -305,9 +305,9 @@
       }
 
       .card.preview-active {
-        box-shadow: 0 0 0 3px rgba(76, 139, 245, 0.6);
+        box-shadow: 0 0 0 4px rgba(76, 139, 245, 0.75) !important;
         z-index: 10;
-        transition: box-shadow 0.1s ease;
+        transition: box-shadow 80ms ease-out;
       }
 
       .card.preview-active .thumb video {
@@ -589,41 +589,53 @@
        *************************/
 
       const PreviewManager = {
-        activeCard: null,
+        activeId: null,
         activeVideo: null,
 
-        stop() {
-          if (!this.activeCard) return;
+        getActiveCard() {
+          return this.activeId
+            ? document.querySelector(`[data-preview-id="${this.activeId}"]`)
+            : null;
+        },
 
-          this.activeCard.classList.remove("preview-active");
+        stop() {
+          const card = this.getActiveCard();
+          if (card) {
+            card.classList.remove("preview-active");
+          }
           if (this.activeVideo) {
             this.activeVideo.pause();
-            // this.activeVideo.currentTime = 0; // reset on stop
           }
-          this.activeCard = null;
+          this.activeId = null;
           this.activeVideo = null;
         },
 
         activate(card, video, previewSrc) {
-          // Force stop any previous one first
-          if (this.activeCard && this.activeCard !== card) {
-            this.stop();
-          }
+          this.stop(); // Always stop previous first
 
           if (!video) return;
 
-          // Load video if needed
           if (!video.src || !video.src.endsWith(previewSrc)) {
             video.src = `./thumbs/${previewSrc}`;
           }
 
-          this.activeCard = card;
+          // Assign unique ID for tracking across re-renders
+          if (!card.hasAttribute("data-preview-id")) {
+            card.setAttribute(
+              "data-preview-id",
+              "preview-" + Math.random().toString(36).slice(2),
+            );
+          }
+
+          this.activeId = card.getAttribute("data-preview-id");
           this.activeVideo = video;
 
-          // Force immediate style update
+          // Strong visual feedback
           card.classList.add("preview-active");
-          // Force reflow for immediate visual feedback
-          void card.offsetWidth;
+          void card.offsetWidth; // force reflow
+          requestAnimationFrame(() => {
+            card.classList.add("preview-active"); // double tap for reliability
+          });
 
           video.play().catch(() => {});
         },
@@ -668,17 +680,18 @@
           stopPreview();
         });
 
-        // === MOBILE TOUCH ===
+        // MOBILE TOUCH
         card.addEventListener(
           "touchstart",
           (e) => {
-            // If already active → second tap = navigate
-            if (PreviewManager.activeCard === card) {
+            if (
+              PreviewManager.activeId &&
+              PreviewManager.getActiveCard() === card
+            ) {
               PreviewManager.stop();
-              return; // let <a> navigate
+              return;
             }
 
-            // First touch = preview only
             e.preventDefault();
             e.stopImmediatePropagation();
             PreviewManager.activate(card, video, preview);
@@ -687,9 +700,8 @@
         );
       }
 
-      // ==================== GLOBAL SETUP =======================================
+      // ==================== GLOBAL SETUP ====================
 
-      // Touch outside anywhere → stop preview
       document.addEventListener(
         "touchstart",
         (e) => {
@@ -706,15 +718,15 @@
           entries.forEach((entry) => {
             if (
               !entry.isIntersecting &&
-              PreviewManager.activeCard === entry.target
+              PreviewManager.getActiveCard() === entry.target
             ) {
               PreviewManager.stop();
             }
           });
         },
         {
-          threshold: 0.2,
-          rootMargin: "-10px",
+          threshold: 0.15,
+          rootMargin: "-20px 0px",
         },
       );
 
