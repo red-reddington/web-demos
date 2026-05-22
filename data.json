@@ -5,7 +5,8 @@
     "category": "Three.js",
     "description": "Grass reacting to player + wind simulation",
     "created": "2025-11-06",
-    "thumb": "threejs-interactive-grass.jpg"
+    "thumb": "threejs-interactive-grass.jpg",
+    "preview": "threejs-interactive-grass.webm"
   },
   {
     "folder": "threejs-complete-sky-system",
@@ -22,7 +23,8 @@
     "category": "Three.js",
     "description": "Screen-space water ripple system",
     "created": "2025-10-28",
-    "thumb": "threejs-water-ripples.jpg"
+    "thumb": "threejs-water-ripples.jpg",
+    "preview": "threejs-water-ripples.webm"
   },
   {
     "folder": "threejs-xzfog",
@@ -30,7 +32,8 @@
     "category": "Three.js",
     "description": "Horizontal distance-based fog",
     "created": "2025-10-20",
-    "thumb": "threejs-xzfog.jpg"
+    "thumb": "threejs-xzfog.jpg",
+    "preview": "threejs-xzfog.webm"
   },
   {
     "folder": "nibbles",
@@ -92,7 +95,8 @@
     "category": "AI / Browser ML",
     "description": "Real-time local AI voice synthesis with synchronized subtitles",
     "created": "2026-05-06",
-    "thumb": "browser-local-tts.jpg"
+    "thumb": "browser-local-tts.jpg",
+    "preview": "browser-local-tts.webm"
   },
   {
     "folder": "browser-local-tts-piper",
@@ -100,7 +104,8 @@
     "category": "AI / Browser ML",
     "description": "Smaller/faster local TTS with a Romanian-accent demo",
     "created": "2026-05-16",
-    "thumb": "browser-local-tts-piper.jpg"
+    "thumb": "browser-local-tts-piper.jpg",
+    "preview": "browser-local-tts-piper.webm"
   },
   {
     "folder": "calendar-cubes",
@@ -135,7 +140,8 @@
     "category": "Three.js",
     "description": "Cylinder aligned to arbitrary plane in world space",
     "created": "2025-12-21",
-    "thumb": "threejs-cylinder-plane-align.jpg"
+    "thumb": "threejs-cylinder-plane-align.jpg",
+    "preview": "threejs-cylinder-plane-align.webm"
   },
   {
     "folder": "threejs-screen-recording",
@@ -170,7 +176,8 @@
     "category": "Three.js",
     "description": "Per-tree frustum culling",
     "created": "2025-12-11",
-    "thumb": "threejs-forest-culling.jpg"
+    "thumb": "threejs-forest-culling.jpg",
+    "preview": "threejs-procedural-forest.webm" 
   },
   {
     "folder": "threejs-procedural-forest",
@@ -178,7 +185,8 @@
     "category": "Three.js",
     "description": "High-performance instanced tree rendering",
     "created": "2025-12-10",
-    "thumb": "threejs-procedural-forest.jpg"
+    "thumb": "threejs-procedural-forest.jpg",
+    "preview": "threejs-procedural-forest.webm"
   },
   {
     "folder": "threejs-ground-fog",
@@ -186,7 +194,8 @@
     "category": "Three.js",
     "description": "High-performance ground fog effect",
     "created": "2025-12-06",
-    "thumb": "threejs-ground-fog.jpg"
+    "thumb": "threejs-ground-fog.jpg",
+    "preview": "threejs-ground-fog.webm"
   },
   {
     "folder": "threejs-multi-boat-water",
@@ -194,7 +203,8 @@
     "category": "Three.js",
     "description": "Multiple boats interacting with water",
     "created": "2025-11-27",
-    "thumb": "threejs-multi-boat-water.jpg"
+    "thumb": "threejs-multi-boat-water.jpg",
+    "preview": "threejs-multi-boat-water.webm"
   },
   {
     "folder": "threejs-parametric-boat",
@@ -202,7 +212,8 @@
     "category": "Three.js",
     "description": "Procedural boat with dynamic water physics",
     "created": "2025-11-13",
-    "thumb": "threejs-parametric-boat.jpg"
+    "thumb": "threejs-parametric-boat.jpg",
+    "preview": "threejs-parametric-boat.webm"
   },
   {
     "folder": "threejs-volumetric-fire",
