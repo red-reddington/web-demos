@@ -596,19 +596,25 @@
             this.activeVideo.pause();
             this.activeVideo = null;
           }
-          // Remove active classes from all cards
           document.querySelectorAll(".card.preview-active").forEach((card) => {
             card.classList.remove("preview-active");
           });
         },
 
-        activate(video) {
-          // Stop previous if it's a different video
+        activate(video, card) {
+          // ← pass card too
           if (this.activeVideo && this.activeVideo !== video) {
             this.stop();
           }
 
           this.activeVideo = video;
+
+          // Ensure the card gets the class (in case stop() removed it)
+          if (card) {
+            card.classList.add("preview-active");
+            void card.offsetWidth; // force repaint
+          }
+
           video.play().catch(() => {});
         },
       };
@@ -671,7 +677,7 @@
             }
 
             card.classList.add("preview-active");
-            PreviewManager.activate(video);
+            PreviewManager.activate(video, card);
           },
           { passive: false },
         );
