@@ -596,14 +596,15 @@
             this.activeVideo.pause();
             this.activeVideo = null;
           }
-          // Remove all active classes
           document.querySelectorAll(".card.preview-active").forEach((card) => {
             card.classList.remove("preview-active");
           });
         },
 
         activate(video) {
-          this.stop();
+          if (this.activeVideo && this.activeVideo !== video) {
+            this.activeVideo.pause();
+          }
           this.activeVideo = video;
           video.play().catch(() => {});
         },
@@ -653,11 +654,12 @@
           "touchstart",
           (e) => {
             if (PreviewManager.activeVideo === video) {
-              // Second tap → navigate
+              // Second tap on same card → navigate
               PreviewManager.stop();
               return;
             }
 
+            // First touch → preview
             e.preventDefault();
             e.stopImmediatePropagation();
 
