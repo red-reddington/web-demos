@@ -304,6 +304,11 @@
         will-change: opacity;
       }
 
+      .card.preview-active {
+        box-shadow: 0 0 0 3px rgba(76, 139, 245, 0.6);
+        z-index: 2;
+      }
+
       .card.preview-active .thumb video {
         opacity: 1;
       }
@@ -578,6 +583,134 @@
         "date-desc": (a, b) => b.ts - a.ts,
       };
 
+      /*************************
+       * PREVIEW MANAGER (Mobile + Global Coordination)
+       *************************/
+
+      const PreviewManager = {
+        activeCard: null,
+        activeVideo: null,
+
+        stop() {
+          if (!this.activeCard) return;
+          this.activeCard.classList.remove("preview-active");
+          if (this.activeVideo) {
+            this.activeVideo.pause();
+          }
+          this.activeCard = null;
+          this.activeVideo = null;
+        },
+
+        activate(card, video, previewSrc) {
+          if (this.activeCard && this.activeCard !== card) {
+            this.stop();
+          }
+          if (!video) return;
+
+          if (!video.src || !video.src.endsWith(previewSrc)) {
+            video.src = `./thumbs/${previewSrc}`;
+          }
+
+          this.activeCard = card;
+          this.activeVideo = video;
+          card.classList.add("preview-active");
+
+          video.play().catch(() => {});
+        },
+      };
+
+      /*************************
+       * HOVER + TOUCH PREVIEW HANDLERS
+       *************************/
+
+      const hoverTimers = new WeakMap();
+
+      function attachPreviewHandlers(card, video, preview) {
+        if (!video || !preview) return;
+
+        let loaded = false;
+
+        // Desktop Hover (unchanged)
+        const startPreview = async () => {
+          if (!loaded) {
+            video.src = `./thumbs/${preview}`;
+            loaded = true;
+          }
+          try {
+            await video.play();
+            card.classList.add("preview-active");
+          } catch (e) {}
+        };
+
+        const stopPreview = () => {
+          card.classList.remove("preview-active");
+          video.pause();
+        };
+
+        card.addEventListener("mouseenter", () => {
+          const timer = setTimeout(startPreview, 120);
+          hoverTimers.set(card, timer);
+        });
+
+        card.addEventListener("mouseleave", () => {
+          const timer = hoverTimers.get(card);
+          if (timer) clearTimeout(timer);
+          stopPreview();
+        });
+
+        // === MOBILE TOUCH ===
+        card.addEventListener(
+          "touchstart",
+          (e) => {
+            if (PreviewManager.activeCard === card) {
+              // Second tap → navigate
+              PreviewManager.stop();
+              return; // Let <a> navigation happen
+            }
+
+            // First touch → preview
+            e.preventDefault();
+            PreviewManager.activate(card, video, preview);
+          },
+          { passive: false },
+        );
+      }
+
+      // ==================== GLOBAL LISTENERS ====================
+
+      // Global touch outside to stop preview
+      document.addEventListener(
+        "touchstart",
+        (e) => {
+          if (!e.target.closest(".card")) {
+            PreviewManager.stop();
+          }
+        },
+        { passive: true },
+      );
+
+      // Intersection Observer for scroll cleanup
+      const previewObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (
+              !entry.isIntersecting &&
+              PreviewManager.activeCard === entry.target
+            ) {
+              PreviewManager.stop();
+            }
+          });
+        },
+        { threshold: 0.15 },
+      );
+
+      function observeCards() {
+        previewObserver.disconnect();
+        document.querySelectorAll(".card").forEach((card) => {
+          previewObserver.observe(card);
+        });
+      }
+
       function normalizeState() {
         if (!sortedDates.length) return;
 
@@ -667,11 +800,11 @@
           console.error(err);
 
           DOM.grid.innerHTML = `
-            <div class="empty">
-              Failed to load demos.
-              Please try again later.
-            </div>
-          `;
+                  <div class="empty">
+                    Failed to load demos.
+                    Please try again later.
+                  </div>
+                `;
         });
 
       function hydrateStateFromURL() {
@@ -881,55 +1014,6 @@
       }
 
       /*************************
-       * HOVER PREVIEW
-       *************************/
-
-      const hoverTimers = new WeakMap();
-
-      function attachPreviewHandlers(card, video, preview) {
-        if (!video || !preview) return;
-
-        let loaded = false;
-
-        const startPreview = async () => {
-          if (!loaded) {
-            video.src = `./thumbs/${preview}`;
-            loaded = true;
-          }
-
-          try {
-            await video.play();
-
-            card.classList.add("preview-active");
-          } catch {
-            // ignore autoplay failures
-          }
-        };
-
-        const stopPreview = () => {
-          card.classList.remove("preview-active");
-
-          video.pause();
-        };
-
-        card.addEventListener("mouseenter", () => {
-          const timer = setTimeout(startPreview, 120);
-
-          hoverTimers.set(card, timer);
-        });
-
-        card.addEventListener("mouseleave", () => {
-          const timer = hoverTimers.get(card);
-
-          if (timer) {
-            clearTimeout(timer);
-          }
-
-          stopPreview();
-        });
-      }
-
-      /*************************
        * RENDER
        *************************/
 
@@ -946,10 +1030,10 @@
 
         if (!filtered.length) {
           grid.innerHTML = `
-            <div class="empty">
-              No demos found.
-            </div>
-          `;
+                  <div class="empty">
+                    No demos found.
+                  </div>
+                `;
 
           return;
         }
@@ -1012,22 +1096,22 @@
           content.className = "content";
 
           content.innerHTML = `
-            <div class="tag">
-              ${demo.category}
-            </div>
+                  <div class="tag">
+                    ${demo.category}
+                  </div>
 
-            <div class="title">
-              ${demo.title}
-            </div>
+                  <div class="title">
+                    ${demo.title}
+                  </div>
 
-            <div class="desc">
-              ${demo.description}
-            </div>
+                  <div class="desc">
+                    ${demo.description}
+                  </div>
 
-            <div class="date">
-              ${formatDate(demo.created)}
-            </div>
-          `;
+                  <div class="date">
+                    ${formatDate(demo.created)}
+                  </div>
+                `;
 
           card.appendChild(thumb);
 
@@ -1043,6 +1127,9 @@
         grid.innerHTML = "";
 
         grid.appendChild(frag);
+
+        // Re-observe after DOM update
+        observeCards();
       }
 
       function updateSortUI() {
