@@ -1,4 +1,5 @@
 <!-- https://codepen.io/the-red-reddington/full/qEqVXYd -->
+<!-- https://discourse.threejs.org/t/eternal-ride-infinite-terrain-in-three-js-with-no-lod-no-seams/91868 -->
 <!doctype html>
 <html lang="en">
   <head>
@@ -631,8 +632,8 @@
 
       const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
       const isTouchOnly = () =>
-        (("ontouchstart" in window || navigator.maxTouchPoints > 0) &&
-          !matchMedia("(pointer:fine)").matches);
+        ("ontouchstart" in window || navigator.maxTouchPoints > 0) &&
+        !matchMedia("(pointer:fine)").matches;
       const assetURL = (p) =>
         /^(https?:)?\/\//i.test(p) ? p : CONFIG.ASSET_BASE + p;
 
@@ -910,7 +911,7 @@
             float d = dot(direction, sunDirection);
 
             if (!uIsNight) {
-              // ---- Day: plain bright sun disc (unchanged) ----
+              // ---- Day: plain bright sun disc ----
               float sunIntensity = pow(max(d, 0.0), 1000.0 / uSunSize);
               gl_FragColor = vec4(skyColor + uSunColor * sunIntensity, 1.0);
               return;
