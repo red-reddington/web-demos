@@ -3707,6 +3707,7 @@
           tex.colorSpace = SRGBColorSpace;
           tex.minFilter = LinearFilter;
           tex.magFilter = LinearFilter;
+          tex.premultiplyAlpha = true; // iOS linearly-filters straight-alpha canvas textures by bleeding color into the transparent rim; the gradient's colored zero-alpha stops then sample as specks on the magnified additive outer glow. Premultiplied upload makes the rim filter cleanly.
           Bike._cachedGlowTex = tex;
           return tex;
         }
@@ -5854,6 +5855,7 @@
        * Single global init — wire DOM, kick frame loop with fixed-step accumulator.
        * ============================================================================ */
       function init() {
+        window.addEventListener("contextmenu", (e) => e.preventDefault());
         const container = document.getElementById("container");
         const splash = document.getElementById("splash");
 

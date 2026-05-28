@@ -44,6 +44,7 @@ This repo is a **curated mirror** of my [CodePen](https://codepen.io/the-red-red
 ### Games
 
 - [`deathchase-3d`](deathchase-3d/) — Three.js homage to the 1983 ZX Spectrum chase classic
+- [`eternal-ride`](eternal-ride/) — infinite seamless terrain via analytical noise + a single bike-following fan
 - [`gorillas`](gorillas/) — Canvas 2D Gorillas.BAS tribute
 - [`hiss-highness-snake`](hiss-highness-snake/) — Procedural snake game with realistic terrain-following slithering and a fully procedural animated head
 - [`jumping-jack`](jumping-jack/) — Canvas 2D retro platformer

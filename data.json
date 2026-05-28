@@ -232,5 +232,14 @@
     "created": "2026-05-18",
     "thumb": "deathchase-3d.jpg",
     "preview": "deathchase-3d.webm"
+  },
+  {
+    "folder": "eternal-ride",
+    "title": "Eternal Ride — Beyond the Horizon",
+    "category": "Game",
+    "description": "Infinite terrain, no LOD seams, float64-precise at 1 AU",
+    "created": "2026-05-27",
+    "thumb": "eternal-ride.jpg",
+    "preview": "eternal-ride.webm"
   }
 ]
