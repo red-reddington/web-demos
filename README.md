@@ -43,6 +43,7 @@ This repo is a **curated mirror** of my [CodePen](https://codepen.io/the-red-red
 
 ### Games
 
+- [`abalone`](abalone/) — 3D version of the classic boardgame, with two play modes: local PvP and custom AI opponent
 - [`deathchase-3d`](deathchase-3d/) — Three.js homage to the 1983 ZX Spectrum chase classic
 - [`eternal-ride`](eternal-ride/) — infinite seamless terrain via analytical noise + a single bike-following fan
 - [`gorillas`](gorillas/) — Canvas 2D Gorillas.BAS tribute

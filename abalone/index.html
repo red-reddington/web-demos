@@ -1,0 +1,2495 @@
+<!-- https://codepen.io/the-red-reddington/full/vEypdyZ -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Abalone - Classic 3D Hexagonal Strategy Game in Three.js</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600&display=swap");
+
+      :root {
+        --gold: #e7b85a;
+        --gold-soft: #f2d79b;
+        --ink: #0b0708;
+        --teal: #3fd9c9;
+        --red: #ff6a52;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #140a0a;
+        font-family: "Outfit", system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      canvas {
+        display: block;
+      }
+
+      #ui {
+        position: fixed;
+        top: 18px;
+        left: 18px;
+        z-index: 10;
+        color: #f6efe6;
+        width: 236px;
+        padding: 18px 20px 16px;
+        background: linear-gradient(
+          160deg,
+          rgba(34, 16, 16, 0.72),
+          rgba(12, 6, 6, 0.72)
+        );
+        border: 1px solid rgba(231, 184, 90, 0.22);
+        border-radius: 18px;
+        backdrop-filter: blur(16px) saturate(1.2);
+        -webkit-backdrop-filter: blur(16px) saturate(1.2);
+        box-shadow:
+          0 24px 60px rgba(0, 0, 0, 0.55),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(14px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      #ui h1 {
+        margin: 0 0 12px;
+        font-family: "Cormorant Garamond", serif;
+        font-weight: 700;
+        font-size: 34px;
+        letter-spacing: 0.02em;
+        line-height: 0.9;
+        background: linear-gradient(
+          180deg,
+          #fff,
+          var(--gold-soft) 60%,
+          var(--gold)
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      #ui h1::after {
+        content: "";
+        display: block;
+        width: 42px;
+        height: 2px;
+        margin-top: 9px;
+        background: linear-gradient(90deg, var(--gold), transparent);
+        border-radius: 2px;
+      }
+
+      .turn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        margin-bottom: 14px;
+        letter-spacing: 0.03em;
+      }
+      .dot {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.15),
+          0 0 14px currentColor;
+        transition: 0.3s;
+      }
+      .dot.black {
+        background: radial-gradient(circle at 32% 28%, #5a5a64, #0c0c10);
+        color: #6cd;
+      }
+      .dot.white {
+        background: radial-gradient(circle at 32% 28%, #fff, #cfc4ad);
+        color: #fda;
+      }
+
+      .score {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .pad {
+        flex: 1;
+        padding: 9px 11px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.28);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+      }
+      .pad .lab {
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        opacity: 0.55;
+      }
+      .pad .lab .you {
+        margin-left: 5px;
+        color: var(--gold-soft);
+        text-transform: none; /* keep it "(You)", not "(YOU)" against the uppercase label */
+      }
+      .pad .num {
+        font-family: "Cormorant Garamond", serif;
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1;
+        margin-top: 3px;
+      }
+      .pips {
+        display: flex;
+        gap: 4px;
+        margin-top: 7px;
+      }
+      .pip {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.12);
+        transition: 0.35s;
+      }
+      .pip.on {
+        background: var(--gold);
+        box-shadow: 0 0 8px var(--gold);
+      }
+
+      .hint {
+        font-size: 11px;
+        line-height: 1.5;
+        opacity: 0.6;
+        font-weight: 300;
+        margin-bottom: 13px;
+      }
+      .hint b {
+        color: var(--gold-soft);
+        font-weight: 500;
+      }
+
+      #winner {
+        font-family: "Cormorant Garamond", serif;
+        font-size: 23px;
+        font-weight: 700;
+        min-height: 0;
+        color: var(--gold-soft);
+        text-shadow: 0 0 22px rgba(231, 184, 90, 0.5);
+        transition: 0.5s;
+      }
+      #winner:not(:empty) {
+        margin-bottom: 11px;
+      }
+
+      button {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid rgba(231, 184, 90, 0.4);
+        border-radius: 11px;
+        background: linear-gradient(
+          180deg,
+          rgba(231, 184, 90, 0.16),
+          rgba(231, 184, 90, 0.05)
+        );
+        color: var(--gold-soft);
+        font-family: "Outfit";
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      button:hover {
+        background: linear-gradient(
+          180deg,
+          rgba(231, 184, 90, 0.3),
+          rgba(231, 184, 90, 0.12)
+        );
+        box-shadow: 0 0 22px rgba(231, 184, 90, 0.25);
+        transform: translateY(-1px);
+      }
+      button:active {
+        transform: translateY(0);
+      }
+
+      /* Top-right icon strip (right-to-left): reset | help | fullscreen.
+      reset and help are edge-anchored at fixed offsets; fullscreen is the innermost button so that when the Fullscreen API is absent and its button is removed, nothing shifts and no gap opens at the edge. */
+      #resetBtn,
+      #fullscreenBtn,
+      #helpBtn {
+        position: fixed;
+        top: 14px;
+        width: 30px;
+        height: 30px;
+        z-index: 12;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--gold-soft);
+        background: rgba(20, 10, 10, 0.55);
+        border: 1px solid rgba(231, 184, 90, 0.22);
+        border-radius: 9px;
+        cursor: pointer;
+        padding: 0;
+        transition: 0.15s;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      #fullscreenBtn {
+        right: 90px;
+      }
+      #helpBtn {
+        right: 52px;
+      }
+      #resetBtn {
+        right: 14px;
+      }
+      #resetBtn:hover,
+      #fullscreenBtn:hover,
+      #helpBtn:hover {
+        transform: scale(1.1);
+        border-color: rgba(231, 184, 90, 0.5);
+      }
+
+      /* Rules flyout */
+      #helpPanel {
+        position: fixed;
+        top: 52px;
+        right: 52px;
+        z-index: 11;
+        width: 248px;
+        font-size: 12px;
+        line-height: 1.65;
+        color: #e8ddcf;
+        background: linear-gradient(
+          160deg,
+          rgba(34, 16, 16, 0.92),
+          rgba(12, 6, 6, 0.92)
+        );
+        border: 1px solid rgba(231, 184, 90, 0.24);
+        padding: 15px 17px;
+        border-radius: 14px;
+        text-align: left;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-6px);
+        transition:
+          opacity 0.18s ease-out,
+          transform 0.18s ease-out;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      }
+      #helpPanel.show {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+      #helpPanel h2 {
+        margin: 0 0 9px;
+        font-family: "Cormorant Garamond", serif;
+        font-size: 21px;
+        font-weight: 700;
+        color: var(--gold-soft);
+      }
+      #helpPanel p {
+        margin: 0 0 9px;
+        opacity: 0.82;
+      }
+      #helpPanel b {
+        color: var(--gold-soft);
+        font-weight: 600;
+      }
+      #helpPanel .sw {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        vertical-align: middle;
+        margin-right: 3px;
+        box-shadow: 0 0 6px currentColor;
+      }
+
+      /* New-game / mode-select modal */
+      #setupModal {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 4, 4, 0.55);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+      #setupModal.show {
+        display: flex;
+      }
+      #setupModal .modal-card {
+        width: min(86vw, 320px);
+        padding: 22px;
+        border-radius: 16px;
+        text-align: center;
+        color: #e8ddcf;
+        background: linear-gradient(
+          160deg,
+          rgba(34, 16, 16, 0.95),
+          rgba(12, 6, 6, 0.95)
+        );
+        border: 1px solid rgba(231, 184, 90, 0.24);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      }
+      #setupModal h2 {
+        margin: 0 0 6px;
+        font-family: "Cormorant Garamond", serif;
+        font-size: 23px;
+        font-weight: 700;
+        color: var(--gold-soft);
+      }
+      #setupModal p {
+        margin: 0 0 16px;
+        font-size: 12px;
+        opacity: 0.78;
+      }
+      #setupModal .setup-opt {
+        margin-bottom: 10px;
+      }
+      #setupModal .setup-sub {
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        opacity: 0.6;
+        margin: 4px 0 8px;
+      }
+      #setupModal .modal-actions {
+        display: flex;
+        gap: 10px;
+      }
+      #setupModal .modal-actions .setup-opt {
+        width: 100%;
+        margin-bottom: 0;
+      }
+      #setupModal .ghost {
+        margin-top: 14px;
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.14);
+        color: #e8ddcf;
+      }
+
+      /* Discreet FPS / stats readout, bottom-right */
+      #stats {
+        position: fixed;
+        right: 14px;
+        bottom: 12px;
+        z-index: 10;
+        font-family: "SF Mono", Menlo, monospace;
+        font-size: 10px;
+        line-height: 1.35;
+        color: #f6efe6;
+        text-align: right;
+        white-space: pre-line;
+        mix-blend-mode: difference;
+        cursor: pointer;
+        padding: 3px 5px;
+        opacity: 0.7;
+      }
+      #stats .extra {
+        display: none;
+      }
+      #stats.expanded .extra {
+        display: block;
+      }
+
+      /* Mobile / short viewports: the card becomes a slim top bar that spans the width and stays out of the board's way. Flexbox (not grid) so wrapping is predictable. Title + turn on the left, scores + New Game on the right. */
+      @media (max-width: 680px), (max-height: 560px) {
+        #ui {
+          top: 0;
+          left: 0;
+          right: 0;
+          width: auto;
+          bottom: auto;
+          border-radius: 0 0 16px 16px;
+          padding: max(8px, env(safe-area-inset-top)) 12px 9px;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px 12px;
+          animation: none;
+        }
+        #ui h1 {
+          font-size: 20px;
+          margin: 0;
+        }
+        #ui h1::after {
+          display: none;
+        }
+        .turn {
+          margin: 0;
+          font-size: 12px;
+          gap: 7px;
+        }
+        .hint {
+          display: none;
+        } /* rules live in the ? panel on mobile */
+        .score {
+          margin: 0 0 0 auto;
+          gap: 7px;
+        } /* push scores to the right edge */
+        .pad {
+          padding: 4px 9px;
+        }
+        .pad .lab {
+          font-size: 8px;
+          letter-spacing: 0.12em;
+        }
+        .pad .num {
+          font-size: 17px;
+          margin-top: 1px;
+        }
+        .pips {
+          gap: 3px;
+          margin-top: 3px;
+        }
+        .pip {
+          width: 5px;
+          height: 5px;
+        }
+        #winner {
+          font-size: 15px;
+          margin: 0;
+          order: 5;
+          flex-basis: 100%;
+        }
+        #winner:empty {
+          display: none;
+        }
+        button {
+          width: auto;
+          padding: 7px 16px;
+          font-size: 11px;
+        }
+        /* icons clear the bar by sitting a touch lower, enlarged for touch */
+        #resetBtn,
+        #fullscreenBtn,
+        #helpBtn {
+          width: 34px;
+          height: 34px;
+          top: auto;
+          bottom: 14px;
+        }
+        #fullscreenBtn {
+          right: 98px;
+        }
+        #helpBtn {
+          right: 56px;
+        }
+        #resetBtn {
+          right: 14px;
+        }
+        #helpPanel {
+          width: min(80vw, 300px);
+          top: auto;
+          bottom: 56px;
+          right: 56px;
+        }
+        #stats {
+          left: 12px;
+          right: auto;
+          text-align: left;
+        }
+      }
+      /* Extra-narrow portrait: drop the title to reclaim width. */
+      @media (max-width: 420px) {
+        #ui h1 {
+          display: none;
+        }
+        .turn {
+          font-size: 11px;
+        }
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.184.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="ui">
+      <h1>Abalone</h1>
+      <div class="turn">
+        <span id="dot" class="dot black"></span
+        ><span id="turn">Black to move</span>
+      </div>
+      <div class="score">
+        <div class="pad">
+          <div class="lab">Black<span class="you" id="youB"></span></div>
+          <div class="num" id="sB">0</div>
+          <div class="pips" id="pB"></div>
+        </div>
+        <div class="pad">
+          <div class="lab">White<span class="you" id="youW"></span></div>
+          <div class="num" id="sW">0</div>
+          <div class="pips" id="pW"></div>
+        </div>
+      </div>
+      <div id="winner"></div>
+    </div>
+
+    <!-- Fullscreen toggle (capability detection) -->
+    <button id="fullscreenBtn" title="Fullscreen">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="3 9 3 3 9 3"></polyline>
+        <polyline points="21 9 21 3 15 3"></polyline>
+        <polyline points="3 15 3 21 9 21"></polyline>
+        <polyline points="21 15 21 21 15 21"></polyline>
+      </svg>
+    </button>
+
+    <!-- Help / rules -->
+    <button id="helpBtn" title="How to play">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    </button>
+
+    <!-- New game (opens mode-select modal) -->
+    <button id="resetBtn" title="New game">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="1 4 1 10 7 10"></polyline>
+        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+      </svg>
+    </button>
+
+    <div id="helpPanel">
+      <h2>How to play</h2>
+      <p>Shove <b>6</b> of your opponent's marbles off the board to win.</p>
+      <p>
+        <b>Select:</b> tap one of your marbles, then tap adjacent same‑colour
+        marbles to build a straight line of up to 3 (<span
+          class="sw"
+          style="color: #3fd9c9"
+        ></span
+        >teal).
+      </p>
+      <p>
+        <b>Move:</b> tap a <span class="sw" style="color: #f0b54e"></span>gold
+        cell to slide there — inline or sideways.
+      </p>
+      <p>
+        <b>Push:</b> aim your line end‑on at a <i>shorter</i> opponent line
+        (2‑beats‑1, 3‑beats‑1 or ‑2) and tap the
+        <span class="sw" style="color: #ff6047"></span>red front marble. Equal
+        lines can't be pushed.
+      </p>
+      <p style="opacity: 0.6; margin: 0">
+        <b>Drag</b> to orbit · <b>scroll</b> to zoom · <b>F</b> fullscreen
+      </p>
+    </div>
+
+    <!-- Discreet FPS / stats, bottom-right; tap to expand -->
+    <div id="stats" title="tap for detail">
+      <span id="statsFps">— fps</span
+      ><span class="extra" id="statsExtra"></span>
+    </div>
+
+    <!-- New game / mode select -->
+    <div id="setupModal" class="show">
+      <div class="modal-card">
+        <h2>New game</h2>
+        <p>Pick a mode (your current game will be reset)</p>
+        <button class="setup-opt" data-mode="human">Two players</button>
+        <div class="setup-sub">vs Computer — you play</div>
+        <div class="modal-actions">
+          <button class="setup-opt" data-mode="cpu" data-color="black">
+            Black
+          </button>
+          <button class="setup-opt" data-mode="cpu" data-color="white">
+            White
+          </button>
+        </div>
+        <button id="setupCancel" class="ghost">Cancel</button>
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        ACESFilmicToneMapping,
+        BufferAttribute,
+        BufferGeometry,
+        CircleGeometry,
+        Color,
+        DirectionalLight,
+        Euler,
+        Float32BufferAttribute,
+        Group,
+        InstancedMesh,
+        Matrix4,
+        Mesh,
+        MeshBasicMaterial,
+        MeshPhysicalMaterial,
+        MeshStandardMaterial,
+        PCFShadowMap,
+        PerspectiveCamera,
+        Plane,
+        PMREMGenerator,
+        Quaternion,
+        Raycaster,
+        Scene,
+        SphereGeometry,
+        TorusGeometry,
+        Timer,
+        Vector2,
+        Vector3,
+        WebGLRenderer,
+      } from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+      import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+      import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+      import { FXAAPass } from "three/addons/postprocessing/FXAAPass.js";
+
+      /* ============================================================
+      Simplex noise (Ian McEwan / Stefan Gustavson) for marble grain
+      ============================================================ */
+      const noise3d = `
+      vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+      vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+      float snoise(vec3 v){
+        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+        vec3 i = floor(v + dot(v, C.yyy));
+        vec3 x0 = v - i + dot(i, C.xxx);
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min(g.xyz, l.zxy);
+        vec3 i2 = max(g.xyz, l.zxy);
+        vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+        vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+        vec3 x3 = x0 - 1. + 3.0 * C.xxx;
+        i = mod(i, 289.0);
+        vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+        float n_ = 1.0/7.0;
+        vec3 ns = n_ * D.wyz - D.xzx;
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_);
+        vec4 x = x_ * ns.x + ns.yyyy;
+        vec4 y = y_ * ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+        vec4 b0 = vec4(x.xy, y.xy);
+        vec4 b1 = vec4(x.zw, y.zw);
+        vec4 s0 = floor(b0)*2.0 + 1.0;
+        vec4 s1 = floor(b1)*2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+        vec3 p0 = vec3(a0.xy,h.x), p1 = vec3(a0.zw,h.y), p2 = vec3(a1.xy,h.z), p3 = vec3(a1.zw,h.w);
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+        p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+        m = m * m;
+        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+      }
+      `;
+
+      /* ============================================================
+      Renderer / Scene / Camera
+      ============================================================ */
+      const renderer = new WebGLRenderer({
+        antialias: true,
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = PCFShadowMap;
+      renderer.toneMapping = ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.85;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new Scene();
+      scene.background = new Color(0x150a0a);
+
+      const camera = new PerspectiveCamera(
+        40,
+        innerWidth / innerHeight,
+        0.1,
+        200,
+      );
+      camera.position.set(0.4, 9.2, 9.6);
+
+      // One-time PMREM for soft, believable reflections on the polished marbles.
+      const pmrem = new PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environmentIntensity = 0.15;
+      pmrem.dispose();
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0.35, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.enablePan = false;
+      controls.minDistance = 8;
+      controls.maxDistance = 24;
+      controls.minPolarAngle = 0.25;
+      controls.maxPolarAngle = 1.36;
+      controls.rotateSpeed = 0.7;
+      controls.autoRotate = true; // gentle showcase drift until the player engages
+      controls.autoRotateSpeed = 0.45;
+
+      /* ---- Lighting: one shadow-casting key + warm/cool fills + IBL ---- */
+      const key = new DirectionalLight(0xfff2e0, 2.2);
+      key.position.set(6, 11, 8);
+      key.castShadow = true;
+      key.shadow.mapSize.set(2048, 2048);
+      key.shadow.camera.near = 1;
+      key.shadow.camera.far = 45;
+      key.shadow.camera.left = -9;
+      key.shadow.camera.right = 9;
+      key.shadow.camera.top = 9;
+      key.shadow.camera.bottom = -9;
+      key.shadow.bias = -0.0002;
+      key.shadow.radius = 4;
+      scene.add(key);
+
+      const rim = new DirectionalLight(0x6fa8ff, 0.6); // cool separation rim
+      rim.position.set(-7, 4, -6);
+      scene.add(rim);
+
+      /* ============================================================
+      Postprocessing: render -> subtle bloom (HDR) -> tonemap -> AA
+      ============================================================ */
+      const composer = new EffectComposer(renderer);
+      composer.setPixelRatio(renderer.getPixelRatio());
+      composer.addPass(new RenderPass(scene, camera));
+      const bloom = new UnrealBloomPass(
+        new Vector2(innerWidth, innerHeight),
+        0.08,
+        0.6,
+        0.85,
+      );
+      composer.addPass(bloom);
+      composer.addPass(new OutputPass());
+      composer.addPass(new FXAAPass());
+
+      /* ============================================================
+      Hex board model — axial coordinates (pointy-top), radius 4 = 61 cells
+      ============================================================ */
+      const R = 4;
+      const SQRT3 = Math.sqrt(3);
+      const SPACING = 0.62; // ~7% gap between neighbouring marbles
+      const MARBLE_R = 0.5;
+
+      // --- Seat geometry: GENTLE saucers carved into a solid top -------------------
+      // Each cell is a shallow spherical dish (curvature ≈ the marble it hosts), cut directly into the wood. No through-hole exists, so an empty cell shows carved wood, never a dark bore.
+      const CUP_R = 0.27; // reference dish radius
+      const DISH_CURVE_R = 0.85; // dish curvature
+      const DISH_RIM = CUP_R + 0.03; // outer radius where the dish has fully blended to flat
+      // Sagitta of the cap = how deep the saucer dips below the flat top.
+      const DISH_DEPTH =
+        DISH_CURVE_R -
+        Math.sqrt(DISH_CURVE_R * DISH_CURVE_R - DISH_RIM * DISH_RIM);
+      // The marble settles into the saucer, but is lifted by a small CLEARANCE.
+      const SEAT_CLEARANCE = 0.012;
+      const REST_Y = -DISH_DEPTH + MARBLE_R + SEAT_CLEARANCE;
+
+      const DIRECTIONS = [
+        [1, 0],
+        [1, -1],
+        [0, -1],
+        [-1, 0],
+        [-1, 1],
+        [0, 1],
+      ];
+
+      const key2 = (q, r) => q * 100 + r; // integer key, never collides for |q|,|r|<=4
+      const inside = (q, r) =>
+        Math.abs(q) <= R && Math.abs(r) <= R && Math.abs(q + r) <= R;
+      const eqDir = (a, b) => a[0] === b[0] && a[1] === b[1];
+
+      // Reused scratch — keeps axialToWorld allocation-free on the hot path.
+      const _w = { x: 0, z: 0 };
+      function axialToWorld(q, r) {
+        _w.x = SPACING * SQRT3 * (q + r * 0.5);
+        _w.z = SPACING * 1.5 * r;
+        return _w;
+      }
+
+      function worldToAxial(x, z) {
+        const rf = z / (SPACING * 1.5);
+        const qf = x / (SPACING * SQRT3) - rf / 2;
+        // cube rounding
+        let rx = Math.round(qf),
+          ry = Math.round(-qf - rf),
+          rz = Math.round(rf);
+        const dx = Math.abs(rx - qf),
+          dy = Math.abs(ry - (-qf - rf)),
+          dz = Math.abs(rz - rf);
+        if (dx > dy && dx > dz) rx = -ry - rz;
+        else if (dy > dz) ry = -rx - rz;
+        else rz = -rx - ry;
+        return { q: rx, r: rz };
+      }
+
+      /* ============================================================
+      Board geometry: polished hex pedestal + instanced socket rings
+      ============================================================ */
+      const boardGroup = new Group();
+      scene.add(boardGroup);
+
+      // list of all cells (instance order) + lookup to instance index
+      const cells = [];
+      const ringIndex = new Map();
+      for (let q = -R; q <= R; q++)
+        for (let r = -R; r <= R; r++)
+          if (inside(q, r)) {
+            ringIndex.set(key2(q, r), cells.length);
+            cells.push({ q, r });
+          }
+
+      /* ============================================================
+      Rules core — ONE board, ONE move generator (single source of truth).
+      `cellState` (Int8Array: 0 empty / 1 black / 2 white) is the authoritative game state. `cellMesh` is purely the renderer's identity map: which marble proxy currently *visualises* each cell. 
+      The rules never read `cellMesh`, so the picture can never disagree with the simulation. Cell index i ↔ cells[i] ↔ ring instance i, so the whole game keys off a single integer.
+      ============================================================ */
+      const N = cells.length; // 61
+      const BLACK = 1,
+        WHITE = 2,
+        OPP = [0, 2, 1];
+      const colorCode = (c) => (c === "black" ? BLACK : WHITE);
+      const idxOf = (q, r) => ringIndex.get(key2(q, r));
+
+      const cellState = new Int8Array(N); // authoritative occupancy
+      const cellMesh = new Array(N).fill(null); // view: cell -> marble proxy
+
+      // Geometry tables, built once: neighbour index per direction and ring distance from centre. Shared by the live game and the AI search alike.
+      const nbr = new Int16Array(N * 6).fill(-1);
+      const cdist = new Int8Array(N);
+      for (let i = 0; i < N; i++) {
+        const { q, r } = cells[i];
+        cdist[i] = (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
+        for (let d = 0; d < 6; d++) {
+          const nq = q + DIRECTIONS[d][0],
+            nr = r + DIRECTIONS[d][1];
+          if (inside(nq, nr)) nbr[i * 6 + d] = idxOf(nq, nr);
+        }
+      }
+      const POS = [0, 1, 2]; // one sense per axis → enumerate each line once
+      const projAlong = (i, d) =>
+        cells[i].q * DIRECTIONS[d][0] + cells[i].r * DIRECTIONS[d][1];
+      const groupHas = (g, t) => {
+        for (let k = 0; k < g.length; k++) if (g[k] === t) return true;
+        return false;
+      };
+
+      // THE move generator. Operates on ANY state array, so the live game hands it `cellState` and the AI search hands it its scratch copy —
+      // but there is only this one implementation of the rules anywhere in the program, which is exactly why nothing can drift and no reconciliation test is needed.
+      // A move is { g:[cellIdx…], d:dirIndex, push:count, lead:cellIdx }.
+      function groupMovesState(group, dd, side, opp, out, st) {
+        const gn = group.length,
+          oppDir = (dd + 3) % 6;
+        for (let d = 0; d < 6; d++) {
+          const parallel = d === dd || d === oppDir;
+          if (!parallel) {
+            // Broadside: every destination must be in-board and empty.
+            let ok = true;
+            for (let gi = 0; gi < gn; gi++) {
+              const t = nbr[group[gi] * 6 + d];
+              if (t === -1 || (st[t] !== 0 && !groupHas(group, t))) {
+                ok = false;
+                break;
+              }
+            }
+            if (ok) out.push({ g: group, d, push: 0, lead: group[0] });
+          } else {
+            // Inline: lead is the group cell furthest along d.
+            let lead = group[0],
+              lp = projAlong(group[0], d);
+            for (let gi = 1; gi < gn; gi++) {
+              const p = projAlong(group[gi], d);
+              if (p > lp) {
+                lp = p;
+                lead = group[gi];
+              }
+            }
+            const front = nbr[lead * 6 + d];
+            if (front === -1) continue; // can't shove own line off the edge
+            if (st[front] === 0) {
+              out.push({ g: group, d, push: 0, lead });
+              continue;
+            }
+            if (st[front] === side) continue; // blocked by own marble
+            // Sumito: count the contiguous opposing line.
+            let cnt = 0,
+              c = front;
+            while (c !== -1 && st[c] === opp) {
+              cnt++;
+              c = nbr[c * 6 + d];
+            }
+            if (cnt === 0 || cnt >= gn) continue; // need strict majority
+            if (c !== -1 && st[c] !== 0) continue; // blocked behind
+            out.push({ g: group, d, push: cnt, lead });
+          }
+        }
+      }
+
+      function genMovesState(side, out, st) {
+        const opp = OPP[side];
+        for (let i = 0; i < N; i++) {
+          if (st[i] !== side) continue;
+          for (let d = 0; d < 6; d++) {
+            // singles: step into an empty neighbour
+            const t = nbr[i * 6 + d];
+            if (t !== -1 && st[t] === 0)
+              out.push({ g: [i], d, push: 0, lead: i });
+          }
+          for (let a = 0; a < 3; a++) {
+            // pairs + triples, enumerated once per line
+            const dd = POS[a],
+              j = nbr[i * 6 + dd];
+            if (j === -1 || st[j] !== side) continue;
+            groupMovesState([i, j], dd, side, opp, out, st);
+            const k = nbr[j * 6 + dd];
+            if (k !== -1 && st[k] === side)
+              groupMovesState([i, j, k], dd, side, opp, out, st);
+          }
+        }
+      }
+
+      // The board is a SOLID block whose top surface is CARVED with a shallow spherical dish at every cell — no holes, no bore.
+      // Flat-top rounded-hexagon outline in WORLD x/z (flats face ±x), as a point list.
+      function hexOutlineWorld(radius, corner, arcPts) {
+        const v = [];
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          v.push([Math.cos(a) * radius, Math.sin(a) * radius]);
+        }
+        const out = [];
+        for (let i = 0; i < 6; i++) {
+          const cur = v[i],
+            prev = v[(i + 5) % 6],
+            next = v[(i + 1) % 6];
+          const na = Math.hypot(prev[0] - cur[0], prev[1] - cur[1]);
+          const ax = cur[0] + ((prev[0] - cur[0]) / na) * corner,
+            ay = cur[1] + ((prev[1] - cur[1]) / na) * corner;
+          const nb = Math.hypot(next[0] - cur[0], next[1] - cur[1]);
+          const bx = cur[0] + ((next[0] - cur[0]) / nb) * corner,
+            by = cur[1] + ((next[1] - cur[1]) / nb) * corner;
+          out.push([ax, ay]);
+          for (let k = 1; k <= arcPts; k++) {
+            const t = k / arcPts,
+              u = 1 - t;
+            out.push([
+              u * u * ax + 2 * u * t * cur[0] + t * t * bx,
+              u * u * ay + 2 * u * t * cur[1] + t * t * by,
+            ]);
+          }
+        }
+        return out;
+      }
+
+      // Resample a closed polyline to N evenly arc-length-spaced points, so the flats get as many samples as the corners (otherwise dishes near the flats are coarse).
+      function resampleClosed(poly, N) {
+        const seg = [];
+        let len = 0;
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i],
+            b = poly[(i + 1) % poly.length];
+          const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          seg.push(d);
+          len += d;
+        }
+        const step = len / N,
+          out = [];
+        let target = 0,
+          acc = 0,
+          i = 0;
+        for (let n = 0; n < N; n++) {
+          while (acc + seg[i] < target) {
+            acc += seg[i];
+            i = (i + 1) % poly.length;
+          }
+          const a = poly[i],
+            b = poly[(i + 1) % poly.length],
+            t = (target - acc) / seg[i];
+          out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+          target += step;
+        }
+        return out;
+      }
+
+      // Depth of the carved surface at a world point: 0 on the flat wood, dipping along a sphere of radius DISH_CURVE_R within DISH_RIM of the nearest cell centre.
+      function nearestCell(x, z) {
+        const c = worldToAxial(x, z);
+        let best = Infinity,
+          bx = 0,
+          bz = 0;
+        for (let dq = -1; dq <= 1; dq++)
+          for (let dr = -1; dr <= 1; dr++) {
+            const q = c.q + dq,
+              r = c.r + dr;
+            if (!inside(q, r)) continue;
+            const w = axialToWorld(q, r);
+            const d = Math.hypot(x - w.x, z - w.z);
+            if (d < best) {
+              best = d;
+              bx = w.x;
+              bz = w.z;
+            }
+          }
+        return { best, bx, bz };
+      }
+
+      // Radial dish profile shared by the height and normal functions so they can never disagree.
+      // A spherical cap forms the cradle (curvature looser than the marble, so the ball never clips), and from DISH_BLEND outward a cubic Hermite eases the slope to ZERO at the rim — the dish melts into the flat wood instead of meeting it at a hard crease.
+      // Returns depth y (≤0) and radial slope dy/dd.
+      const DISH_BLEND = 0.5 * DISH_RIM; // sphere out to here, then fillet to the rim
+      const _yb =
+        -DISH_DEPTH +
+        DISH_CURVE_R -
+        Math.sqrt(DISH_CURVE_R * DISH_CURVE_R - DISH_BLEND * DISH_BLEND);
+      const _mb =
+        DISH_BLEND /
+        Math.sqrt(DISH_CURVE_R * DISH_CURVE_R - DISH_BLEND * DISH_BLEND);
+      const _hh = DISH_RIM - DISH_BLEND;
+
+      function dishProfile(d) {
+        if (d >= DISH_RIM) return { y: 0, slope: 0 };
+        if (d <= DISH_BLEND) {
+          const k = Math.sqrt(DISH_CURVE_R * DISH_CURVE_R - d * d);
+          return { y: -DISH_DEPTH + DISH_CURVE_R - k, slope: d / k };
+        }
+        const t = (d - DISH_BLEND) / _hh;
+        const h00 = 2 * t * t * t - 3 * t * t + 1,
+          h10 = t * t * t - 2 * t * t + t;
+        const y = h00 * _yb + h10 * _hh * _mb;
+        const dh00 = 6 * t * t - 6 * t,
+          dh10 = 3 * t * t - 4 * t + 1;
+        return { y, slope: (dh00 * _yb + dh10 * _hh * _mb) / _hh };
+      }
+
+      function dishSurfaceY(x, z) {
+        const { best } = nearestCell(x, z);
+        return dishProfile(best).y;
+      }
+
+      // Analytic unit normal of the carved surface. For a radial height field y=f(d) the normal is (-f'(d)·x̂, 1, -f'(d)·ẑ) normalised. Because f'(rim)=0 the normal returns smoothly to straight-up at the rim — no shading crease where dish meets wood.
+      function dishSurfaceNormal(x, z) {
+        const { best, bx, bz } = nearestCell(x, z);
+        if (best >= DISH_RIM || best < 1e-6) return [0, 1, 0];
+        const slope = dishProfile(best).slope;
+        const ux = (x - bx) / best,
+          uz = (z - bz) / best; // outward radial unit (xz)
+        let nx = -slope * ux,
+          ny = 1,
+          nz = -slope * uz;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        return [nx / len, ny / len, nz / len];
+      }
+      const pedestalMat = new MeshPhysicalMaterial({
+        color: 0x2a1414,
+        metalness: 0.1,
+        roughness: 0.7, // a touch glossy so the concave cup catches a soft highlight and reads as polished wood, not a flat dark hole
+        clearcoat: 0.0, // still no lacquer layer → no bright Fresnel rim at grazing angles
+        envMapIntensity: 0.2, // a little more ambient sheen to lift the recessed walls
+      });
+      pedestalMat.onBeforeCompile = (sh) => {
+        sh.vertexShader = `varying vec3 vP;\n${sh.vertexShader}`.replace(
+          "#include <begin_vertex>",
+          "#include <begin_vertex>\nvP = position;",
+        );
+        sh.fragmentShader =
+          `varying vec3 vP;\n${noise3d}\n${sh.fragmentShader}`.replace(
+            "vec4 diffuseColor = vec4( diffuse, opacity );",
+            `// Grain sampled in the HORIZONTAL plane only (ignore depth) so it runs straight down through the board like real wood fibres — 
+            // identical at every depth, so a carved dish shows the same clean grain as the wood above it instead of catching a low-frequency 3D-noise blob that read as a smudge. Range kept tight = subtle grain.
+            float n = snoise(vec3(vP.x, vP.z, 0.0) * 2.4) * 0.5 + 0.5;
+            vec3 col = mix(vec3(0.135,0.060,0.058), vec3(0.175,0.078,0.073), n);
+            // Very gentle contact-shadow inside the carved dishes — just enough to read as a soft recess. The concave walls already darken naturally from their tilt, so this is kept subtle to avoid a muddy "dark hole" look.
+            float ao = 0.9 + 0.1 * smoothstep(${(-DISH_DEPTH).toFixed(4)}, 0.0, vP.y);
+            vec4 diffuseColor = vec4(col * ao, opacity);`,
+          );
+      };
+
+      // ---- Build the solid board with dishes carved into the top surface ----------
+      // The top INTERIOR is an isotropic triangle grid (uniform cell size everywhere) so every dish — centre or edge — shades identically smooth (a radial "onion" made slivers near the centre that smeared the shading).
+      // But a square grid clipped to the outline leaves a jagged staircase edge, so the grid is INSET and the top terminates on a clean, evenly-spaced outline RING; a ribbon stitches the jagged grid boundary to that ring, buried in flat interior wood where it's invisible.
+      // The visible silhouette is therefore the smooth ring. Chamfer + wall + base flare off that same ring for a clean perimeter.
+      function buildBoardGeometry() {
+        const R_TOP = 5.5,
+          R_FULL = 5.6,
+          THICK = 0.7,
+          GRID = 0.06, // interior grid cell; dish (Ø0.58) spans ~10 cells → smooth
+          INSET = 0.14, // keep the grid clear of the edge so the ring owns the silhouette
+          RINGN = 300; // outline ring samples → smooth perimeter
+        const CHF = R_FULL / R_TOP;
+        const outline = hexOutlineWorld(R_TOP, 0.9, 40);
+
+        const pointInPoly = (x, z, poly) => {
+          let c = false;
+          for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i][0],
+              zi = poly[i][1],
+              xj = poly[j][0],
+              zj = poly[j][1];
+            if (
+              zi > z !== zj > z &&
+              x < ((xj - xi) * (z - zi)) / (zj - zi) + xi
+            )
+              c = !c;
+          }
+          return c;
+        };
+        const sc = (R_TOP - INSET) / R_TOP;
+        const insetOutline = outline.map((p) => [p[0] * sc, p[1] * sc]);
+        const ring = resampleClosed(outline, RINGN); // clean even silhouette
+
+        const pos = [],
+          idx = [];
+        // Outer ring vertices are indices [0, RINGN)
+        for (const p of ring) pos.push(p[0], 0, p[1]);
+
+        // Interior grid, clipped to the INSET outline
+        let minx = Infinity,
+          maxx = -Infinity,
+          minz = Infinity,
+          maxz = -Infinity;
+        for (const p of insetOutline) {
+          minx = Math.min(minx, p[0]);
+          maxx = Math.max(maxx, p[0]);
+          minz = Math.min(minz, p[1]);
+          maxz = Math.max(maxz, p[1]);
+        }
+
+        const NX = Math.ceil((maxx - minx) / GRID),
+          NZ = Math.ceil((maxz - minz) / GRID);
+        const cell = [];
+        for (let j = 0; j <= NZ; j++) {
+          cell.push([]);
+          for (let i = 0; i <= NX; i++) {
+            const x = minx + i * GRID,
+              z = minz + j * GRID;
+            if (pointInPoly(x, z, insetOutline)) {
+              cell[j][i] = pos.length / 3;
+              pos.push(x, dishSurfaceY(x, z), z);
+            } else cell[j][i] = -1;
+          }
+        }
+
+        const signedArea = (a, b, c) =>
+          (pos[b * 3] - pos[a * 3]) * (pos[c * 3 + 2] - pos[a * 3 + 2]) -
+          (pos[c * 3] - pos[a * 3]) * (pos[b * 3 + 2] - pos[a * 3 + 2]);
+        const emitUp = (a, b, c) => {
+          if (signedArea(a, b, c) > 0) idx.push(a, c, b);
+          else idx.push(a, b, c);
+        };
+
+        for (let j = 0; j < NZ; j++)
+          for (let i = 0; i < NX; i++) {
+            const a = cell[j][i],
+              b = cell[j][i + 1],
+              c = cell[j + 1][i],
+              d = cell[j + 1][i + 1];
+            if (a < 0 || b < 0 || c < 0 || d < 0) continue;
+            if ((i + j) % 2 === 0) {
+              emitUp(a, b, d);
+              emitUp(a, d, c);
+            } else {
+              emitUp(a, b, c);
+              emitUp(b, d, c);
+            }
+          }
+
+        // Jagged inner boundary loop of the grid (edges in exactly one triangle).
+        const ekey = (a, b) => (a < b ? a * 1e7 + b : b * 1e7 + a);
+        const ec = new Map(),
+          nextV = new Map();
+        for (let t = 0; t < idx.length; t += 3) {
+          const a = idx[t],
+            b = idx[t + 1],
+            c = idx[t + 2];
+          for (const [u, v] of [
+            [a, b],
+            [b, c],
+            [c, a],
+          ])
+            ec.set(ekey(u, v), (ec.get(ekey(u, v)) || 0) + 1);
+        }
+
+        for (let t = 0; t < idx.length; t += 3) {
+          const a = idx[t],
+            b = idx[t + 1],
+            c = idx[t + 2];
+          for (const [u, v] of [
+            [a, b],
+            [b, c],
+            [c, a],
+          ])
+            if (ec.get(ekey(u, v)) === 1) nextV.set(u, v);
+        }
+
+        const inner = [];
+        let st = nextV.keys().next().value,
+          cur = st,
+          guard = 0;
+        do {
+          inner.push(cur);
+          cur = nextV.get(cur);
+        } while (cur !== st && guard++ < 1e6);
+        let NI = inner.length;
+        // orient both loops CCW
+        const shoelace = (arr) => {
+          let s = 0;
+          for (let i = 0; i < arr.length; i++) {
+            const a = arr[i],
+              b = arr[(i + 1) % arr.length];
+            s += pos[a * 3] * pos[b * 3 + 2] - pos[b * 3] * pos[a * 3 + 2];
+          }
+          return s;
+        };
+
+        if (shoelace(inner) < 0) inner.reverse();
+        const outer = [];
+        for (let i = 0; i < RINGN; i++) outer.push(i);
+        if (shoelace(outer) < 0) outer.reverse();
+
+        // Greedy ribbon stitch (shortest-diagonal) between the jagged inner loop and the clean outer ring. Robust to the inner loop's irregular spacing; all flat wood.
+        const ang = (vi) => Math.atan2(pos[vi * 3 + 2], pos[vi * 3]);
+        let j0 = 0,
+          bd = Infinity,
+          ia = ang(inner[0]);
+        for (let k = 0; k < RINGN; k++) {
+          let d = Math.abs(ang(outer[k]) - ia);
+          d = Math.min(d, 2 * Math.PI - d);
+          if (d < bd) {
+            bd = d;
+            j0 = k;
+          }
+        }
+        const dist = (a, b) =>
+          Math.hypot(pos[a * 3] - pos[b * 3], pos[a * 3 + 2] - pos[b * 3 + 2]);
+        let ii = 0,
+          jj = 0;
+        while (ii < NI || jj < RINGN) {
+          const advI =
+            jj >= RINGN ||
+            (ii < NI &&
+              dist(inner[(ii + 1) % NI], outer[(j0 + jj) % RINGN]) <=
+                dist(inner[ii % NI], outer[(j0 + jj + 1) % RINGN]));
+          if (advI) {
+            emitUp(
+              inner[ii % NI],
+              inner[(ii + 1) % NI],
+              outer[(j0 + jj) % RINGN],
+            );
+            ii++;
+          } else {
+            emitUp(
+              inner[ii % NI],
+              outer[(j0 + jj + 1) % RINGN],
+              outer[(j0 + jj) % RINGN],
+            );
+            jj++;
+          }
+        }
+
+        // Chamfer + wall + base flared off the CLEAN ring; winding self-corrected so all side faces point outward and the bottom points down regardless of ring order.
+        const chamfer = pos.length / 3;
+        for (let k = 0; k < RINGN; k++) {
+          const vi = outer[k];
+          pos.push(pos[vi * 3] * CHF, -0.06, pos[vi * 3 + 2] * CHF);
+        }
+
+        const base = pos.length / 3;
+        for (let k = 0; k < RINGN; k++) {
+          const vi = outer[k];
+          pos.push(pos[vi * 3] * CHF, -THICK, pos[vi * 3 + 2] * CHF);
+        }
+
+        const botC = pos.length / 3;
+        pos.push(0, -THICK, 0);
+        const pushOut = (a, b, c) => {
+          const ux = pos[b * 3] - pos[a * 3],
+            uy = pos[b * 3 + 1] - pos[a * 3 + 1],
+            uz = pos[b * 3 + 2] - pos[a * 3 + 2];
+          const vx = pos[c * 3] - pos[a * 3],
+            vy = pos[c * 3 + 1] - pos[a * 3 + 1],
+            vz = pos[c * 3 + 2] - pos[a * 3 + 2];
+          const nx = uy * vz - uz * vy,
+            nz = ux * vy - uy * vx;
+          const cx = (pos[a * 3] + pos[b * 3] + pos[c * 3]) / 3,
+            cz = (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[c * 3 + 2]) / 3;
+          if (nx * cx + nz * cz >= 0) idx.push(a, b, c);
+          else idx.push(a, c, b);
+        };
+
+        const pushDown = (a, b, c) => {
+          const ux = pos[b * 3] - pos[a * 3],
+            uz = pos[b * 3 + 2] - pos[a * 3 + 2],
+            vx = pos[c * 3] - pos[a * 3],
+            vz = pos[c * 3 + 2] - pos[a * 3 + 2];
+          if (uz * vx - ux * vz < 0) idx.push(a, b, c);
+          else idx.push(a, c, b);
+        };
+
+        for (let k = 0; k < RINGN; k++) {
+          const n = (k + 1) % RINGN;
+          const lo = outer[k],
+            lo2 = outer[n],
+            ch = chamfer + k,
+            ch2 = chamfer + n,
+            ba = base + k,
+            ba2 = base + n;
+          pushOut(lo, ch, lo2);
+          pushOut(lo2, ch, ch2); // top edge → chamfer
+          pushOut(ch, ba, ch2);
+          pushOut(ch2, ba, ba2); // chamfer → base (wall)
+          pushDown(botC, ba2, ba); // bottom
+        }
+
+        const g = new BufferGeometry();
+        g.setAttribute("position", new Float32BufferAttribute(pos, 3));
+        g.setIndex(idx);
+        g.computeVertexNormals();
+        // Exact analytic normals on the whole top surface (ring + grid): straight up on flat wood, spherical-cap normal inside a dish — independent of tessellation, so dishes shade perfectly smoothly. Top vertices are indices [0, chamfer).
+        const nrm = g.attributes.normal;
+        for (let i = 0; i < chamfer; i++) {
+          const nv = dishSurfaceNormal(pos[i * 3], pos[i * 3 + 2]);
+          nrm.setXYZ(i, nv[0], nv[1], nv[2]);
+        }
+        nrm.needsUpdate = true;
+        return g;
+      }
+
+      const pedestal = new Mesh(buildBoardGeometry(), pedestalMat);
+      pedestal.receiveShadow = true;
+      pedestal.castShadow = true;
+      pedestal.raycast = () => {}; // empty cells are picked via plane math, not this mesh
+      boardGroup.add(pedestal);
+
+      // Rim rings — ONE instanced draw; a faint groove line at each saucer rim. The base tone is now very close to the wood so an empty, smoothly-blended dish reads as carved rather than circled in paint; only SEL/MOVE/PUSH states are meant to pop.
+      const RING_BASE = new Color(0x2c1510);
+      const RING_SEL = new Color(0x39d8c8).multiplyScalar(5.2); // push past bloom threshold (0.85) → selection ring glows, marbles stay physical
+      const RING_MOVE = new Color(0xf0b54e);
+      const RING_PUSH = new Color(0xff6047);
+      const ringMat = new MeshBasicMaterial({ toneMapped: true }); // unlit: crisp, controllable
+      const ringGeo = new TorusGeometry(DISH_RIM, 0.015, 8, 44).rotateX(
+        Math.PI / 2,
+      );
+      const rings = new InstancedMesh(ringGeo, ringMat, cells.length);
+      rings.raycast = () => {}; // never picked; pick the empty board via plane math
+      const _m4 = new Matrix4();
+      cells.forEach((c, i) => {
+        const w = axialToWorld(c.q, c.r);
+        _m4.makeTranslation(w.x, 0.002, w.z); // hugs the surface right where the dish blends to flat
+        rings.setMatrixAt(i, _m4);
+        rings.setColorAt(i, RING_BASE);
+      });
+      rings.instanceMatrix.needsUpdate = true;
+      boardGroup.add(rings);
+
+      // Backdrop floor that dissolves into the background for an infinite-stage feel.
+      const floorMat = new MeshStandardMaterial({
+        color: 0x1c0c0c,
+        roughness: 1,
+        metalness: 0,
+      });
+      floorMat.onBeforeCompile = (sh) => {
+        sh.uniforms.bg = { value: scene.background };
+        sh.fragmentShader = `uniform vec3 bg;\n${sh.fragmentShader}`.replace(
+          "#include <opaque_fragment>",
+          `#include <opaque_fragment>
+     float f = smoothstep(0.18, 0.5, length(vUv - 0.5));
+     gl_FragColor.rgb = mix(gl_FragColor.rgb, bg, f);`,
+        );
+      };
+      floorMat.defines = { USE_UV: "" };
+      const floor = new Mesh(
+        new CircleGeometry(46, 64).rotateX(-Math.PI / 2),
+        floorMat,
+      );
+      floor.position.y = -0.71; // matches buildBoardGeometry() THICK exactly, with a tiny additional 0.01 overlap
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      /* ============================================================
+      Marbles — TWO InstancedMeshes (one per colour) instead of 28 separate meshes. That turns 28 main-pass + 28 shadow-pass draws into 2 + 2.
+      Each marble is a tiny proxy object exposing the same surface the rest of the code already drives (.position/.rotation/.scale/.visible/.userData);
+      one cheap sync per frame composes those into the instance matrices.
+      ============================================================ */
+      const marbleGeo = new SphereGeometry(MARBLE_R, 56, 40);
+
+      function makeMarbleMat(white) {
+        const mat = new MeshPhysicalMaterial({
+          color: white ? 0xe8e1d2 : 0x14171b,
+          metalness: 0.1,
+          roughness: white ? 0.24 : 0.16,
+          clearcoat: 1.0,
+          clearcoatRoughness: white ? 0.12 : 0.06,
+          envMapIntensity: white ? 1.05 : 1.25,
+          iridescence: white ? 0.5 : 0.0,
+          iridescenceIOR: 1.3,
+          iridescenceThicknessRange: [120, 420],
+        });
+        mat.onBeforeCompile = (sh) => {
+          sh.vertexShader = `varying vec3 vP;\n${sh.vertexShader}`.replace(
+            "#include <begin_vertex>",
+            "#include <begin_vertex>\nvP = position;",
+          );
+          const tint = white
+            ? `vec3 col = mix(vec3(0.80,0.74,0.64), vec3(0.94,0.91,0.84), n);`
+            : `vec3 col = mix(vec3(0.02,0.025,0.03), vec3(0.16,0.17,0.20), n);`;
+          sh.fragmentShader =
+            `varying vec3 vP;\n${noise3d}\n${sh.fragmentShader}`.replace(
+              "vec4 diffuseColor = vec4( diffuse, opacity );",
+              `float n = snoise(vP * 4.5) * 0.5 + 0.5; n = n*n*(3.0-2.0*n);
+              ${tint}
+              vec4 diffuseColor = vec4(col, opacity);`,
+            );
+        };
+        return mat;
+      }
+      const matBlack = makeMarbleMat(false);
+      const matWhite = makeMarbleMat(true);
+
+      const MAX_PER = 14; // standard opening = 14 marbles a side
+      const blackInst = new InstancedMesh(marbleGeo, matBlack, MAX_PER);
+      const whiteInst = new InstancedMesh(marbleGeo, matWhite, MAX_PER);
+      for (const im of [blackInst, whiteInst]) {
+        im.castShadow = true;
+        im.receiveShadow = true;
+        im.count = 0; // grows as makeMarble assigns slots
+        im.frustumCulled = false; // instances span the whole board
+        boardGroup.add(im);
+      }
+
+      const marbles = []; // all 28 proxies, always alive
+      const blackMarbles = [],
+        whiteMarbles = []; // indexed by instance id for picking
+
+      function makeMarble(color, q, r) {
+        const inst = color === "black" ? blackInst : whiteInst;
+        const id = inst.count++; // claim the next free instance slot
+        const m = {
+          position: new Vector3(),
+          rotation: new Euler(),
+          scale: new Vector3(1, 1, 1),
+          visible: true,
+          inst,
+          id,
+          userData: {},
+        };
+        const u = m.userData;
+        u.type = "marble";
+        u.color = color;
+        u.cell = idxOf(q, r);
+        u.startCell = u.cell;
+        u.phase = Math.random() * Math.PI * 2;
+        u.tweening = false;
+        u.selected = false;
+        u.pushHint = false;
+        u.out = false;
+        placeAt(m, u.cell);
+        m.position.set(u.bx, REST_Y, u.bz);
+        (color === "black" ? blackMarbles : whiteMarbles)[id] = m;
+        marbles.push(m);
+      }
+
+      // One cheap pass that pushes every proxy's transform into its instance matrix.
+      // A zero scale on a hidden/ejected marble removes it from both shading and picking.
+      const _quat = new Quaternion();
+      const _scl = new Vector3();
+      const _mtx = new Matrix4();
+
+      function syncMarbles() {
+        for (const m of marbles) {
+          _quat.setFromEuler(m.rotation);
+          const s = m.visible ? m.scale.x : 0;
+          _scl.setScalar(s);
+          _mtx.compose(m.position, _quat, _scl);
+          m.inst.setMatrixAt(m.id, _mtx);
+        }
+        blackInst.instanceMatrix.needsUpdate = true;
+        whiteInst.instanceMatrix.needsUpdate = true;
+      }
+
+      // Seat a marble at cell i: record its home position and claim the cell in
+      // BOTH the authoritative state and the renderer's identity map. This is the
+      // only place setup/reset writes occupancy; in-game writes go via commitMove.
+      function placeAt(m, i) {
+        const u = m.userData;
+        u.cell = i;
+        const w = axialToWorld(cells[i].q, cells[i].r);
+        u.bx = w.x;
+        u.bz = w.z;
+        cellMesh[i] = m;
+        cellState[i] = colorCode(u.color);
+      }
+
+      // Standard opening: two full back rows + a centred 3-marble spearhead (14 each).
+      function startLayout() {
+        const add = (color, q, r) => makeMarble(color, q, r);
+        for (let q = 0; q <= 4; q++) add("black", q, -4);
+        for (let q = -1; q <= 4; q++) add("black", q, -3);
+        for (let q = 0; q <= 2; q++) add("black", q, -2);
+        for (let q = -4; q <= 0; q++) add("white", q, 4);
+        for (let q = -4; q <= 1; q++) add("white", q, 3);
+        for (let q = -2; q <= 0; q++) add("white", q, 2);
+      }
+
+      /* ============================================================
+      Selection helper — is a set of cells a contiguous, collinear line (<=3)?
+      (Legal moves themselves come from the one generator, genMovesState.)
+      ============================================================ */
+      function lineInfo(cs) {
+        if (cs.length === 1) return { ok: true, dir: null };
+        for (const d of DIRECTIONS) {
+          const proj = (c) => c.q * d[0] + c.r * d[1];
+          const s = [...cs].sort((a, b) => proj(a) - proj(b));
+          let ok = true;
+          for (let i = 0; i < s.length - 1; i++)
+            if (s[i + 1].q - s[i].q !== d[0] || s[i + 1].r - s[i].r !== d[1]) {
+              ok = false;
+              break;
+            }
+          if (ok) return { ok: true, dir: d };
+        }
+        return { ok: false, dir: null };
+      }
+
+      /* ============================================================
+      State + interaction
+      ============================================================ */
+      let currentPlayer = "black";
+      let selection = []; // selected CELL INDICES (not meshes)
+      let selDir = -1; // line direction index of the selection (-1 = none/single)
+      let legalMoves = [];
+      let blackScore = 0,
+        whiteScore = 0;
+      let winner = null,
+        gameOver = false,
+        turnPending = false;
+
+      const raycaster = new Raycaster();
+      const mouse = new Vector2();
+      const groundPlane = new Plane(new Vector3(0, 1, 0), 0);
+      const _hit = new Vector3();
+
+      // Selection drives off the ONE generator: ask it for every legal move,
+      // keep the ones whose group is exactly this selection. The human therefore
+      // sees precisely the moves the engine would consider — same source.
+      function setSelection(arr) {
+        selection = arr.slice().sort((a, b) => a - b); // canonical for matching
+        selDir = -1;
+        if (selection.length >= 2) {
+          const cs = selection.map((i) => ({ q: cells[i].q, r: cells[i].r }));
+          const info = lineInfo(cs);
+          if (info.dir)
+            selDir = DIRECTIONS.findIndex((d) => eqDir(d, info.dir));
+        }
+        if (selection.length) {
+          const all = [];
+          genMovesState(colorCode(currentPlayer), all, cellState);
+          const selKey = selection.join(",");
+          legalMoves = all.filter(
+            (mv) =>
+              mv.g
+                .slice()
+                .sort((a, b) => a - b)
+                .join(",") === selKey,
+          );
+        } else legalMoves = [];
+        refreshHighlights();
+      }
+
+      const clearSelection = () => setSelection([]);
+
+      function tryExtend(ci) {
+        if (!selection.length || selection.includes(ci)) {
+          setSelection([ci]);
+          return;
+        }
+        const cand = [...selection, ci];
+        if (cand.length <= 3) {
+          const cs = cand.map((i) => ({ q: cells[i].q, r: cells[i].r }));
+          if (lineInfo(cs).ok) {
+            setSelection(cand);
+            return;
+          }
+        }
+        setSelection([ci]); // not collinear → start fresh from the tapped marble
+      }
+
+      // The cells a move offers as click targets / highlights. Broadside groups
+      // light every destination; inline slides and pushes light only the front.
+      function destCells(mv) {
+        if (mv.g.length === 1) return [nbr[mv.g[0] * 6 + mv.d]];
+        const inline = mv.d === selDir || mv.d === (selDir + 3) % 6;
+        if (inline) return [nbr[mv.lead * 6 + mv.d]];
+        return mv.g.map((c) => nbr[c * 6 + mv.d]);
+      }
+
+      function refreshHighlights() {
+        for (const m of marbles) {
+          m.userData.selected = false;
+          m.userData.pushHint = false;
+        }
+        for (let i = 0; i < N; i++) rings.setColorAt(i, RING_BASE);
+
+        for (const ci of selection) {
+          const m = cellMesh[ci];
+          if (m) m.userData.selected = true;
+          rings.setColorAt(ci, RING_SEL);
+        }
+        for (const mv of legalMoves) {
+          if (mv.push === 0) {
+            for (const dc of destCells(mv)) rings.setColorAt(dc, RING_MOVE);
+          } else {
+            const front = nbr[mv.lead * 6 + mv.d];
+            rings.setColorAt(front, RING_PUSH);
+            let c = front;
+            for (let p = 0; p < mv.push; p++) {
+              const m = cellMesh[c];
+              if (m) m.userData.pushHint = true;
+              c = nbr[c * 6 + mv.d];
+            }
+          }
+        }
+        rings.instanceColor.needsUpdate = true;
+      }
+
+      renderer.domElement.addEventListener("pointerdown", (e) => {
+        controls.autoRotate = false; // player took over
+        if (gameOver || turnPending || tweens.length || AI.isCpuTurn()) return;
+        mouse.x = (e.clientX / innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+
+        blackInst.computeBoundingSphere();
+        whiteInst.computeBoundingSphere();
+
+        // Marbles sit above the board, so pick them first. Map the returned
+        // instanceId back to its proxy; ejected (.out) instances are ignored.
+        const hit = raycaster.intersectObjects(
+          [blackInst, whiteInst],
+          false,
+        )[0];
+        if (hit && hit.instanceId != null) {
+          const m = (hit.object === blackInst ? blackMarbles : whiteMarbles)[
+            hit.instanceId
+          ];
+          if (m && !m.userData.out) {
+            if (m.userData.color === currentPlayer) {
+              tryExtend(m.userData.cell);
+              return;
+            }
+            // tapped an opponent marble → commit a push whose front is that cell
+            const mv = legalMoves.find(
+              (x) => x.push > 0 && nbr[x.lead * 6 + x.d] === m.userData.cell,
+            );
+            if (mv) commitMove(mv, colorCode(currentPlayer));
+            else clearSelection();
+            return;
+          }
+        }
+
+        // Empty board: resolve the cell via plane math (no per-cell pick meshes).
+        if (!raycaster.ray.intersectPlane(groundPlane, _hit)) {
+          clearSelection();
+          return;
+        }
+        const c = worldToAxial(_hit.x, _hit.z);
+        if (!inside(c.q, c.r)) {
+          clearSelection();
+          return;
+        }
+        const ci = idxOf(c.q, c.r);
+        const mv = legalMoves.find(
+          (x) => x.push === 0 && destCells(x).some((dc) => dc === ci),
+        );
+        if (mv) commitMove(mv, colorCode(currentPlayer));
+        else clearSelection();
+      });
+
+      /* ============================================================
+      commitMove — the SINGLE place the board ever changes. Human clicks and the AI both funnel through here with the same descriptor { g:[cellIdx…], d:dirIndex, push:count, lead:cellIdx }, 
+      so a marble can never land anywhere the rules didn't put it. Rule: clear every source cell first, then fill every destination — Abalone never lands two marbles on one cell, so this one pass covers inline slides, broadside steps and sumito.
+      It writes the authoritative `cellState`; the meshes (`cellMesh` + tweens) follow as a pure view.
+      ============================================================ */
+      function commitMove(mv, side) {
+        const d = mv.d;
+        const moving = []; // { mesh, to, off }
+        const froms = [];
+
+        for (const c of mv.g) {
+          froms.push(c);
+          moving.push({ mesh: cellMesh[c], to: nbr[c * 6 + d], off: false });
+        }
+        if (mv.push) {
+          let c = nbr[mv.lead * 6 + d]; // first pushed (opponent) cell
+          for (let p = 0; p < mv.push; p++) {
+            const to = nbr[c * 6 + d];
+            froms.push(c);
+            moving.push({ mesh: cellMesh[c], to, off: to === -1 });
+            c = to;
+          }
+        }
+
+        for (const c of froms) {
+          cellState[c] = 0;
+          cellMesh[c] = null;
+        }
+        for (const mo of moving) {
+          if (mo.off) {
+            ejectMarble(mo.mesh, DIRECTIONS[d]);
+          } else {
+            placeAt(mo.mesh, mo.to); // re-claims cellState + cellMesh + home pos
+            tweenTo(
+              mo.mesh,
+              mo.mesh.userData.bx,
+              REST_Y,
+              mo.mesh.userData.bz,
+              0.3,
+              "move",
+            );
+          }
+        }
+        setSelection([]);
+        turnPending = true;
+      }
+
+      function ejectMarble(m, d) {
+        if (m.userData.color === "black") whiteScore++;
+        else blackScore++;
+        if (blackScore >= 6) winner = "Black";
+        if (whiteScore >= 6) winner = "White";
+        const w = axialToWorld(d[0], d[1]);
+        const len = Math.hypot(w.x, w.z) || 1;
+        tweenTo(
+          m,
+          m.position.x + (w.x / len) * 7.5,
+          -2.4,
+          m.position.z + (w.z / len) * 7.5,
+          0.7,
+          "eject",
+        );
+        updateUI();
+      }
+
+      /* ============================================================
+      Tween system — allocation-free per frame; finalises the turn on drain
+      ============================================================ */
+      const tweens = [];
+
+      // easeOutBounce — a settling bounce that never overshoots past the target, so marbles can drop into their cups without clipping through the board.
+      function bounceOut(x) {
+        const n1 = 7.5625,
+          d1 = 2.75;
+        if (x < 1 / d1) return n1 * x * x;
+        if (x < 2 / d1) {
+          x -= 1.5 / d1;
+          return n1 * x * x + 0.75;
+        }
+        if (x < 2.5 / d1) {
+          x -= 2.25 / d1;
+          return n1 * x * x + 0.9375;
+        }
+        x -= 2.625 / d1;
+        return n1 * x * x + 0.984375;
+      }
+
+      function tweenTo(mesh, x, y, z, dur, mode, delay = 0) {
+        mesh.userData.tweening = true;
+        tweens.push({
+          mesh,
+          fx: mesh.position.x,
+          fy: mesh.position.y,
+          fz: mesh.position.z,
+          tx: x,
+          ty: y,
+          tz: z,
+          t: 0,
+          dur,
+          mode,
+          delay,
+        });
+      }
+
+      function updateTweens(dt) {
+        for (let i = tweens.length - 1; i >= 0; i--) {
+          const tw = tweens[i];
+          if (tw.delay > 0) {
+            tw.delay -= dt;
+            continue;
+          } // staggered start (drop-in cascade)
+          tw.mesh.visible = true; // reveal once its turn arrives
+          tw.t += dt;
+          const e = Math.min(1, tw.t / tw.dur);
+          const p = tw.mesh.position;
+          if (tw.mode === "eject") {
+            p.x = tw.fx + (tw.tx - tw.fx) * e;
+            p.z = tw.fz + (tw.tz - tw.fz) * e;
+            p.y = tw.fy + (tw.ty - tw.fy) * e + Math.sin(e * Math.PI) * 0.95; // arc, then fall away
+            tw.mesh.rotation.x += dt * 7;
+            tw.mesh.rotation.z += dt * 5;
+          } else if (tw.mode === "drop") {
+            const k = bounceOut(e);
+            p.x = tw.tx;
+            p.z = tw.tz;
+            p.y = tw.fy + (tw.ty - tw.fy) * k; // bounce down into the cup
+          } else {
+            // "move" — slide with a gentle hop from cup to cup
+            const k = 1 - (1 - e) * (1 - e) * (1 - e); // easeOutCubic
+            p.x = tw.fx + (tw.tx - tw.fx) * k;
+            p.z = tw.fz + (tw.tz - tw.fz) * k;
+            p.y = tw.fy + (tw.ty - tw.fy) * k + Math.sin(e * Math.PI) * 0.09;
+          }
+          if (e >= 1) {
+            tw.mesh.userData.tweening = false;
+            if (tw.mode === "eject") {
+              tw.mesh.userData.out = true;
+              tw.mesh.visible = false;
+            }
+            tweens.splice(i, 1);
+          }
+        }
+        if (turnPending && tweens.length === 0) finishTurn();
+      }
+
+      // Cascade the marbles in: each starts high & hidden, then drops with a stagger.
+      function dropIn() {
+        for (const m of marbles) {
+          const u = m.userData;
+          m.visible = false;
+          m.scale.setScalar(0.001);
+          m.rotation.set(0, 0, 0);
+          m.position.set(u.bx, REST_Y + 5, u.bz);
+          tweenTo(m, u.bx, REST_Y, u.bz, 0.6, "drop", Math.random() * 0.45);
+        }
+      }
+
+      function finishTurn() {
+        turnPending = false;
+        if (winner) {
+          gameOver = true;
+          document.getElementById("winner").textContent = `${winner} wins`;
+          return;
+        }
+        currentPlayer = currentPlayer === "black" ? "white" : "black";
+        updateUI();
+        AI.maybeAITurn();
+      }
+
+      /* ============================================================
+      UI
+      ============================================================ */
+      const sB = document.getElementById("sB"),
+        sW = document.getElementById("sW");
+      const pB = document.getElementById("pB"),
+        pW = document.getElementById("pW");
+      const labYouB = document.getElementById("youB"),
+        labYouW = document.getElementById("youW");
+      for (let i = 0; i < 6; i++) {
+        pB.appendChild(document.createElement("div")).className = "pip";
+        pW.appendChild(document.createElement("div")).className = "pip";
+      }
+
+      function updateUI() {
+        document.getElementById("turn").textContent =
+          `${currentPlayer[0].toUpperCase() + currentPlayer.slice(1)} to move`;
+        document.getElementById("dot").className = "dot " + currentPlayer;
+        sB.textContent = blackScore;
+        sW.textContent = whiteScore;
+        pB.childNodes.forEach(
+          (n, i) => (n.className = "pip" + (i < blackScore ? " on" : "")),
+        );
+        pW.childNodes.forEach(
+          (n, i) => (n.className = "pip" + (i < whiteScore ? " on" : "")),
+        );
+        const you = AI.humanColor();
+        labYouB.textContent = you === "black" ? "(You)" : "";
+        labYouW.textContent = you === "white" ? "(You)" : "";
+      }
+
+      // resetBtn opens the mode-select modal; choosing a mode resets and starts the game.
+      const setupModal = document.getElementById("setupModal");
+      const showSetup = () => setupModal.classList.add("show");
+      const hideSetup = () => setupModal.classList.remove("show");
+      setupModal.querySelectorAll(".setup-opt").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          AI.setMode(btn.dataset.mode, btn.dataset.color || null);
+          hideSetup();
+          resetGame();
+          AI.maybeAITurn(); // covers the case where the computer plays Black
+        }),
+      );
+      document
+        .getElementById("setupCancel")
+        .addEventListener("click", hideSetup);
+      setupModal.addEventListener("click", (e) => {
+        if (e.target === setupModal) hideSetup();
+      });
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Escape" && setupModal.classList.contains("show"))
+          hideSetup();
+      });
+      document.getElementById("resetBtn").addEventListener("click", showSetup);
+
+      function resetGame() {
+        tweens.length = 0;
+        turnPending = false;
+        gameOver = false;
+        winner = null;
+        blackScore = 0;
+        whiteScore = 0;
+        currentPlayer = "black";
+        cellState.fill(0);
+        cellMesh.fill(null);
+        for (const m of marbles) {
+          m.userData.out = false;
+          placeAt(m, m.userData.startCell);
+        }
+        document.getElementById("winner").textContent = "";
+        setSelection([]);
+        updateUI();
+        dropIn();
+      }
+
+      /* ============================================================
+      Computer opponent — headless alpha-beta search.
+      The search runs on a SCRATCH copy (`bd`) of the authoritative `cellState`, with allocation-free make/unmake, so it can explore the tree without touching the scene graph. 
+      Crucially it generates moves with the SAME genMovesState() the live game uses, and commits its choice through the SAME commitMove() a human click uses — so there is exactly ONE rules implementation and ONE code path that ever mutates the board. 
+      Nothing to keep in sync, nothing to drift, no reconciliation test required.
+      ============================================================ */
+      const AI = (() => {
+        // Search scratch: a flat copy of cellState plus capture tallies. This is a sandbox for look-ahead, not a second source of truth — it is wiped from cellState at the start of every search.
+        const bd = new Int8Array(N);
+        const off = [0, 0, 0]; // off[c] = how many of colour c are gone
+
+        function snapshot() {
+          bd.set(cellState);
+          off[BLACK] = whiteScore; // whiteScore counts blacks pushed off
+          off[WHITE] = blackScore;
+        }
+
+        // ---- make / unmake on a flat undo stack (search only, on bd) ----
+        let usp = 0;
+        const uIdx = new Int16Array(4096),
+          uVal = new Int8Array(4096);
+        const rec = (i) => {
+          uIdx[usp] = i;
+          uVal[usp] = bd[i];
+          usp++;
+        };
+
+        function applyMove(mv, side) {
+          const opp = OPP[side],
+            d = mv.d,
+            g = mv.g,
+            gn = g.length;
+          let captured = 0;
+          for (let gi = 0; gi < gn; gi++) {
+            rec(g[gi]);
+            bd[g[gi]] = 0;
+          }
+          const pc = [];
+          if (mv.push) {
+            let c = nbr[mv.lead * 6 + d];
+            for (let p = 0; p < mv.push; p++) {
+              rec(c);
+              bd[c] = 0;
+              pc.push(c);
+              c = nbr[c * 6 + d];
+            }
+          }
+          for (let gi = 0; gi < gn; gi++) {
+            const t = nbr[g[gi] * 6 + d];
+            rec(t);
+            bd[t] = side;
+          }
+          for (let p = 0; p < pc.length; p++) {
+            const dest = nbr[pc[p] * 6 + d];
+            if (dest === -1) {
+              captured = opp;
+              off[opp]++;
+            } else {
+              rec(dest);
+              bd[dest] = opp;
+            }
+          }
+          return captured;
+        }
+        const undoMove = (mark, cap) => {
+          while (usp > mark) {
+            usp--;
+            bd[uIdx[usp]] = uVal[usp];
+          }
+          if (cap) off[cap]--;
+        };
+
+        // ---- evaluation (side-to-move perspective) ----
+        const W_CAP = 100000,
+          W_CEN = 30,
+          W_COH = 12,
+          W_EDGE = 25,
+          WIN = W_CAP * 6;
+
+        // Scores the board from the current player's perspective: captures dominate, then centre control, marble cohesion, and edge exposure.
+        function evaluate(side) {
+          let cen = 0,
+            coh = 0,
+            edge = 0;
+          for (let i = 0; i < N; i++) {
+            const v = bd[i];
+            if (!v) continue;
+            const s = v === side ? 1 : -1;
+            cen += s * (R - cdist[i]);
+            if (cdist[i] === R) edge -= s;
+            let f = 0;
+            for (let d = 0; d < 6; d++) {
+              const t = nbr[i * 6 + d];
+              if (t !== -1 && bd[t] === v) f++;
+            }
+            coh += s * f;
+          }
+          return (
+            (off[OPP[side]] - off[side]) * W_CAP +
+            W_CEN * cen +
+            W_COH * coh +
+            W_EDGE * edge
+          );
+        }
+
+        // ---- move key (for TT hint + ordering match) ----
+        const moveKey = (mv) => {
+          let x = mv.g[0],
+            y = mv.g.length > 1 ? mv.g[1] : 63,
+            z = mv.g.length > 2 ? mv.g[2] : 63;
+          if (x > y) [x, y] = [y, x];
+          if (y > z) [y, z] = [z, y];
+          if (x > y) [x, y] = [y, x];
+          return x | (y << 6) | (z << 12) | (mv.d << 18) | (mv.push << 21);
+        };
+
+        function orderMoves(moves, ttKey) {
+          for (const mv of moves) {
+            let s = 0;
+            if (ttKey !== -1 && moveKey(mv) === ttKey) s += 1e9;
+            if (mv.push) {
+              s += 1e6 + mv.push * 1e5;
+              let c = nbr[mv.lead * 6 + mv.d];
+              for (let p = 1; p < mv.push; p++) c = nbr[c * 6 + mv.d];
+              if (nbr[c * 6 + mv.d] === -1) s += 5e6; // ejection
+            }
+            const ld = nbr[mv.lead * 6 + mv.d];
+            if (ld !== -1) s += R - cdist[ld];
+            mv._s = s;
+          }
+          moves.sort((a, b) => b._s - a._s);
+        }
+
+        // ---- transposition table (32-bit zobrist; move hint validated) ----
+        const zob = new Int32Array(N * 3);
+        (() => {
+          let s = 0x9e3779b9 >>> 0;
+          const rnd = () => {
+            s ^= s << 13;
+            s ^= s >>> 17;
+            s ^= s << 5;
+            return s >>> 0;
+          };
+          for (let i = 0; i < N * 3; i++) zob[i] = rnd() | 0;
+        })();
+        const hash = () => {
+          let h = 0;
+          for (let i = 0; i < N; i++) {
+            const v = bd[i];
+            if (v) h = (h ^ zob[i * 3 + v]) | 0;
+          }
+          return h | 0;
+        };
+        const EXACT = 0,
+          LOWER = 1,
+          UPPER = 2;
+        let tt = new Map(),
+          deadline = 0,
+          aborted = false,
+          nodes = 0;
+
+        // negamax with alpha-beta pruning: the heart of the AI. Recursively explores moves (from the ONE generator), cutting branches that are provably worse than one already found.
+        function negamax(side, depth, alpha, beta) {
+          if ((nodes++ & 1023) === 0 && performance.now() > deadline) {
+            aborted = true;
+            return 0;
+          }
+          if (off[OPP[side]] >= 6) return WIN;
+          if (off[side] >= 6) return -WIN;
+          if (depth === 0) return evaluate(side);
+          const h = hash(),
+            e = tt.get(h);
+          let ttKey = -1;
+          if (e) {
+            ttKey = e.mvKey;
+            if (e.d >= depth) {
+              if (e.flag === EXACT) return e.val;
+              if (e.flag === LOWER && e.val > alpha) alpha = e.val;
+              else if (e.flag === UPPER && e.val < beta) beta = e.val;
+              if (alpha >= beta) return e.val;
+            }
+          }
+          const moves = [];
+          genMovesState(side, moves, bd); // the ONE generator, on the scratch board
+          if (!moves.length) return evaluate(side);
+          orderMoves(moves, ttKey);
+          let best = -Infinity,
+            bestKey = -1;
+          const a0 = alpha;
+          for (const mv of moves) {
+            const mark = usp,
+              cap = applyMove(mv, side);
+            const val =
+              cap === OPP[side] && off[OPP[side]] >= 6
+                ? WIN
+                : -negamax(OPP[side], depth - 1, -beta, -alpha);
+            undoMove(mark, cap);
+            if (aborted) return 0;
+            if (val > best) {
+              best = val;
+              bestKey = moveKey(mv);
+            }
+            if (best > alpha) alpha = best;
+            if (alpha >= beta) break;
+          }
+          const flag = best <= a0 ? UPPER : best >= beta ? LOWER : EXACT;
+          if (!aborted && (!e || e.d <= depth))
+            tt.set(h, { d: depth, flag, val: best, mvKey: bestKey });
+          return best;
+        }
+
+        // Iterative deepening up to depth 6, time-boxed: keep the best move from the last fully-searched depth if the clock runs out mid-search.
+        function bestMove(side, maxMs) {
+          snapshot();
+          deadline = performance.now() + maxMs;
+          aborted = false;
+          tt = new Map();
+          const root = [];
+          genMovesState(side, root, bd);
+          if (!root.length) return null;
+          let chosen = root[0],
+            prevKey = -1;
+          for (let depth = 1; depth <= 6; depth++) {
+            orderMoves(root, prevKey);
+            let alpha = -Infinity,
+              best = -Infinity,
+              bestMv = null;
+            for (const mv of root) {
+              const mark = usp,
+                cap = applyMove(mv, side);
+              const val =
+                cap === OPP[side] && off[OPP[side]] >= 6
+                  ? WIN
+                  : -negamax(OPP[side], depth - 1, -Infinity, -alpha);
+              undoMove(mark, cap);
+              if (aborted) break;
+              if (val > best) {
+                best = val;
+                bestMv = mv;
+              }
+              if (best > alpha) alpha = best;
+            }
+            if (!aborted && bestMv) {
+              chosen = bestMv;
+              prevKey = moveKey(bestMv);
+            }
+            if (aborted || best >= WIN - 1) break;
+          }
+          return chosen;
+        }
+
+        // ---- orchestration ----
+        let mode = "human",
+          cpuColor = null,
+          thinking = false;
+
+        const isCpuTurn = () => mode === "cpu" && currentPlayer === cpuColor;
+
+        function maybeAITurn() {
+          if (
+            mode !== "cpu" ||
+            gameOver ||
+            thinking ||
+            currentPlayer !== cpuColor
+          )
+            return;
+          thinking = true;
+          document.getElementById("turn").textContent = "Computer thinking…";
+          const go = () => {
+            if (turnPending || tweens.length) return requestAnimationFrame(go);
+            requestAnimationFrame(() => {
+              const side = colorCode(cpuColor);
+              const mv = bestMove(side, 500);
+              thinking = false;
+              // Commit through the EXACT path a human click uses. The descriptor
+              // is index-based, so cellState/cellMesh stay perfectly in step.
+              if (mv && !gameOver) commitMove(mv, side);
+              else updateUI();
+            });
+          };
+          go();
+        }
+
+        // Public interface
+        return {
+          maybeAITurn,
+          isCpuTurn,
+          humanColor: () =>
+            mode === "cpu" ? (cpuColor === "black" ? "white" : "black") : null,
+          setMode(m, color) {
+            mode = m;
+            cpuColor =
+              m === "cpu" ? (color === "black" ? "white" : "black") : null;
+          },
+        };
+      })();
+
+      /* ============================================================
+      Boot + main loop (tight: no allocations, flag-driven branches)
+      ============================================================ */
+      startLayout();
+      updateUI();
+      dropIn();
+
+      addEventListener("resize", () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        composer.setSize(innerWidth, innerHeight);
+        if (!running) composer.render(); // repaint once if the loop is parked (hidden/blurred)
+      });
+
+      /* ---- Fullscreen (capability-detected) ---- */
+      const fsBtn = document.getElementById("fullscreenBtn");
+      function toggleFullscreen() {
+        const d = document,
+          el = d.documentElement;
+        const isFs = d.fullscreenElement || d.webkitFullscreenElement;
+        if (!isFs)
+          (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+        else (d.exitFullscreen || d.webkitExitFullscreen)?.call(d);
+      }
+      if (
+        document.documentElement.requestFullscreen ||
+        document.documentElement.webkitRequestFullscreen
+      ) {
+        fsBtn.addEventListener("click", toggleFullscreen);
+        addEventListener("keydown", (e) => {
+          if (e.code === "KeyF" && !e.repeat) toggleFullscreen();
+        });
+      } else {
+        fsBtn.style.display = "none"; // iPhone Safari etc — no Fullscreen API
+      }
+
+      /* ---- Help / rules flyout ---- */
+      const helpBtn = document.getElementById("helpBtn");
+      const helpPanel = document.getElementById("helpPanel");
+      helpBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        helpPanel.classList.toggle("show");
+      });
+      document.addEventListener("pointerdown", (e) => {
+        if (
+          helpPanel.classList.contains("show") &&
+          !helpPanel.contains(e.target) &&
+          !helpBtn.contains(e.target)
+        )
+          helpPanel.classList.remove("show");
+      });
+
+      /* ---- Discreet stats: FPS always, draw-calls/tris/geo on tap ---- */
+      const statsEl = document.getElementById("stats");
+      const statsFps = document.getElementById("statsFps");
+      const statsExtra = document.getElementById("statsExtra");
+      statsEl.addEventListener("pointerdown", (e) => {
+        statsEl.classList.toggle("expanded");
+        e.stopPropagation();
+      });
+      let fpsAcc = 0,
+        fpsFrames = 0,
+        lastFps = -1,
+        extraAcc = 0;
+      let lastDC = -1,
+        lastTRI = -1,
+        lastGEO = -1,
+        lastTEX = -1;
+
+      /* ---- Tab-visibility energy conservation ----
+      When the tab is hidden, stop the rAF loop entirely (setAnimationLoop(null)): no render, no shader work, no GPU cost while nobody's looking.
+      On return, reset the timer so the long hidden interval doesn't produce a dt spike that would teleport tweens. */
+      const timer = new Timer();
+      let running = false;
+
+      function startLoop() {
+        if (!running) {
+          running = true;
+          timer.reset();
+          renderer.setAnimationLoop(frame);
+        }
+      }
+
+      function stopLoop() {
+        if (running) {
+          running = false;
+          renderer.setAnimationLoop(null);
+        }
+      }
+
+      document.addEventListener("visibilitychange", () => {
+        document.hidden ? stopLoop() : startLoop();
+      });
+      // visibilitychange only fires when the TAB is hidden. A window that merely loses focus (another app/window on top, same tab still "visible") keeps rendering and drains battery.
+      // blur/focus covers that case; both paths funnel through the same start/stop, and startLoop() discards the accumulated gap via timer.reset() so there's no dt spike on resume.
+      // Guards make the duplicate events harmless.
+      addEventListener("blur", stopLoop);
+      addEventListener("focus", () => {
+        if (!document.hidden) startLoop();
+      });
+
+      ["touchstart", "touchend"].forEach((ev) =>
+        renderer.domElement.addEventListener(ev, (e) => e.preventDefault(), {
+          passive: false,
+        }),
+      ); // kill iOS double-tap zoom on the board surface only
+
+      function frame() {
+        timer.update();
+        const dt = Math.min(timer.getDelta(), 0.05);
+        const t = timer.getElapsed();
+
+        updateTweens(dt);
+
+        for (const m of marbles) {
+          if (!m.visible) continue;
+          const u = m.userData;
+          if (!u.tweening) {
+            if (u.selected) {
+              m.position.set(
+                u.bx,
+                REST_Y + 0.17 + Math.sin(t * 2) * 0.02,
+                u.bz,
+              );
+              m.rotation.y += dt * 1.1;
+            } else if (u.pushHint) {
+              m.position.set(
+                u.bx,
+                REST_Y + 0.04 + Math.abs(Math.sin(t * 4.5)) * 0.05,
+                u.bz,
+              );
+            } else {
+              m.position.set(
+                u.bx,
+                REST_Y + Math.sin(t * 1.6 + u.phase) * 0.012,
+                u.bz,
+              );
+            }
+          }
+          const target = u.selected ? 1.12 : 1;
+          if (m.scale.x !== target)
+            m.scale.setScalar(
+              m.scale.x + (target - m.scale.x) * Math.min(1, dt * 12),
+            );
+        }
+
+        controls.update();
+        syncMarbles(); // push proxy transforms into the instanced meshes
+        // EffectComposer renders several passes; renderer.info reflects only the LAST one by default (a fullscreen FXAA quad → the misleading "DC 1 / 0 tris").
+        // Disable autoReset and reset right before rendering so info ACCUMULATES across every pass, then read the true totals afterward.
+        renderer.info.autoReset = false;
+        renderer.info.reset();
+        composer.render();
+
+        // FPS (twice/sec) + optional detail (once/sec, only while expanded). DOM writes are diff-gated so a steady 60 never touches layout.
+        fpsAcc += dt;
+        fpsFrames++;
+        if (fpsAcc >= 0.5) {
+          const fps = Math.round(fpsFrames / fpsAcc);
+          if (fps !== lastFps) {
+            statsFps.textContent = `${fps} fps`;
+            lastFps = fps;
+          }
+          fpsAcc = 0;
+          fpsFrames = 0;
+        }
+        if (statsEl.classList.contains("expanded")) {
+          extraAcc += dt;
+          if (extraAcc >= 1.0) {
+            const r = renderer.info.render,
+              mem = renderer.info.memory;
+            if (
+              r.calls !== lastDC ||
+              r.triangles !== lastTRI ||
+              mem.geometries !== lastGEO ||
+              mem.textures !== lastTEX
+            ) {
+              const tri =
+                r.triangles >= 1000
+                  ? (r.triangles / 1000).toFixed(1) + "K"
+                  : String(r.triangles);
+              statsExtra.textContent = `\nDC ${r.calls}\nTRI ${tri}\nGEO ${mem.geometries}\nTEX ${mem.textures}`;
+              lastDC = r.calls;
+              lastTRI = r.triangles;
+              lastGEO = mem.geometries;
+              lastTEX = mem.textures;
+            }
+            extraAcc = 0;
+          }
+        }
+      }
+
+      startLoop();
+    </script>
+  </body>
+</html>

@@ -241,5 +241,14 @@
     "created": "2026-05-27",
     "thumb": "eternal-ride.jpg",
     "preview": "eternal-ride.webm"
+  },
+  {
+    "folder": "abalone",
+    "title": "Abalone",
+    "category": "Game",
+    "description": "3D version of the classic boardgame, with two play modes: local PvP and custom AI opponent.",
+    "created": "2026-05-30",
+    "thumb": "abalone.jpg",
+    "preview": "abalone.webm"
   }
 ]
