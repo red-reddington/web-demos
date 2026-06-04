@@ -340,6 +340,40 @@
         margin-top: 8px;
       }
 
+      .related {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .related-pill {
+        font-size: 10px;
+        padding: 2px 8px;
+        background: rgba(76, 139, 245, 0.12);
+        color: var(--accent);
+        border-radius: 999px;
+        border: 1px solid rgba(76, 139, 245, 0.25);
+        cursor: pointer;
+        transition: all 0.1s ease;
+        text-decoration: none;
+        white-space: nowrap;
+        line-height: 1.3;
+      }
+
+      .related-pill:hover {
+        background: var(--accent);
+        color: white;
+        transform: translateY(-1px);
+      }
+
+      /* Highlight animation when jumping to related card */
+      .card.related-highlight {
+        box-shadow: 0 0 0 4px rgba(76, 139, 245, 0.6) !important;
+        transform: scale(1.02);
+        transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+      }
+
       .empty {
         text-align: center;
         opacity: 0.6;
@@ -458,6 +492,9 @@
 
         rangeFill: document.getElementById("rangeFill"),
       };
+
+      // Global lookup for fast related demo access
+      let demoByFolder = {};
 
       /*************************
        * URL SYNC
@@ -618,6 +655,39 @@
           video.play().catch(() => {});
         },
       };
+
+      /*************************
+       * RELATED NAVIGATION
+       *************************/
+
+      function navigateToRelated(folder) {
+        const card = document.querySelector(
+          `.card[href="./${folder}/index.html"]`,
+        );
+
+        if (!card) return;
+
+        // Remove previous highlights
+        document
+          .querySelectorAll(".card.related-highlight")
+          .forEach((c) => c.classList.remove("related-highlight"));
+
+        // Scroll smoothly
+        card.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        // Highlight
+        setTimeout(() => {
+          card.classList.add("related-highlight");
+        }, 300);
+
+        // Auto-remove highlight after 2.5 seconds
+        setTimeout(() => {
+          card.classList.remove("related-highlight");
+        }, 2500);
+      }
 
       /*************************
        * HOVER + TOUCH PREVIEW HANDLERS
@@ -796,6 +866,8 @@
               ).toLowerCase(),
             };
           });
+
+          demoByFolder = Object.fromEntries(allDemos.map((d) => [d.folder, d]));
 
           if (!allDemos.length) {
             throw new Error("No demos in data.json");
@@ -1111,23 +1183,38 @@
 
           content.className = "content";
 
-          content.innerHTML = `
-                  <div class="tag">
-                    ${demo.category}
-                  </div>
+          let html = `
+  <div class="tag">${demo.category}</div>
+  <div class="title">${demo.title}</div>
+  <div class="desc">${demo.description}</div>
+  <div class="date">${formatDate(demo.created)}</div>
+`;
 
-                  <div class="title">
-                    ${demo.title}
-                  </div>
+          // Related demos
+          if (demo.related && demo.related.length > 0) {
+            html += `<div class="related">`;
 
-                  <div class="desc">
-                    ${demo.description}
-                  </div>
+            // Get related demos and sort A-Z
+            const relatedItems = demo.related
+              .map((folder) => demoByFolder[folder])
+              .filter(Boolean) // remove any missing
+              .sort((a, b) => a.title.localeCompare(b.title));
 
-                  <div class="date">
-                    ${formatDate(demo.created)}
-                  </div>
-                `;
+            relatedItems.forEach((relatedDemo) => {
+              html += `
+                <a href="#" 
+                   class="related-pill"
+                   data-folder="${relatedDemo.folder}"
+                   onclick="navigateToRelated('${relatedDemo.folder}'); event.preventDefault(); event.stopImmediatePropagation();">
+                  ${relatedDemo.title}
+                </a>
+              `;
+            });
+
+            html += `</div>`;
+          }
+
+          content.innerHTML = html;
 
           card.appendChild(thumb);
 

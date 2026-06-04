@@ -1,0 +1,2735 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Lines — 3D Color Lines (Five-in-a-Row) in Three.js</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600&display=swap");
+
+      :root {
+        --gold: #e7b85a;
+        --gold-soft: #f2d79b;
+        --ink: #0b0708;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #140a0a;
+        font-family: "Outfit", system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      canvas {
+        display: block;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+
+        -webkit-touch-callout: none;
+
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #ui {
+        position: fixed;
+        top: 14px;
+        left: 14px;
+        z-index: 10;
+        color: #f6efe6;
+        padding: 9px 15px;
+        background: linear-gradient(
+          160deg,
+          rgba(34, 16, 16, 0.72),
+          rgba(12, 6, 6, 0.72)
+        );
+        border: 1px solid rgba(231, 184, 90, 0.22);
+        border-radius: 14px;
+        backdrop-filter: blur(16px) saturate(1.2);
+        -webkit-backdrop-filter: blur(16px) saturate(1.2);
+        box-shadow:
+          0 18px 44px rgba(0, 0, 0, 0.5),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(14px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      /* One slim horizontal row: title · Next · Score · Best */
+      .bar {
+        display: flex;
+        align-items: center;
+        gap: 13px;
+      }
+      .bar .sep {
+        width: 1px;
+        align-self: stretch;
+        background: rgba(231, 184, 90, 0.18);
+      }
+
+      #ui h1 {
+        margin: 0;
+        font-family: "Cormorant Garamond", serif;
+        font-weight: 700;
+        font-size: 26px;
+        letter-spacing: 0.02em;
+        line-height: 1;
+        background: linear-gradient(
+          180deg,
+          #fff,
+          var(--gold-soft) 60%,
+          var(--gold)
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      /* Score / Best as inline label-over-number figures. */
+      .stat {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        line-height: 1;
+      }
+      .stat .slab {
+        font-size: 8px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        opacity: 0.5;
+        margin-bottom: 3px;
+      }
+      .stat .snum {
+        font-family: "Cormorant Garamond", serif;
+        font-size: 21px;
+        font-weight: 600;
+        line-height: 0.85;
+      }
+
+      /* Next: inline group, label then dots. */
+      .next {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .next-lab {
+        font-size: 8px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        opacity: 0.5;
+      }
+      .next .dots {
+        display: flex;
+        gap: 6px;
+      }
+      .next .b {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        box-shadow:
+          inset 0 2px 3px rgba(255, 255, 255, 0.5),
+          inset 0 -2px 4px rgba(0, 0, 0, 0.55),
+          0 0 9px currentColor;
+      }
+      /* Scale-pop when the preview changes each turn, so the eye catches it. */
+      .next .b.pop {
+        animation: dotpop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes dotpop {
+        0% {
+          transform: scale(0.2);
+          opacity: 0;
+        }
+        60% {
+          transform: scale(1.25);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      /* Floating "+N" that rises off the Score number when a line clears. */
+      .gain {
+        position: absolute;
+        top: -16px;
+        left: 0;
+        font-family: "Cormorant Garamond", serif;
+        font-size: 19px;
+        font-weight: 700;
+        color: var(--gold-soft);
+        text-shadow: 0 0 14px rgba(231, 184, 90, 0.7);
+        opacity: 0;
+        pointer-events: none;
+      }
+      .gain.fly {
+        animation: gainfly 0.95s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      @keyframes gainfly {
+        0% {
+          opacity: 0;
+          transform: translateY(6px) scale(0.7);
+        }
+        18% {
+          opacity: 1;
+          transform: translateY(0) scale(1.1);
+        }
+        100% {
+          opacity: 0;
+          transform: translateY(-34px) scale(1);
+        }
+      }
+
+      /* Status only occupies space when it actually has something to say. */
+      #status {
+        font-size: 11.5px;
+        line-height: 1.4;
+        color: var(--gold-soft);
+        opacity: 0.85;
+        font-weight: 400;
+        letter-spacing: 0.02em;
+      }
+      #status:not(:empty) {
+        margin-top: 12px;
+      }
+
+      button {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid rgba(231, 184, 90, 0.4);
+        border-radius: 11px;
+        background: linear-gradient(
+          180deg,
+          rgba(231, 184, 90, 0.16),
+          rgba(231, 184, 90, 0.05)
+        );
+        color: var(--gold-soft);
+        font-family: "Outfit";
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: 0.2s;
+      }
+      button:hover {
+        background: linear-gradient(
+          180deg,
+          rgba(231, 184, 90, 0.3),
+          rgba(231, 184, 90, 0.12)
+        );
+        box-shadow: 0 0 22px rgba(231, 184, 90, 0.25);
+        transform: translateY(-1px);
+      }
+      button:active {
+        transform: translateY(0);
+      }
+
+      /* Top-right icon strip (right-to-left): mute | new | undo | help | fullscreen.
+      mute, new, undo, help are edge-anchored; fullscreen is innermost so that when the Fullscreen API is absent and its button is removed, nothing shifts. */
+      #muteBtn,
+      #newBtn,
+      #undoBtn,
+      #helpBtn,
+      #fullscreenBtn {
+        position: fixed;
+        top: 14px;
+        width: 30px;
+        height: 30px;
+        z-index: 12;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--gold-soft);
+        background: rgba(20, 10, 10, 0.55);
+        border: 1px solid rgba(231, 184, 90, 0.22);
+        border-radius: 9px;
+        cursor: pointer;
+        padding: 0;
+        transition: 0.15s;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+      #fullscreenBtn {
+        right: 166px;
+      }
+      #helpBtn {
+        right: 128px;
+      }
+      #undoBtn {
+        right: 90px;
+      }
+      #newBtn {
+        right: 52px;
+      }
+      #muteBtn {
+        right: 14px;
+      }
+      #undoBtn[disabled] {
+        opacity: 0.35;
+        cursor: default;
+      }
+      /* Muted state: dim the waves, show the slash. */
+      #muteBtn.muted {
+        color: #c98a8a;
+      }
+      #muteBtn .slash {
+        opacity: 0;
+      }
+      #muteBtn.muted .wave {
+        opacity: 0.2;
+      }
+      #muteBtn.muted .slash {
+        opacity: 1;
+      }
+      #muteBtn:hover,
+      #newBtn:hover,
+      #undoBtn:not([disabled]):hover,
+      #helpBtn:hover,
+      #fullscreenBtn:hover {
+        transform: scale(1.1);
+        border-color: rgba(231, 184, 90, 0.5);
+      }
+
+      /* Rules flyout */
+      #helpPanel {
+        position: fixed;
+        top: 52px;
+        right: 52px;
+        z-index: 11;
+        width: 252px;
+        font-size: 12px;
+        line-height: 1.65;
+        color: #e8ddcf;
+        background: linear-gradient(
+          160deg,
+          rgba(34, 16, 16, 0.92),
+          rgba(12, 6, 6, 0.92)
+        );
+        border: 1px solid rgba(231, 184, 90, 0.24);
+        padding: 15px 17px;
+        border-radius: 14px;
+        text-align: left;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-6px);
+        transition:
+          opacity 0.18s ease-out,
+          transform 0.18s ease-out;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      }
+      #helpPanel.show {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+      #helpPanel h2 {
+        margin: 0 0 9px;
+        font-family: "Cormorant Garamond", serif;
+        font-size: 21px;
+        font-weight: 700;
+        color: var(--gold-soft);
+      }
+      #helpPanel p {
+        margin: 0 0 9px;
+        opacity: 0.82;
+      }
+      #helpPanel b {
+        color: var(--gold-soft);
+        font-weight: 600;
+      }
+
+      /* Game-over modal */
+      #modal,
+      #confirmModal {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 4, 4, 0.55);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+      #modal.show,
+      #confirmModal.show {
+        display: flex;
+      }
+      #modal .modal-card,
+      #confirmModal .modal-card {
+        width: min(86vw, 320px);
+        padding: 24px;
+        border-radius: 16px;
+        text-align: center;
+        color: #e8ddcf;
+        background: linear-gradient(
+          160deg,
+          rgba(34, 16, 16, 0.95),
+          rgba(12, 6, 6, 0.95)
+        );
+        border: 1px solid rgba(231, 184, 90, 0.24);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      }
+      #modal h2,
+      #confirmModal h2 {
+        margin: 0 0 4px;
+        font-family: "Cormorant Garamond", serif;
+        font-size: 27px;
+        font-weight: 700;
+        color: var(--gold-soft);
+      }
+      #modal .final {
+        font-family: "Cormorant Garamond", serif;
+        font-size: 46px;
+        font-weight: 600;
+        line-height: 1;
+        margin: 8px 0 4px;
+        color: #fff;
+      }
+      #modal p,
+      #confirmModal p {
+        margin: 0 0 18px;
+        font-size: 12px;
+        opacity: 0.75;
+        letter-spacing: 0.04em;
+      }
+      #confirmModal .confirm-actions {
+        display: flex;
+        gap: 10px;
+      }
+      #confirmModal .confirm-actions button {
+        flex: 1;
+      }
+      #confirmModal .ghost {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.18);
+        color: #e8ddcf;
+      }
+      #confirmModal .ghost:hover {
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: none;
+      }
+
+      /* Discreet FPS / stats readout, bottom-right */
+      #stats {
+        position: fixed;
+        right: 14px;
+        bottom: 12px;
+        z-index: 10;
+        font-family: "SF Mono", Menlo, monospace;
+        font-size: 10px;
+        line-height: 1.35;
+        color: #f6efe6;
+        text-align: right;
+        white-space: pre-line;
+        mix-blend-mode: difference;
+        cursor: pointer;
+        padding: 3px 5px;
+        opacity: 0.7;
+      }
+      #stats .extra {
+        display: none;
+      }
+      #stats.expanded .extra {
+        display: block;
+      }
+
+      /* Mobile / short viewports: the bar spans the top edge. */
+      @media (max-width: 680px), (max-height: 560px) {
+        #ui {
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: auto;
+          border-radius: 0 0 16px 16px;
+          padding: max(7px, env(safe-area-inset-top)) 12px 8px;
+          animation: none;
+        }
+        .bar {
+          gap: 11px;
+        }
+        #ui h1 {
+          font-size: 19px;
+        }
+        #status {
+          display: none;
+        }
+        .bar .sep {
+          display: none;
+        }
+        .next-lab {
+          display: none;
+        }
+        .next .b {
+          width: 13px;
+          height: 13px;
+        }
+        .stat .snum {
+          font-size: 18px;
+        }
+        #newBtn,
+        #undoBtn,
+        #helpBtn,
+        #fullscreenBtn,
+        #muteBtn {
+          width: 34px;
+          height: 34px;
+          top: auto;
+          bottom: 14px;
+        }
+        #muteBtn {
+          right: 14px;
+        }
+        #newBtn {
+          right: 54px;
+        }
+        #undoBtn {
+          right: 94px;
+        }
+        #helpBtn {
+          right: 134px;
+        }
+        #fullscreenBtn {
+          right: 174px;
+        }
+        #helpPanel {
+          width: min(80vw, 300px);
+          top: auto;
+          bottom: 56px;
+          right: 56px;
+        }
+        #stats {
+          left: 12px;
+          right: auto;
+          text-align: left;
+        }
+      }
+      @media (max-width: 460px) {
+        #ui h1,
+        .bar .sep {
+          display: none;
+        }
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.184.0/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="ui">
+      <div class="bar">
+        <h1>Lines</h1>
+        <span class="sep"></span>
+        <div class="next" title="Next marbles">
+          <span class="next-lab">Next</span>
+          <span class="dots" id="nextDots"></span>
+        </div>
+        <span class="sep"></span>
+        <div class="stat" style="position: relative">
+          <span class="slab">Score</span>
+          <span class="snum" id="sScore">0</span>
+          <div class="gain" id="scoreGain"></div>
+        </div>
+        <div class="stat">
+          <span class="slab">Best</span>
+          <span class="snum" id="sBest">0</span>
+        </div>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <!-- Fullscreen toggle (capability detected) -->
+    <button id="fullscreenBtn" title="Fullscreen (F)">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="3 9 3 3 9 3"></polyline>
+        <polyline points="21 9 21 3 15 3"></polyline>
+        <polyline points="3 15 3 21 9 21"></polyline>
+        <polyline points="21 15 21 21 15 21"></polyline>
+      </svg>
+    </button>
+
+    <!-- Help / rules -->
+    <button id="helpBtn" title="How to play">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    </button>
+
+    <!-- Undo last move (one level) -->
+    <button id="undoBtn" title="Undo (U)" disabled>
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="1 4 1 10 7 10"></polyline>
+        <path d="M3.51 15a9 9 0 1 0 .49-4.36"></path>
+      </svg>
+    </button>
+
+    <!-- New game -->
+    <button id="newBtn" title="New game (N)">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    </button>
+
+    <!-- Mute toggle (M). Persisted via localStorage. -->
+    <button id="muteBtn" title="Mute (M)">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="wave"></path>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="wave"></path>
+        <line x1="14" y1="6" x2="22" y2="18" class="slash"></line>
+        <line x1="22" y1="6" x2="14" y2="18" class="slash"></line>
+      </svg>
+    </button>
+
+    <div id="helpPanel">
+      <h2>How to play</h2>
+      <p>The board fills as you play. Clear marbles before it does.</p>
+      <p>
+        <b>Select:</b> tap one of your marbles — it lifts, and every square it
+        can reach lights up <b>gold</b>.
+      </p>
+      <p>
+        <b>Move:</b> tap a lit square. The marble can only travel through empty
+        squares (no jumping).
+      </p>
+      <p>
+        <b>Clear:</b> form a line of <b>5 or more</b> of the same colour —
+        horizontal, vertical or diagonal — and it vanishes for points. Longer
+        lines score more.
+      </p>
+      <p>
+        <b>Each turn</b> three new marbles drop in (see <b>Next</b>) — unless
+        your move just cleared a line, which grants a free move.
+      </p>
+      <p style="opacity: 0.6; margin: 0">
+        <b>U</b> undo · <b>N</b> new · <b>M</b> mute · <b>F</b> fullscreen
+      </p>
+    </div>
+
+    <div id="stats" title="tap for detail">
+      <span id="statsFps">— fps</span
+      ><span class="extra" id="statsExtra"></span>
+    </div>
+
+    <div id="modal">
+      <div class="modal-card">
+        <h2>Board full</h2>
+        <div class="final" id="finalScore">0</div>
+        <p id="finalNote">No moves left</p>
+        <button id="modalNew">Play again</button>
+      </div>
+    </div>
+
+    <div id="confirmModal">
+      <div class="modal-card">
+        <h2>New game?</h2>
+        <p>Your current game will be lost.</p>
+        <div class="confirm-actions">
+          <button id="confirmCancel" class="ghost">Cancel</button>
+          <button id="confirmNew">New game</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import {
+        ACESFilmicToneMapping,
+        BufferGeometry,
+        CanvasTexture,
+        CircleGeometry,
+        Color,
+        DirectionalLight,
+        Float32BufferAttribute,
+        Group,
+        InstancedBufferAttribute,
+        InstancedMesh,
+        DynamicDrawUsage,
+        LinearFilter,
+        LinearMipmapLinearFilter,
+        Matrix4,
+        Mesh,
+        MeshBasicMaterial,
+        MeshPhysicalMaterial,
+        MeshStandardMaterial,
+        OrthographicCamera,
+        PCFShadowMap,
+        Plane,
+        PlaneGeometry,
+        PMREMGenerator,
+        Quaternion,
+        Raycaster,
+        Scene,
+        SphereGeometry,
+        SRGBColorSpace,
+        Vector2,
+        Vector3,
+        WebGLRenderer,
+      } from "three";
+      import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+      import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+      import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+      import { FXAAPass } from "three/addons/postprocessing/FXAAPass.js";
+
+      /* ============================================================
+      Simplex noise (Ian McEwan / Stefan Gustavson) for marble & wood grain
+      ============================================================ */
+      const noise3d = `
+      vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+      vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+      float snoise(vec3 v){
+        const vec2 C = vec2(1.0/6.0, 1.0/3.0);
+        const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+        vec3 i = floor(v + dot(v, C.yyy));
+        vec3 x0 = v - i + dot(i, C.xxx);
+        vec3 g = step(x0.yzx, x0.xyz);
+        vec3 l = 1.0 - g;
+        vec3 i1 = min(g.xyz, l.zxy);
+        vec3 i2 = max(g.xyz, l.zxy);
+        vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+        vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+        vec3 x3 = x0 - 1. + 3.0 * C.xxx;
+        i = mod(i, 289.0);
+        vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+        float n_ = 1.0/7.0;
+        vec3 ns = n_ * D.wyz - D.xzx;
+        vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+        vec4 x_ = floor(j * ns.z);
+        vec4 y_ = floor(j - 7.0 * x_);
+        vec4 x = x_ * ns.x + ns.yyyy;
+        vec4 y = y_ * ns.x + ns.yyyy;
+        vec4 h = 1.0 - abs(x) - abs(y);
+        vec4 b0 = vec4(x.xy, y.xy);
+        vec4 b1 = vec4(x.zw, y.zw);
+        vec4 s0 = floor(b0)*2.0 + 1.0;
+        vec4 s1 = floor(b1)*2.0 + 1.0;
+        vec4 sh = -step(h, vec4(0.0));
+        vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy;
+        vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+        vec3 p0 = vec3(a0.xy,h.x), p1 = vec3(a0.zw,h.y), p2 = vec3(a1.xy,h.z), p3 = vec3(a1.zw,h.w);
+        vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+        p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+        vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+        m = m * m;
+        return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+      }
+      `;
+
+      /* ============================================================
+      SOUND — fully synthesized via the Web Audio API.
+      No files, no network: every cue is built from oscillators + an envelope at play time, so the whole thing ships in this one HTML. 
+      The context is created lazily and resumed on the first user gesture (browsers suspend audio until then).
+      Mute state persists in localStorage. All cues are short and allocation-light; nodes are one-shot and self-disconnect on stop.
+      ============================================================ */
+      const Sound = (() => {
+        let ctx = null;
+        let master = null;
+        let muted = false;
+        try {
+          muted = localStorage.getItem("lines3d.muted") === "1";
+        } catch {}
+
+        // Lazily build the context + a master gain. Called on first gesture.
+        function ensure() {
+          if (ctx) return;
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          ctx = new AC();
+          master = ctx.createGain();
+          master.gain.value = muted ? 0 : 0.5;
+          master.connect(ctx.destination);
+        }
+        function resume() {
+          ensure();
+          if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+        }
+
+        // One enveloped oscillator voice. freq may be a [from,to] glide.
+        // Attack is short; decay is exponential to near-zero, then the node is stopped and dropped — no lingering graph nodes.
+        function voice(freq, type, t0, dur, peak) {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = type;
+          if (Array.isArray(freq)) {
+            o.frequency.setValueAtTime(freq[0], t0);
+            o.frequency.exponentialRampToValueAtTime(
+              Math.max(1, freq[1]),
+              t0 + dur,
+            );
+          } else {
+            o.frequency.setValueAtTime(freq, t0);
+          }
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.exponentialRampToValueAtTime(peak, t0 + 0.008);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+          o.connect(g).connect(master);
+          o.start(t0);
+          o.stop(t0 + dur + 0.02);
+          o.onended = () => g.disconnect();
+        }
+
+        // Short filtered-noise burst — used for spawn "tick" and landing thunk.
+        function noise(t0, dur, peak, lpHz) {
+          const n = Math.max(1, Math.floor(ctx.sampleRate * dur));
+          const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+          const d = buf.getChannelData(0);
+          for (let i = 0; i < n; i++)
+            d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          const lp = ctx.createBiquadFilter();
+          lp.type = "lowpass";
+          lp.frequency.value = lpHz || 2400;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(peak, t0);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+          src.connect(lp).connect(g).connect(master);
+          src.start(t0);
+          src.stop(t0 + dur + 0.02);
+          src.onended = () => g.disconnect();
+        }
+
+        // C minor pentatonic-ish scale — any subset sounds consonant, keeping clears and bonuses pleasant regardless of how many notes play.
+        const SCALE = [
+          261.63, 311.13, 349.23, 392.0, 466.16, 523.25, 622.25, 698.46,
+        ];
+
+        return {
+          get muted() {
+            return muted;
+          },
+          unlock: resume, // call on first user gesture
+          toggleMute() {
+            muted = !muted;
+            try {
+              localStorage.setItem("lines3d.muted", muted ? "1" : "0");
+            } catch {}
+            if (master && ctx) {
+              master.gain.cancelScheduledValues(ctx.currentTime);
+              master.gain.setTargetAtTime(
+                muted ? 0 : 0.5,
+                ctx.currentTime,
+                0.02,
+              );
+            }
+            return muted;
+          },
+
+          select() {
+            if (!ctx || muted) return;
+            voice(660, "triangle", ctx.currentTime, 0.12, 0.35);
+          },
+          // One pitched click per square; pitch rises along the path so a long move reads as the marble "walking" to its destination.
+          step(i) {
+            if (!ctx || muted) return;
+            voice(
+              380 + Math.min(i, 12) * 18,
+              "square",
+              ctx.currentTime,
+              0.05,
+              0.12,
+            );
+          },
+          land() {
+            if (!ctx || muted) return;
+            const t = ctx.currentTime;
+            voice([300, 150], "sine", t, 0.12, 0.3);
+            noise(t, 0.06, 0.12, 1200);
+          },
+          clear(n) {
+            if (!ctx || muted) return;
+            const t = ctx.currentTime;
+            const notes = Math.min(8, Math.max(3, n));
+            for (let i = 0; i < notes; i++)
+              voice(SCALE[i], "triangle", t + i * 0.06, 0.28, 0.32);
+            voice(SCALE[notes - 1] * 2, "sine", t + notes * 0.06, 0.4, 0.18);
+          },
+          bonus() {
+            if (!ctx || muted) return;
+            const t = ctx.currentTime;
+            [0, 2, 4, 7].forEach((s, i) =>
+              voice(SCALE[s], "triangle", t + 0.04 * i, 0.55, 0.28),
+            );
+            voice([784, 1568], "sine", t + 0.18, 0.5, 0.2);
+          },
+          spawn(k) {
+            if (!ctx || muted) return;
+            const t = ctx.currentTime;
+            const count = Math.min(3, k || 3);
+            for (let i = 0; i < count; i++) {
+              noise(t + i * 0.05, 0.05, 0.1, 1800);
+              voice(520 + i * 40, "sine", t + i * 0.05, 0.08, 0.12);
+            }
+          },
+          start() {
+            if (!ctx || muted) return;
+            const t = ctx.currentTime;
+            [0, 2, 4].forEach((s, i) =>
+              voice(SCALE[s], "triangle", t + i * 0.09, 0.35, 0.3),
+            );
+          },
+          gameOver() {
+            if (!ctx || muted) return;
+            const t = ctx.currentTime;
+            [523.25, 466.16, 392.0, 311.13].forEach((f, i) =>
+              voice(f, "sine", t + i * 0.16, 0.5, 0.32),
+            );
+          },
+          invalid() {
+            if (!ctx || muted) return;
+            voice([180, 120], "sawtooth", ctx.currentTime, 0.16, 0.18);
+          },
+        };
+      })();
+
+      /* ============================================================
+      Renderer / Scene
+      ============================================================ */
+      const renderer = new WebGLRenderer({
+        // antialias:false is deliberate. I render through EffectComposer, whose render targets are NOT the multisampled default framebuffer —
+        // so MSAA on the canvas would never touch a geometry edge (only the final fullscreen FXAA quad reaches the canvas).
+        // Requesting it would allocate a multisampled drawing buffer that does nothing. Edge AA is FXAA's job.
+        antialias: false,
+        powerPreference: "high-performance",
+      });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = PCFShadowMap;
+      // The shadow map is the single most expensive recurring pass (it re-renders every marble + the board from the light's view). The board is static and most frames the player is just *looking* — so I drive shadow updates on demand instead of every frame.
+      // `shadowDirty` is raised by anything that changes a silhouette (see raise()); the frame loop also keeps it live while tweens run or a marble is selected (lifting/spinning). On a truly idle frame the shadow pass is skipped entirely.
+      renderer.shadowMap.autoUpdate = false;
+      let shadowDirty = true;
+      renderer.toneMapping = ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.9;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new Scene();
+      scene.background = new Color(0x150a0a);
+
+      // One-time PMREM for soft, believable reflections on the polished marbles.
+      const pmrem = new PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environmentIntensity = 0.16;
+      pmrem.dispose();
+
+      /* ---- Locked ORTHOGRAPHIC camera ----
+      Lines is a pure pattern-reading game: the diagonals MUST read as straight, parallel lines, and the cups should look round. 
+      The camera is orthographic (no perspective convergence) and fixed at a SHALLOW ~15° tilt off vertical — close enough to top-down that a circular dish projects to a ~3% ellipse
+      (reads as a circle, no skew), while still giving the marbles a little dimensional shading and an offset cast shadow rather than looking flat.
+      Only a clamped zoom is exposed; the angle never changes. */
+      const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 80);
+      camera.position.set(0, 13, 3.48); // ~15° from vertical
+      camera.lookAt(0, 0, 0);
+
+      const FIT = 6.4; // world radius the frustum must always contain
+      let zoomMul = 1;
+
+      // Pinch zoom state
+      const activePointers = new Map();
+      let pinchStartDistance = 0;
+      let pinchStartZoom = 1;
+
+      function sizeCamera() {
+        const a = innerWidth / innerHeight;
+        // Contain a FIT-radius region in BOTH axes regardless of orientation.
+        const h = (a >= 1 ? FIT : FIT / a) / zoomMul;
+        const w = h * a;
+        camera.left = -w;
+        camera.right = w;
+        camera.top = h;
+        camera.bottom = -h;
+        camera.updateProjectionMatrix();
+      }
+      sizeCamera();
+
+      /* ---- Lighting: one shadow-casting key + cool rim + IBL ---- */
+      const key = new DirectionalLight(0xfff2e0, 2.3);
+      key.position.set(6, 12, 6);
+      key.castShadow = true;
+      key.shadow.mapSize.set(2048, 2048);
+      key.shadow.camera.near = 1;
+      key.shadow.camera.far = 40;
+      key.shadow.camera.left = -8;
+      key.shadow.camera.right = 8;
+      key.shadow.camera.top = 8;
+      key.shadow.camera.bottom = -8;
+      key.shadow.bias = -0.0002;
+      key.shadow.radius = 4;
+      scene.add(key);
+
+      const rim = new DirectionalLight(0x6fa8ff, 0.55);
+      rim.position.set(-7, 5, -6);
+      scene.add(rim);
+
+      /* ============================================================
+      Postprocessing: render -> subtle bloom -> tonemap -> AA
+      ============================================================ */
+      const composer = new EffectComposer(renderer);
+      composer.setPixelRatio(renderer.getPixelRatio());
+      composer.addPass(new RenderPass(scene, camera));
+      const bloom = new UnrealBloomPass(
+        new Vector2(innerWidth, innerHeight),
+        0.12,
+        0.6,
+        0.85,
+      );
+      composer.addPass(bloom);
+      composer.addPass(new OutputPass());
+      composer.addPass(new FXAAPass());
+
+      /* ============================================================
+      BOARD MODEL — 9×9 square lattice.
+      Cell index i = row*9 + col, col/row in [0,8]. World x grows with col,
+      world z grows with row, both centred on the origin.
+      ============================================================ */
+      const SIZE = 9;
+      const N = SIZE * SIZE; // 81
+      const SPACING = 1.0; // unit grid → integer world coords, trivial to read
+      const MARBLE_R = 0.42;
+      const col = (i) => i % SIZE;
+      const row = (i) => (i / SIZE) | 0;
+      const inBounds = (c, r) => c >= 0 && c < SIZE && r >= 0 && r < SIZE;
+      const idx = (c, r) => r * SIZE + c;
+
+      // Reused scratch — keeps cellToWorld allocation-free on the hot path.
+      const _w = { x: 0, z: 0 };
+      function cellToWorld(c, r) {
+        _w.x = (c - 4) * SPACING;
+        _w.z = (r - 4) * SPACING;
+        return _w;
+      }
+      const worldToCell = (x, z) => ({
+        c: Math.round(x / SPACING) + 4,
+        r: Math.round(z / SPACING) + 4,
+      });
+
+      // The 4 axes a line can run along (the other 4 are their negatives).
+      const AXES = [
+        [1, 0], // —
+        [0, 1], // |
+        [1, 1], // ＼
+        [1, -1], // ／
+      ];
+
+      /* ---- Seat geometry: GENTLE saucers carved into a solid top ----
+      Each cell is a shallow spherical dish cut into the wood — no through-hole, so an empty cell shows carved wood, never a dark bore. */
+      const DISH_CURVE_R = 0.8; // dish curvature (looser than the marble → no clip)
+      const DISH_RIM = 0.46; // radius where the dish has blended back to flat
+      const DISH_DEPTH =
+        DISH_CURVE_R -
+        Math.sqrt(DISH_CURVE_R * DISH_CURVE_R - DISH_RIM * DISH_RIM);
+      const SEAT_CLEARANCE = 0.012;
+      const REST_Y = -DISH_DEPTH + MARBLE_R + SEAT_CLEARANCE; // marble-centre height at rest
+
+      // Radial dish profile shared by the height and normal functions so they can never disagree. A spherical cap forms the cradle;
+      // from DISH_BLEND outward a cubic Hermite eases the slope to ZERO at the rim, so the dish melts into the flat wood with no shading crease.
+      const DISH_BLEND = 0.5 * DISH_RIM;
+      const _yb =
+        -DISH_DEPTH +
+        DISH_CURVE_R -
+        Math.sqrt(DISH_CURVE_R * DISH_CURVE_R - DISH_BLEND * DISH_BLEND);
+      const _mb =
+        DISH_BLEND /
+        Math.sqrt(DISH_CURVE_R * DISH_CURVE_R - DISH_BLEND * DISH_BLEND);
+      const _hh = DISH_RIM - DISH_BLEND;
+      function dishProfile(d) {
+        if (d >= DISH_RIM) return { y: 0, slope: 0 };
+        if (d <= DISH_BLEND) {
+          const k = Math.sqrt(DISH_CURVE_R * DISH_CURVE_R - d * d);
+          return { y: -DISH_DEPTH + DISH_CURVE_R - k, slope: d / k };
+        }
+        const t = (d - DISH_BLEND) / _hh;
+        const h00 = 2 * t * t * t - 3 * t * t + 1,
+          h10 = t * t * t - 2 * t * t + t;
+        const dh00 = 6 * t * t - 6 * t,
+          dh10 = 3 * t * t - 4 * t + 1;
+        return {
+          y: h00 * _yb + h10 * _hh * _mb,
+          slope: (dh00 * _yb + dh10 * _hh * _mb) / _hh,
+        };
+      }
+      // On a regular lattice the nearest cell centre is just rounding + clamping.
+      function nearestCell(x, z) {
+        const cc = Math.max(-4, Math.min(4, Math.round(x / SPACING)));
+        const rr = Math.max(-4, Math.min(4, Math.round(z / SPACING)));
+        const bx = cc * SPACING,
+          bz = rr * SPACING;
+        return { best: Math.hypot(x - bx, z - bz), bx, bz };
+      }
+      function dishSurfaceY(x, z) {
+        return dishProfile(nearestCell(x, z).best).y;
+      }
+      function dishSurfaceNormal(x, z) {
+        const { best, bx, bz } = nearestCell(x, z);
+        if (best >= DISH_RIM || best < 1e-6) return [0, 1, 0];
+        const slope = dishProfile(best).slope;
+        const ux = (x - bx) / best,
+          uz = (z - bz) / best;
+        let nx = -slope * ux,
+          ny = 1,
+          nz = -slope * uz;
+        const len = Math.hypot(nx, ny, nz) || 1;
+        return [nx / len, ny / len, nz / len];
+      }
+
+      const boardGroup = new Group();
+      scene.add(boardGroup);
+
+      /* ---- Rounded-rect outline + closed-polyline resampler (board edge) ---- */
+      function roundedRectOutline(hx, hz, rad, seg) {
+        const pts = [];
+        const cor = [
+          [hx - rad, hz - rad],
+          [-hx + rad, hz - rad],
+          [-hx + rad, -hz + rad],
+          [hx - rad, -hz + rad],
+        ];
+        const start = [0, Math.PI / 2, Math.PI, 1.5 * Math.PI];
+        for (let k = 0; k < 4; k++) {
+          const [cx, cz] = cor[k];
+          for (let s = 0; s <= seg; s++) {
+            const a = start[k] + (s / seg) * (Math.PI / 2);
+            pts.push([cx + Math.cos(a) * rad, cz + Math.sin(a) * rad]);
+          }
+        }
+        return pts;
+      }
+      function resampleClosed(poly, count) {
+        const seg = [];
+        let len = 0;
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i],
+            b = poly[(i + 1) % poly.length];
+          const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          seg.push(d);
+          len += d;
+        }
+        const step = len / count,
+          out = [];
+        let target = 0,
+          acc = 0,
+          i = 0;
+        for (let n = 0; n < count; n++) {
+          while (acc + seg[i] < target) {
+            acc += seg[i];
+            i = (i + 1) % poly.length;
+          }
+          const a = poly[i],
+            b = poly[(i + 1) % poly.length],
+            t = (target - acc) / seg[i];
+          out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+          target += step;
+        }
+        return out;
+      }
+
+      /* ---- Build the solid board with dishes carved into the top ----
+      The top INTERIOR is an isotropic triangle grid (uniform cell size) so every dish shades identically smooth. 
+      The grid is clipped to an INSET outline and the visible silhouette is a separately-resampled clean RING; a ribbon stitches the jagged grid boundary to that ring, buried in flat wood. 
+      Chamfer + wall + base flare off the same ring for a clean perimeter. */
+      function buildBoardGeometry() {
+        const BHALF = 5.0,
+          CORNER = 1.0,
+          THICK = 0.7,
+          GRID = 0.07,
+          INSET = 0.16,
+          RINGN = 300,
+          CHF = 0.992;
+        const outline = roundedRectOutline(BHALF, BHALF, CORNER, 46);
+        const sc = (BHALF - INSET) / BHALF;
+        const insetOutline = outline.map((p) => [p[0] * sc, p[1] * sc]);
+        const ring = resampleClosed(outline, RINGN);
+
+        const pointInPoly = (x, z, poly) => {
+          let c = false;
+          for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i][0],
+              zi = poly[i][1],
+              xj = poly[j][0],
+              zj = poly[j][1];
+            if (
+              zi > z !== zj > z &&
+              x < ((xj - xi) * (z - zi)) / (zj - zi) + xi
+            )
+              c = !c;
+          }
+          return c;
+        };
+
+        const pos = [],
+          ix = [];
+        for (const p of ring) pos.push(p[0], 0, p[1]); // ring verts: [0, RINGN)
+
+        let minx = Infinity,
+          maxx = -Infinity,
+          minz = Infinity,
+          maxz = -Infinity;
+        for (const p of insetOutline) {
+          minx = Math.min(minx, p[0]);
+          maxx = Math.max(maxx, p[0]);
+          minz = Math.min(minz, p[1]);
+          maxz = Math.max(maxz, p[1]);
+        }
+        const NX = Math.ceil((maxx - minx) / GRID),
+          NZ = Math.ceil((maxz - minz) / GRID);
+        const cell = [];
+        for (let j = 0; j <= NZ; j++) {
+          cell.push([]);
+          for (let i = 0; i <= NX; i++) {
+            const x = minx + i * GRID,
+              z = minz + j * GRID;
+            if (pointInPoly(x, z, insetOutline)) {
+              cell[j][i] = pos.length / 3;
+              pos.push(x, dishSurfaceY(x, z), z);
+            } else cell[j][i] = -1;
+          }
+        }
+
+        const signedArea = (a, b, c) =>
+          (pos[b * 3] - pos[a * 3]) * (pos[c * 3 + 2] - pos[a * 3 + 2]) -
+          (pos[c * 3] - pos[a * 3]) * (pos[b * 3 + 2] - pos[a * 3 + 2]);
+        const emitUp = (a, b, c) => {
+          if (signedArea(a, b, c) > 0) ix.push(a, c, b);
+          else ix.push(a, b, c);
+        };
+
+        for (let j = 0; j < NZ; j++)
+          for (let i = 0; i < NX; i++) {
+            const a = cell[j][i],
+              b = cell[j][i + 1],
+              c = cell[j + 1][i],
+              d = cell[j + 1][i + 1];
+            if (a < 0 || b < 0 || c < 0 || d < 0) continue;
+            if ((i + j) % 2 === 0) {
+              emitUp(a, b, d);
+              emitUp(a, d, c);
+            } else {
+              emitUp(a, b, c);
+              emitUp(b, d, c);
+            }
+          }
+
+        // Jagged inner boundary loop of the grid (edges used by exactly one tri).
+        const ekey = (a, b) => (a < b ? a * 1e7 + b : b * 1e7 + a);
+        const ec = new Map(),
+          nextV = new Map();
+        for (let t = 0; t < ix.length; t += 3) {
+          const a = ix[t],
+            b = ix[t + 1],
+            c = ix[t + 2];
+          for (const [u, v] of [
+            [a, b],
+            [b, c],
+            [c, a],
+          ])
+            ec.set(ekey(u, v), (ec.get(ekey(u, v)) || 0) + 1);
+        }
+        for (let t = 0; t < ix.length; t += 3) {
+          const a = ix[t],
+            b = ix[t + 1],
+            c = ix[t + 2];
+          for (const [u, v] of [
+            [a, b],
+            [b, c],
+            [c, a],
+          ])
+            if (ec.get(ekey(u, v)) === 1) nextV.set(u, v);
+        }
+        const inner = [];
+        let st = nextV.keys().next().value,
+          cur = st,
+          guard = 0;
+        do {
+          inner.push(cur);
+          cur = nextV.get(cur);
+        } while (cur !== st && guard++ < 1e6);
+        const NI = inner.length;
+
+        const shoelace = (arr) => {
+          let s = 0;
+          for (let i = 0; i < arr.length; i++) {
+            const a = arr[i],
+              b = arr[(i + 1) % arr.length];
+            s += pos[a * 3] * pos[b * 3 + 2] - pos[b * 3] * pos[a * 3 + 2];
+          }
+          return s;
+        };
+        if (shoelace(inner) < 0) inner.reverse();
+        const outer = [];
+        for (let i = 0; i < RINGN; i++) outer.push(i);
+        if (shoelace(outer) < 0) outer.reverse();
+
+        // Greedy ribbon stitch (shortest diagonal) between inner loop & outer ring.
+        const ang = (vi) => Math.atan2(pos[vi * 3 + 2], pos[vi * 3]);
+        let j0 = 0,
+          bd = Infinity,
+          ia = ang(inner[0]);
+        for (let k = 0; k < RINGN; k++) {
+          let d = Math.abs(ang(outer[k]) - ia);
+          d = Math.min(d, 2 * Math.PI - d);
+          if (d < bd) {
+            bd = d;
+            j0 = k;
+          }
+        }
+        const dist = (a, b) =>
+          Math.hypot(pos[a * 3] - pos[b * 3], pos[a * 3 + 2] - pos[b * 3 + 2]);
+        let ii = 0,
+          jj = 0;
+        while (ii < NI || jj < RINGN) {
+          const advI =
+            jj >= RINGN ||
+            (ii < NI &&
+              dist(inner[(ii + 1) % NI], outer[(j0 + jj) % RINGN]) <=
+                dist(inner[ii % NI], outer[(j0 + jj + 1) % RINGN]));
+          if (advI) {
+            emitUp(
+              inner[ii % NI],
+              inner[(ii + 1) % NI],
+              outer[(j0 + jj) % RINGN],
+            );
+            ii++;
+          } else {
+            emitUp(
+              inner[ii % NI],
+              outer[(j0 + jj + 1) % RINGN],
+              outer[(j0 + jj) % RINGN],
+            );
+            jj++;
+          }
+        }
+
+        // Chamfer + wall + base flared off the CLEAN ring; winding self-corrected.
+        const chamfer = pos.length / 3;
+        for (let k = 0; k < RINGN; k++) {
+          const vi = outer[k];
+          pos.push(pos[vi * 3] * CHF, -0.05, pos[vi * 3 + 2] * CHF);
+        }
+        const base = pos.length / 3;
+        for (let k = 0; k < RINGN; k++) {
+          const vi = outer[k];
+          pos.push(pos[vi * 3] * CHF, -THICK, pos[vi * 3 + 2] * CHF);
+        }
+        const botC = pos.length / 3;
+        pos.push(0, -THICK, 0);
+
+        const pushOut = (a, b, c) => {
+          const ux = pos[b * 3] - pos[a * 3],
+            uy = pos[b * 3 + 1] - pos[a * 3 + 1],
+            uz = pos[b * 3 + 2] - pos[a * 3 + 2];
+          const vx = pos[c * 3] - pos[a * 3],
+            vy = pos[c * 3 + 1] - pos[a * 3 + 1],
+            vz = pos[c * 3 + 2] - pos[a * 3 + 2];
+          const nx = uy * vz - uz * vy,
+            nz = ux * vy - uy * vx;
+          const cx = (pos[a * 3] + pos[b * 3] + pos[c * 3]) / 3,
+            cz = (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[c * 3 + 2]) / 3;
+          if (nx * cx + nz * cz >= 0) ix.push(a, b, c);
+          else ix.push(a, c, b);
+        };
+        const pushDown = (a, b, c) => {
+          const ux = pos[b * 3] - pos[a * 3],
+            uz = pos[b * 3 + 2] - pos[a * 3 + 2],
+            vx = pos[c * 3] - pos[a * 3],
+            vz = pos[c * 3 + 2] - pos[a * 3 + 2];
+          if (uz * vx - ux * vz < 0) ix.push(a, b, c);
+          else ix.push(a, c, b);
+        };
+        for (let k = 0; k < RINGN; k++) {
+          const n = (k + 1) % RINGN;
+          const lo = outer[k],
+            lo2 = outer[n],
+            ch = chamfer + k,
+            ch2 = chamfer + n,
+            ba = base + k,
+            ba2 = base + n;
+          pushOut(lo, ch, lo2);
+          pushOut(lo2, ch, ch2);
+          pushOut(ch, ba, ch2);
+          pushOut(ch2, ba, ba2);
+          pushDown(botC, ba2, ba);
+        }
+
+        const g = new BufferGeometry();
+        g.setAttribute("position", new Float32BufferAttribute(pos, 3));
+        g.setIndex(ix);
+        g.computeVertexNormals();
+        // Exact analytic normals across the whole top surface (ring + grid):
+        // straight up on flat wood, spherical-cap normal inside a dish — so dishes shade perfectly smoothly regardless of tessellation. Top verts: [0, chamfer).
+        const nrm = g.attributes.normal;
+        for (let i = 0; i < chamfer; i++) {
+          const nv = dishSurfaceNormal(pos[i * 3], pos[i * 3 + 2]);
+          nrm.setXYZ(i, nv[0], nv[1], nv[2]);
+        }
+        nrm.needsUpdate = true;
+        return g;
+      }
+
+      const pedestalMat = new MeshPhysicalMaterial({
+        color: 0x2a1414,
+        metalness: 0.1,
+        roughness: 0.7,
+        clearcoat: 0.0,
+        envMapIntensity: 0.2,
+      });
+      pedestalMat.onBeforeCompile = (sh) => {
+        sh.vertexShader = `varying vec3 vP;\n${sh.vertexShader}`.replace(
+          "#include <begin_vertex>",
+          "#include <begin_vertex>\nvP = position;",
+        );
+        sh.fragmentShader =
+          `varying vec3 vP;\n${noise3d}\n${sh.fragmentShader}`.replace(
+            "vec4 diffuseColor = vec4( diffuse, opacity );",
+            `// Grain sampled in the HORIZONTAL plane only, so it runs straight down through the board like real fibres — a carved dish shows the same clean grain as the wood above it instead of a low-frequency 3D blob.
+          float n = snoise(vec3(vP.x, vP.z, 0.0) * 2.4) * 0.5 + 0.5;
+          vec3 col = mix(vec3(0.135,0.060,0.058), vec3(0.175,0.078,0.073), n);
+          float ao = 0.9 + 0.1 * smoothstep(${(-DISH_DEPTH).toFixed(4)}, 0.0, vP.y);
+          vec4 diffuseColor = vec4(col * ao, opacity);`,
+          );
+      };
+
+      const pedestal = new Mesh(buildBoardGeometry(), pedestalMat);
+      pedestal.receiveShadow = true;
+      pedestal.castShadow = true;
+      pedestal.raycast = () => {}; // empty cells are picked via plane math
+      boardGroup.add(pedestal);
+
+      // Backdrop floor that dissolves into the background for an infinite stage.
+      const floorMat = new MeshStandardMaterial({
+        color: 0x1c0c0c,
+        roughness: 1,
+        metalness: 0,
+      });
+      floorMat.onBeforeCompile = (sh) => {
+        sh.uniforms.bg = { value: scene.background };
+        sh.fragmentShader = `uniform vec3 bg;\n${sh.fragmentShader}`.replace(
+          "#include <opaque_fragment>",
+          `#include <opaque_fragment>
+           float f = smoothstep(0.18, 0.5, length(vUv - 0.5));
+           gl_FragColor.rgb = mix(gl_FragColor.rgb, bg, f);`,
+        );
+      };
+      floorMat.defines = { USE_UV: "" };
+      const floor = new Mesh(
+        new CircleGeometry(46, 64).rotateX(-Math.PI / 2),
+        floorMat,
+      );
+      floor.position.y = -0.71;
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      /* ============================================================
+      Highlight rings — ONE instanced draw, a faint groove at each saucer rim.
+      Base tone hugs the wood (so an empty dish reads as carved, not painted); only SELECTED and REACHABLE states are meant to pop.
+
+      The ring is a FLAT textured quad lying in the board plane.
+      The quad carries a ring drawn ONCE into a canvas with the 2D rasterizer's own anti-aliasing — a perfectly smooth circle — then mipmapped and linearly sampled, so it stays clean at any zoom.
+      The quad's only geometry edges are its transparent corners (dropped via alphaTest), so there's nothing left to alias. It's also cheap: 2 triangles per instance. 
+      The texture is white where the ring is, so the per-instance colour passes through map RGB unchanged and only the alpha carries the ring shape.
+      ============================================================ */
+      const RING_BASE = new Color(0x2c1510);
+      const RING_SEL = new Color(0xf2d79b).multiplyScalar(4.0); // selected cell, glows past bloom
+      const RING_REACH = new Color(0xe7b85a); // squares the selected marble can reach
+
+      function makeRingTexture() {
+        const S = 256;
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = S;
+        const c = cv.getContext("2d");
+        // White, soft-edged annulus. Radius/line width chosen so the stroke maps to roughly the torus's old tube thickness once scaled onto the quad.
+        const cx = S / 2,
+          cy = S / 2;
+        const rOuter = S * 0.46; // ring radius in texels
+        const lw = S * 0.028; // stroke width in texels — thinner = finer groove line
+        c.clearRect(0, 0, S, S);
+        c.strokeStyle = "#ffffff";
+        c.lineWidth = lw;
+        c.beginPath();
+        c.arc(cx, cy, rOuter - lw * 0.5, 0, Math.PI * 2);
+        c.stroke(); // canvas antialiases the curve for free
+        const tex = new CanvasTexture(cv);
+        tex.colorSpace = SRGBColorSpace;
+        tex.minFilter = LinearMipmapLinearFilter;
+        tex.magFilter = LinearFilter;
+        tex.generateMipmaps = true;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return tex;
+      }
+      const ringTex = makeRingTexture();
+      const ringMat = new MeshBasicMaterial({
+        map: ringTex,
+        transparent: true,
+        alphaTest: 0.02, // drop the empty corners so the quad still depth-writes
+        depthWrite: false, // it hugs the board; let the board own depth
+        toneMapped: true, // crisp but consistent with the bloom pipeline
+      });
+      // Quad spans the full rim diameter; lies flat in the XZ plane.
+      const RING_QUAD = DISH_RIM * 2 * 1.08;
+      const ringGeo = new PlaneGeometry(RING_QUAD, RING_QUAD).rotateX(
+        -Math.PI / 2,
+      );
+      const rings = new InstancedMesh(ringGeo, ringMat, N);
+      rings.raycast = () => {};
+      const _m4 = new Matrix4();
+      for (let i = 0; i < N; i++) {
+        const w = cellToWorld(col(i), row(i));
+        _m4.makeTranslation(w.x, 0.004, w.z); // hugs the surface at the rim blend
+        rings.setMatrixAt(i, _m4);
+        rings.setColorAt(i, RING_BASE);
+      }
+      rings.instanceMatrix.needsUpdate = true;
+      boardGroup.add(rings);
+
+      /* ============================================================
+      MARBLES — seven colours, one InstancedMesh per colour (7 draw calls total, plus 7 shadow). Each colour owns a small pool of proxy objects with a free-list; spawning claims a slot, clearing returns it. 
+      A proxy exposes .position/.quaternion/.scale which one cheap pass per frame composes into the instance matrices. The rules never touch any of this.
+      ============================================================ */
+      const marbleGeo = new SphereGeometry(MARBLE_R, 48, 32);
+
+      // Seven distinct jewel hues, well separated in BOTH hue and value so they stay legible (and broadly colour-blind distinguishable) under the glossy clearcoat. Index 0 is unused so a colour code == its 1-based id.
+      const PALETTE = [
+        0x000000,
+        0xe23b54, // 1 ruby
+        0xf2922f, // 2 amber
+        0xf6d743, // 3 gold
+        0x37c46b, // 4 emerald
+        0x37c9d6, // 5 aqua
+        0x4f7dff, // 6 sapphire
+        0xb56cf0, // 7 amethyst
+      ];
+
+      // IMPORTANT: the per-colour tint is driven by the standard `diffuse` uniform (set from material.color), NOT baked into the shader source.
+      // Three caches compiled programs by a key that ignores onBeforeCompile edits, so if I baked colour constants into the source, all seven materials — identical type & params otherwise
+      // — would collide on one cached program and every marble would render the FIRST colour. With an identical, colour-agnostic source the shared program is correct, and each material still shows its own hue through its own `diffuse` uniform.
+      //
+      // Per-instance ALPHA: a cleared marble fades as it falls off the board so it dissolves instead of hard-clipping through the wood and its neighbours.
+      // Standard materials have no per-instance opacity, so I feed it through an instanced float attribute `iAlpha` read in the shader.
+      // depthWrite stays ON: solid marbles (alpha 1) must occlude each other and the board correctly, and one InstancedMesh can't depth-sort its own instances.
+      // The fade only happens to marbles already arcing off below the rim, where the handful of overlapping translucent ones produce no visible sorting artifact — the win (no hard clip) far outweighs it.
+      function makeMarbleMat(hex) {
+        const mat = new MeshPhysicalMaterial({
+          color: new Color(hex),
+          metalness: 0.1,
+          roughness: 0.18,
+          clearcoat: 1.0,
+          clearcoatRoughness: 0.08,
+          envMapIntensity: 1.15,
+          transparent: true,
+        });
+        mat.onBeforeCompile = (sh) => {
+          sh.vertexShader =
+            `varying vec3 vP;\nattribute float iAlpha;\nvarying float vAlpha;\n${sh.vertexShader}`.replace(
+              "#include <begin_vertex>",
+              "#include <begin_vertex>\nvP = position;\nvAlpha = iAlpha;",
+            );
+          sh.fragmentShader =
+            `varying vec3 vP;\nvarying float vAlpha;\n${noise3d}\n${sh.fragmentShader}`.replace(
+              "vec4 diffuseColor = vec4( diffuse, opacity );",
+              `float n = snoise(vP * 4.5) * 0.5 + 0.5; n = n*n*(3.0-2.0*n);
+               vec3 col = diffuse * mix(0.6, 1.18, n); // neutral light/dark grain
+               vec4 diffuseColor = vec4(col, opacity * vAlpha);`,
+            );
+        };
+        return mat;
+      }
+
+      const CAP = N; // worst case: every cell one colour
+      const pools = [null];
+      for (let c = 1; c <= 7; c++) {
+        // Each pool gets its OWN geometry clone so it can carry its own instanced alpha buffer — an instanced attribute lives on the geometry, and the 7 meshes must not share one alpha array.
+        const geo = marbleGeo.clone();
+        const alpha = new Float32Array(CAP).fill(1);
+        const alphaAttr = new InstancedBufferAttribute(alpha, 1);
+        alphaAttr.setUsage(DynamicDrawUsage);
+        geo.setAttribute("iAlpha", alphaAttr);
+        const mesh = new InstancedMesh(geo, makeMarbleMat(PALETTE[c]), CAP);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.count = 0; // grows with the high-water of live instances
+        mesh.frustumCulled = false;
+        boardGroup.add(mesh);
+        pools[c] = {
+          mesh,
+          alpha, // direct handle to the buffer for fast per-instance writes
+          alphaAttr,
+          count: 0,
+          free: [],
+          byId: new Array(CAP).fill(null),
+        };
+      }
+
+      const active = new Set(); // every live marble proxy
+      const _q0 = new Quaternion();
+      const _sZero = new Vector3(0, 0, 0);
+      const _mtxZ = new Matrix4();
+
+      function claim(color, cell) {
+        const p = pools[color];
+        const id = p.free.length ? p.free.pop() : p.count++;
+        let m = p.byId[id];
+        if (!m) {
+          m = {
+            position: new Vector3(),
+            quaternion: new Quaternion(),
+            scale: new Vector3(1, 1, 1),
+            color,
+            id,
+            mesh: p.mesh,
+          };
+          p.byId[id] = m;
+        }
+        const w = cellToWorld(col(cell), row(cell));
+        m.color = color;
+        m.cell = cell;
+        m.bx = w.x;
+        m.bz = w.z;
+        m.position.set(w.x, REST_Y, w.z);
+        m.quaternion.identity();
+        m.scale.setScalar(1);
+        m.selected = false;
+        m.out = false;
+        m.tweening = false;
+        m.shake = 0;
+        m.phase = Math.random() * Math.PI * 2;
+        m.alpha = 1;
+        p.alpha[id] = 1; // a reused slot may still hold a faded value from a prior burst
+        p.alphaAttr.needsUpdate = true;
+        if (id + 1 > p.mesh.count) p.mesh.count = id + 1;
+        active.add(m);
+        return m;
+      }
+
+      function free(m) {
+        const p = pools[m.color];
+        m.out = true;
+        m.selected = false;
+        m.tweening = false;
+        if (m === selMarble) {
+          // The selected marble is being removed — drop the dangling pointer so a later clearSelection can't deselect the slot once it's reused.
+          selMarble = null;
+          selCell = -1;
+        }
+        active.delete(m);
+        p.free.push(m.id);
+        // Write a zero-scale matrix NOW so the freed slot stops rendering — the per-frame sync only touches live proxies and would otherwise leave its stale (visible) transform in place.
+        _mtxZ.compose(m.position, _q0, _sZero);
+        p.mesh.setMatrixAt(m.id, _mtxZ);
+        p.mesh.instanceMatrix.needsUpdate = true;
+      }
+
+      // Hard reset of every pool. Zeroing `count` alone is NOT enough: the instanced meshes still hold the previous matrices in their slots,
+      // and both the colour pass (whenever a later claim re-grows count over them) and the shadow pass will redraw those stale, still-visible transforms —
+      // that was the "ghost marble + orphan shadow after undo" bug. So I explicitly collapse every slot up to the old high-water to zero scale, flag the buffer dirty, then clear the bookkeeping.
+      // byId is kept (the proxy objects are poolable), but every live one is detached from `active` and its matrix is now zero until reclaimed.
+      function resetPools() {
+        active.clear();
+        for (let c = 1; c <= 7; c++) {
+          const p = pools[c];
+          for (let id = 0; id < p.mesh.count; id++) {
+            _mtxZ.compose(_sZero, _q0, _sZero);
+            p.mesh.setMatrixAt(id, _mtxZ);
+            const m = p.byId[id];
+            if (m) {
+              m.out = true;
+              m.selected = false;
+              m.tweening = false;
+            }
+          }
+          if (p.mesh.count > 0) p.mesh.instanceMatrix.needsUpdate = true;
+          p.mesh.count = 0;
+          p.free.length = 0;
+        }
+        selMarble = null; // every proxy was just detached/zeroed
+        selCell = -1;
+        selParent = null;
+        shadowDirty = true; // silhouettes changed wholesale
+      }
+
+      const _scl = new Vector3();
+      const _mtx = new Matrix4();
+      function syncMarbles() {
+        for (const m of active) {
+          _scl.copy(m.scale);
+          _mtx.compose(m.position, m.quaternion, _scl);
+          m.mesh.setMatrixAt(m.id, _mtx);
+          pools[m.color].alpha[m.id] = m.alpha;
+        }
+        for (let c = 1; c <= 7; c++) {
+          pools[c].mesh.instanceMatrix.needsUpdate = true;
+          pools[c].alphaAttr.needsUpdate = true;
+        }
+      }
+
+      /* ============================================================
+      GAME STATE — `grid` is the single source of truth; `cellMesh` is a pure view (which proxy currently visualises each occupied cell). 
+      Every board mutation flows through commitMove / spawn / clearCells, which keep the two in lockstep, so the picture can never disagree with the logic.
+      ============================================================ */
+      const grid = new Int8Array(N); // 0 empty, else colour 1..7
+      const cellMesh = new Array(N).fill(null);
+
+      const INITIAL = 5; // marbles on the opening board
+      const PER_TURN = 3; // marbles added after a non-clearing move
+      const LINE = 5; // length needed to clear
+
+      // Best score persists across sessions via localStorage.
+      // This file runs as a standalone page in the player's own browser, so storage is the right tool here — wrapped in try/catch so a privacy mode or disabled storage degrades to a session-only best rather than throwing.
+      const BEST_KEY = "lines3d.best";
+      const loadBest = () => {
+        try {
+          const v = parseInt(localStorage.getItem(BEST_KEY), 10);
+          return Number.isFinite(v) && v > 0 ? v : 0;
+        } catch {
+          return 0;
+        }
+      };
+      const saveBest = (v) => {
+        try {
+          localStorage.setItem(BEST_KEY, String(v));
+        } catch {
+          /* storage unavailable — best stays session-only */
+        }
+      };
+
+      let score = 0,
+        best = loadBest();
+      let preview = []; // colours that will drop next turn
+      let busy = false; // input locked while an animation phase plays
+      let gameOver = false;
+      let after = null; // continuation fired when the current tween batch drains
+
+      // Selection
+      let selCell = -1;
+      let selMarble = null; // the actual proxy I flagged; cleared by identity,
+      // NOT by cellMesh[selCell] lookup — once a marble moves off its origin cell, cellMesh[selCell] is null and a lookup-based clear would orphan the .selected flag, leaving it animating as selected forever.
+      let selParent = null; // BFS parent map captured at selection time
+
+      const scoreForLine = (n) => n * 2 + (n - LINE) * 5; // 5→10, 6→17, 7→24…
+
+      const randColor = () => 1 + ((Math.random() * 7) | 0);
+      const randColors = (k) => Array.from({ length: k }, randColor);
+
+      function emptyCells() {
+        const e = [];
+        for (let i = 0; i < N; i++) if (grid[i] === 0) e.push(i);
+        return e;
+      }
+      function pickEmpties(k) {
+        const e = emptyCells();
+        // Fisher–Yates partial shuffle, take k.
+        for (let i = 0; i < Math.min(k, e.length); i++) {
+          const j = i + ((Math.random() * (e.length - i)) | 0);
+          [e[i], e[j]] = [e[j], e[i]];
+        }
+        return e.slice(0, Math.min(k, e.length));
+      }
+
+      /* ---- Pathfinding: BFS over empty cells, 4-connected ----
+      Allocation-free: a static queue buffer (the board has N cells, so the frontier never exceeds N) and inlined neighbour offsets (no per-step array destructuring). 
+      Selection is not a per-frame path, but a clean hot loop here is free to write and removes the only churn on tap. */
+      const _seen = new Int8Array(N);
+      const _parent = new Int32Array(N);
+      const _bfsQ = new Int32Array(N);
+      function reachableFrom(src) {
+        _seen.fill(0);
+        _parent.fill(-1);
+        let head = 0,
+          tail = 0;
+        _bfsQ[tail++] = src;
+        _seen[src] = 1;
+        while (head < tail) {
+          const cur = _bfsQ[head++],
+            cc = col(cur),
+            rr = row(cur);
+          // right, left, down, up
+          if (cc + 1 < SIZE) {
+            const ni = cur + 1;
+            if (!_seen[ni] && grid[ni] === 0) {
+              _seen[ni] = 1;
+              _parent[ni] = cur;
+              _bfsQ[tail++] = ni;
+            }
+          }
+          if (cc - 1 >= 0) {
+            const ni = cur - 1;
+            if (!_seen[ni] && grid[ni] === 0) {
+              _seen[ni] = 1;
+              _parent[ni] = cur;
+              _bfsQ[tail++] = ni;
+            }
+          }
+          if (rr + 1 < SIZE) {
+            const ni = cur + SIZE;
+            if (!_seen[ni] && grid[ni] === 0) {
+              _seen[ni] = 1;
+              _parent[ni] = cur;
+              _bfsQ[tail++] = ni;
+            }
+          }
+          if (rr - 1 >= 0) {
+            const ni = cur - SIZE;
+            if (!_seen[ni] && grid[ni] === 0) {
+              _seen[ni] = 1;
+              _parent[ni] = cur;
+              _bfsQ[tail++] = ni;
+            }
+          }
+        }
+        return _parent; // _seen also left populated for the caller
+      }
+      function buildPath(src, dst, parent) {
+        const path = [dst];
+        let c = dst;
+        while (c !== src) {
+          c = parent[c];
+          if (c < 0) return null;
+          path.push(c);
+        }
+        path.reverse();
+        return path;
+      }
+
+      /* ---- Pure line detector: scan all 4 axes, collect runs ≥ LINE ----
+      Returns the set of cells to clear (deduped — a cell at a line crossing is removed once) and the total score (each run scored on its own length, so simultaneous lines naturally combo). */
+      const _mark = new Uint8Array(N);
+      function findLines() {
+        _mark.fill(0);
+        let gained = 0;
+        for (const [dc, dr] of AXES) {
+          for (let r = 0; r < SIZE; r++) {
+            for (let c = 0; c < SIZE; c++) {
+              const colr = grid[idx(c, r)];
+              if (!colr) continue;
+              const pc = c - dc,
+                pr = r - dr;
+              if (inBounds(pc, pr) && grid[idx(pc, pr)] === colr) continue; // not a run start
+              let len = 0,
+                cc = c,
+                rr = r;
+              while (inBounds(cc, rr) && grid[idx(cc, rr)] === colr) {
+                len++;
+                cc += dc;
+                rr += dr;
+              }
+              if (len >= LINE) {
+                cc = c;
+                rr = r;
+                for (let k = 0; k < len; k++) {
+                  _mark[idx(cc, rr)] = 1;
+                  cc += dc;
+                  rr += dr;
+                }
+                gained += scoreForLine(len);
+              }
+            }
+          }
+        }
+        const cells = [];
+        for (let i = 0; i < N; i++) if (_mark[i]) cells.push(i);
+        return { cells, score: gained };
+      }
+
+      /* ============================================================
+      TWEENS — allocation-free per frame. Modes: "move" (follow a grid path with rolling spin + a gentle hop), "grow" (spawn: scale-in with a settle bounce), "pop" (clear: swell then vanish, frees the marble on completion). 
+      When the batch drains, the queued `after` continuation fires — this is how the multi-phase turn (move → check → spawn → check) is sequenced.
+      ============================================================ */
+      const tweens = [];
+      const _axis = new Vector3();
+      const _incQ = new Quaternion();
+      const _UP = new Vector3(0, 1, 0);
+
+      function bounceOut(x) {
+        const n1 = 7.5625,
+          d1 = 2.75;
+        if (x < 1 / d1) return n1 * x * x;
+        if (x < 2 / d1) {
+          x -= 1.5 / d1;
+          return n1 * x * x + 0.75;
+        }
+        if (x < 2.5 / d1) {
+          x -= 2.25 / d1;
+          return n1 * x * x + 0.9375;
+        }
+        x -= 2.625 / d1;
+        return n1 * x * x + 0.984375;
+      }
+
+      function tweenMovePath(m, path) {
+        // World-space waypoints + cumulative arc length for constant-feel speed.
+        const pts = path.map((ci) => {
+          const w = cellToWorld(col(ci), row(ci));
+          return new Vector3(w.x, REST_Y, w.z);
+        });
+        const segLen = [];
+        let total = 0;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const d = pts[i].distanceTo(pts[i + 1]);
+          segLen.push(d);
+          total += d;
+        }
+        m.tweening = true;
+        tweens.push({
+          m,
+          mode: "move",
+          pts,
+          segLen,
+          total,
+          prevX: m.position.x,
+          prevZ: m.position.z,
+          lastSeg: 0, // which path segment I last announced (for step sounds)
+          t: 0,
+          dur: Math.min(0.7, 0.16 + 0.05 * (pts.length - 1)),
+          delay: 0,
+        });
+      }
+      function tweenGrow(m, delay) {
+        m.scale.setScalar(0.001);
+        m.position.y = REST_Y + 0.55;
+        m.tweening = true;
+        tweens.push({ m, mode: "grow", t: 0, dur: 0.42, delay });
+      }
+      // A cleared marble is knocked off the board: launched up and radially outward, tumbling, then carried by gravity in a full arc that falls BELOW the board surface and out of frame.
+      // It only fades in the last sliver of its life, once it's already well below the rim, purely so freeing it isn't a visible pop.
+      // All parameters are plain numbers on the tween (no per-frame allocation); the tumble axis uses the standard sphere-point construction.
+      function tweenBurst(m, delay) {
+        const len = Math.hypot(m.bx, m.bz) || 1;
+        const th = Math.random() * 6.2831853,
+          cz = Math.random() * 2 - 1,
+          sr = Math.sqrt(1 - cz * cz);
+        m.tweening = true;
+        tweens.push({
+          m,
+          mode: "burst",
+          t: 0,
+          dur: 0.85,
+          delay,
+          sx: m.bx,
+          sz: m.bz,
+          ox: (m.bx / len) * 3.2 + (Math.random() - 0.5) * 1.2, // outward + scatter
+          oz: (m.bz / len) * 3.2 + (Math.random() - 0.5) * 1.2,
+          vy: 6.2, // initial upward velocity (u/s)
+          g: 22.0, // gravity (u/s²) — snappy rise, decisive fall
+          ax: sr * Math.cos(th), // random unit tumble axis
+          ay: cz,
+          az: sr * Math.sin(th),
+          spin: 12 + Math.random() * 8, // tumble rate (rad/s)
+        });
+      }
+
+      function updateTweens(dt) {
+        for (let i = tweens.length - 1; i >= 0; i--) {
+          const tw = tweens[i];
+          if (tw.delay > 0) {
+            tw.delay -= dt;
+            continue;
+          }
+          const m = tw.m;
+          tw.t += dt;
+          const e = Math.min(1, tw.t / tw.dur);
+
+          if (tw.mode === "move") {
+            const k = e < 0.5 ? 4 * e * e * e : 1 - Math.pow(-2 * e + 2, 3) / 2; // easeInOutCubic
+            let s = k * tw.total,
+              si = 0;
+            while (si < tw.segLen.length - 1 && s > tw.segLen[si]) {
+              s -= tw.segLen[si];
+              si++;
+            }
+            const a = tw.pts[si],
+              b = tw.pts[si + 1] || tw.pts[si];
+            const f = tw.segLen[si] > 1e-6 ? s / tw.segLen[si] : 0;
+            // One click per square traversed: fire when I advance to a new seg.
+            if (si > tw.lastSeg) {
+              tw.lastSeg = si;
+              Sound.step(si);
+            }
+            m.position.x = a.x + (b.x - a.x) * f;
+            m.position.z = a.z + (b.z - a.z) * f;
+            m.position.y = REST_Y + Math.sin(e * Math.PI) * 0.14; // single gentle hop
+            // Roll: spin about the axis perpendicular to travel, by arc length.
+            const dx = m.position.x - tw.prevX,
+              dz = m.position.z - tw.prevZ;
+            const dl = Math.hypot(dx, dz);
+            if (dl > 1e-6) {
+              _axis.set(-dz, 0, dx).normalize();
+              _incQ.setFromAxisAngle(_axis, dl / MARBLE_R);
+              m.quaternion.premultiply(_incQ);
+            }
+            tw.prevX = m.position.x;
+            tw.prevZ = m.position.z;
+          } else if (tw.mode === "grow") {
+            const k = bounceOut(e);
+            m.scale.setScalar(k);
+            m.position.y = REST_Y + 0.55 * (1 - k);
+          } else if (tw.mode === "burst") {
+            const tt = tw.t; // seconds since launch (delay already elapsed)
+            m.position.x = tw.sx + tw.ox * tt;
+            m.position.z = tw.sz + tw.oz * tt;
+            m.position.y = REST_Y + tw.vy * tt - 0.5 * tw.g * tt * tt; // full arc, falls below rim
+            _axis.set(tw.ax, tw.ay, tw.az);
+            m.quaternion.premultiply(
+              _incQ.setFromAxisAngle(_axis, tw.spin * dt),
+            );
+            // A quick launch "pop" in scale (mass leaving the cup), then hold full size — it stays a solid marble.
+            // The exit is an ALPHA fade over the back half, so where the falling marble passes through the board or a neighbour it dissolves rather than hard-clipping. depthWrite is off on the material, so the fading marble never punches a hole either.
+            const s = e < 0.12 ? 1 + (e / 0.12) * 0.22 : 1.22;
+            m.scale.setScalar(s);
+            m.alpha = e < 0.45 ? 1 : 1 - (e - 0.45) / 0.55; // 1 → 0 across the descent
+          }
+
+          if (e >= 1) {
+            m.tweening = false;
+            if (tw.mode === "burst") free(m);
+            else if (tw.mode === "move") Sound.land();
+            tweens.splice(i, 1);
+          }
+        }
+        if (after && tweens.length === 0) {
+          const f = after;
+          after = null;
+          f();
+        }
+      }
+
+      /* ============================================================
+      TURN FLOW — one mutator per board change, driven by the tween barrier.
+      ============================================================ */
+      // A snapshot is the COMPLETE visible state the instant before a move: board, score, the persistent best, and the NEXT preview the player can see.
+      // Undo restores all of it verbatim. (Capturing best is what makes the "matched my record, then undid" case correct: if the move set a new best I roll best — and storage — back;
+      // if it merely tied an older best, that older value is what I captured, so it survives untouched.)
+      let undoSnap = null;
+      function snapshotForUndo() {
+        undoSnap = {
+          grid: grid.slice(),
+          score,
+          best,
+          preview: preview.slice(),
+        };
+        document.getElementById("undoBtn").disabled = false;
+      }
+
+      // The SINGLE place a player move mutates the board.
+      function commitMove(srcCell, path) {
+        snapshotForUndo();
+        const m = cellMesh[srcCell];
+        const dst = path[path.length - 1];
+        grid[srcCell] = 0;
+        cellMesh[srcCell] = null;
+        grid[dst] = m.color;
+        cellMesh[dst] = m;
+        m.cell = dst;
+        const w = cellToWorld(col(dst), row(dst));
+        m.bx = w.x;
+        m.bz = w.z;
+        clearSelection();
+        busy = true;
+        setStatus("");
+        tweenMovePath(m, path);
+        after = onMoveArrived;
+      }
+
+      function onMoveArrived() {
+        const { cells, score: gained } = findLines();
+        if (cells.length) {
+          addScore(gained);
+          clearCells(cells);
+          after = () => goIdle(); // a clear grants a free move — no new marbles
+        } else {
+          spawnPhase();
+        }
+      }
+
+      function spawnPhase() {
+        const spawned = spawnMarbles(preview);
+        preview = randColors(PER_TURN);
+        renderPreview();
+        if (spawned.length) after = onSpawned;
+        else onSpawned();
+      }
+
+      function onSpawned() {
+        const { cells, score: gained } = findLines();
+        if (cells.length) {
+          addScore(gained);
+          clearCells(cells);
+          after = () => endTurn();
+        } else {
+          endTurn();
+        }
+      }
+
+      function endTurn() {
+        if (emptyCells().length === 0) return doGameOver();
+        goIdle();
+      }
+
+      // Places one marble per colour in `colors` into random empty cells; returns the proxies so the caller knows a batch is animating. Sets grid+cellMesh.
+      function spawnMarbles(colors) {
+        const cells = pickEmpties(colors.length);
+        const out = [];
+        for (let k = 0; k < cells.length; k++) {
+          const m = claim(colors[k], cells[k]);
+          grid[cells[k]] = colors[k];
+          cellMesh[cells[k]] = m;
+          tweenGrow(m, 0);
+          out.push(m);
+        }
+        if (out.length) Sound.spawn(out.length);
+        return out;
+      }
+
+      function clearCells(cells) {
+        // ≥6 cleared at once is a "big" clear (a 6/7 line, or multiple lines) → the brighter bonus flourish; a plain 5 gets the standard arpeggio.
+        if (cells.length >= 6) Sound.bonus();
+        else if (cells.length) Sound.clear(cells.length);
+        for (let k = 0; k < cells.length; k++) {
+          const ci = cells[k],
+            m = cellMesh[ci];
+          grid[ci] = 0;
+          cellMesh[ci] = null;
+          if (m) tweenBurst(m, k * 0.02); // tiny stagger reads as a ripple of launches
+        }
+      }
+
+      function goIdle() {
+        busy = false;
+        clearSelection();
+        setStatus("");
+      }
+
+      /* ---- Selection & highlighting ---- */
+      function selectCell(ci) {
+        clearSelection();
+        selCell = ci;
+        selMarble = cellMesh[ci];
+        if (selMarble) selMarble.selected = true;
+        selParent = reachableFrom(ci); // populates _seen for the highlight
+        refreshRings();
+        Sound.select();
+      }
+      function clearSelection() {
+        // Clear by identity — the marble I actually flagged — so a marble that has since moved off selCell still gets its flag cleared.
+        if (selMarble) selMarble.selected = false;
+        selMarble = null;
+        selCell = -1;
+        selParent = null;
+        refreshRings();
+      }
+      function refreshRings() {
+        for (let i = 0; i < N; i++) rings.setColorAt(i, RING_BASE);
+        if (selCell >= 0) {
+          rings.setColorAt(selCell, RING_SEL);
+          for (let i = 0; i < N; i++)
+            if (grid[i] === 0 && _seen[i]) rings.setColorAt(i, RING_REACH);
+        }
+        rings.instanceColor.needsUpdate = true;
+      }
+
+      /* ---- Full mesh rebuild from the logical grid (instant: new game / undo) ---- */
+      function rebuildFromGrid(g) {
+        resetPools();
+        for (let i = 0; i < N; i++) {
+          grid[i] = g[i];
+          cellMesh[i] = null;
+          if (g[i]) {
+            const m = claim(g[i], i);
+            cellMesh[i] = m;
+          }
+        }
+        syncMarbles();
+      }
+
+      function newGame() {
+        tweens.length = 0;
+        after = null;
+        gameOver = false;
+        score = 0;
+        undoSnap = null;
+        document.getElementById("undoBtn").disabled = true;
+        hideModal();
+        grid.fill(0);
+        cellMesh.fill(null);
+        resetPools();
+
+        const cells = pickEmpties(INITIAL);
+        const colors = randColors(INITIAL);
+        for (let k = 0; k < cells.length; k++) {
+          const m = claim(colors[k], cells[k]);
+          grid[cells[k]] = colors[k];
+          cellMesh[cells[k]] = m;
+          tweenGrow(m, Math.random() * 0.28);
+        }
+        preview = randColors(PER_TURN);
+        renderPreview();
+        clearSelection();
+        updateUI();
+        Sound.start();
+
+        busy = true;
+        // A random opening could (rarely) already contain a line — resolve it.
+        after = () => {
+          const { cells: lc, score: s } = findLines();
+          if (lc.length) {
+            addScore(s);
+            clearCells(lc);
+            after = () => goIdle();
+          } else goIdle();
+        };
+      }
+
+      function undo() {
+        if (!undoSnap || busy || gameOver) return;
+        score = undoSnap.score;
+        // Roll best back only if this move had inflated it; saveBest is a no-op write when unchanged, and correctly lowers stored best when it changed.
+        if (best !== undoSnap.best) {
+          best = undoSnap.best;
+          saveBest(best);
+        }
+        preview = undoSnap.preview.slice();
+        rebuildFromGrid(undoSnap.grid);
+        undoSnap = null;
+        document.getElementById("undoBtn").disabled = true;
+        clearSelection();
+        renderPreview();
+        updateUI();
+      }
+
+      function doGameOver() {
+        gameOver = true;
+        busy = false;
+        clearSelection();
+        document.getElementById("finalScore").textContent = score;
+        document.getElementById("finalNote").textContent =
+          score > 0 && score === best
+            ? "New best!"
+            : "No room left on the board";
+        showModal();
+        Sound.gameOver();
+      }
+
+      /* ============================================================
+      UI
+      ============================================================ */
+      const elScore = document.getElementById("sScore"),
+        elBest = document.getElementById("sBest"),
+        elStatus = document.getElementById("status"),
+        elNext = document.getElementById("nextDots"),
+        elGain = document.getElementById("scoreGain");
+
+      const setStatus = (t) => (elStatus.textContent = t);
+      // Float a "+N" up off the Score number. Restarting the CSS animation requires removing the class and forcing a reflow before re-adding, or a rapid second clear wouldn't replay it.
+      function flyScoreGain(s) {
+        elGain.textContent = "+" + s;
+        elGain.classList.remove("fly");
+        void elGain.offsetWidth; // reflow: lets the same animation restart
+        elGain.classList.add("fly");
+      }
+      function addScore(s) {
+        score += s;
+        if (score > best) {
+          best = score;
+          saveBest(best);
+        }
+        flyScoreGain(s);
+        updateUI();
+      }
+      function updateUI() {
+        elScore.textContent = score;
+        elBest.textContent = best;
+      }
+      function renderPreview() {
+        elNext.innerHTML = "";
+        for (const c of preview) {
+          const d = document.createElement("div");
+          d.className = "b pop"; // freshly created each turn → animation plays on insert
+          const hex = "#" + PALETTE[c].toString(16).padStart(6, "0");
+          d.style.background = hex;
+          d.style.color = hex;
+          elNext.appendChild(d);
+        }
+      }
+
+      const modal = document.getElementById("modal");
+      const showModal = () => modal.classList.add("show");
+      const hideModal = () => modal.classList.remove("show");
+
+      // The "+" asks for confirmation first, since a new game discards the current one. The game-over modal's "Play again" goes straight to newGame (there's nothing left to lose at that point).
+      const confirmModal = document.getElementById("confirmModal");
+      const showConfirm = () => confirmModal.classList.add("show");
+      const hideConfirm = () => confirmModal.classList.remove("show");
+
+      document.getElementById("modalNew").addEventListener("click", newGame);
+      document.getElementById("newBtn").addEventListener("click", showConfirm);
+      document
+        .getElementById("confirmCancel")
+        .addEventListener("click", hideConfirm);
+      document.getElementById("confirmNew").addEventListener("click", () => {
+        hideConfirm();
+        newGame();
+      });
+      // Click the dimmed backdrop to cancel.
+      confirmModal.addEventListener("click", (e) => {
+        if (e.target === confirmModal) hideConfirm();
+      });
+      document.getElementById("undoBtn").addEventListener("click", undo);
+
+      /* ============================================================
+      INPUT — marbles picked via instanced raycast, empty cells via plane math.
+      ============================================================ */
+      const raycaster = new Raycaster();
+      const mouse = new Vector2();
+      const groundPlane = new Plane(new Vector3(0, 1, 0), -REST_Y); // marble-centre plane
+      const _hit = new Vector3();
+
+      renderer.domElement.addEventListener("pointerdown", (e) => {
+        if (busy || gameOver) return;
+
+        if (e.pointerType === "touch" && activePointers.size > 1) {
+          return;
+        }
+
+        mouse.x = (e.clientX / innerWidth) * 2 - 1;
+        mouse.y = -(e.clientY / innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+
+        const meshes = [];
+        for (let c = 1; c <= 7; c++) {
+          pools[c].mesh.computeBoundingSphere();
+          meshes.push(pools[c].mesh);
+        }
+        const hit = raycaster.intersectObjects(meshes, false)[0];
+        if (hit && hit.instanceId != null) {
+          // Recover the colour from which pool the mesh belongs to.
+          let pc = 0;
+          for (let c = 1; c <= 7; c++)
+            if (pools[c].mesh === hit.object) {
+              pc = c;
+              break;
+            }
+          const m = pools[pc].byId[hit.instanceId];
+          if (m && !m.out) {
+            selectCell(m.cell); // any marble can be picked up
+            return;
+          }
+        }
+
+        // Empty square: resolve the cell from the ground plane.
+        if (!raycaster.ray.intersectPlane(groundPlane, _hit))
+          return clearSelection();
+        const { c, r } = worldToCell(_hit.x, _hit.z);
+        if (!inBounds(c, r)) return clearSelection();
+        const ci = idx(c, r);
+        if (grid[ci] !== 0) return; // occupied (its marble would have been hit above)
+        if (selCell < 0) return; // nothing selected → nothing to move
+
+        if (_seen[ci]) {
+          const path = buildPath(selCell, ci, selParent);
+          if (path) commitMove(selCell, path);
+        } else if (cellMesh[selCell]) {
+          cellMesh[selCell].shake = 1; // unreachable → blocked-path nudge
+          setStatus("No clear path there.");
+          Sound.invalid();
+        }
+      });
+
+      // Clamped zoom (keeps the grid square; never rotates).
+      renderer.domElement.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          zoomMul = Math.max(
+            0.7,
+            Math.min(1.5, zoomMul * (e.deltaY < 0 ? 1.08 : 0.926)),
+          );
+          sizeCamera();
+        },
+        { passive: false },
+      );
+
+      // Prevent iOS Safari double-tap zoom WITHOUT interfering with joystick movement, multi-touch, or normal taps.
+      // Only cancel the SECOND tap of a rapid double-tap gesture.
+      let __lastTouchEnd = 0;
+
+      renderer.domElement.addEventListener(
+        "touchend",
+        (e) => {
+          const now = performance.now();
+
+          if (now - lastTouchEnd < 300) {
+            e.preventDefault();
+          }
+
+          lastTouchEnd = now;
+        },
+        { passive: false },
+      );
+
+      /* ----------------------------------------------------------
+      Pointer-event pinch zoom
+      ---------------------------------------------------------- */
+      renderer.domElement.addEventListener("pointerdown", (e) => {
+        if (e.pointerType !== "touch") return;
+
+        activePointers.set(e.pointerId, {
+          x: e.clientX,
+          y: e.clientY,
+        });
+
+        if (activePointers.size === 2) {
+          const pts = [...activePointers.values()];
+
+          pinchStartDistance = Math.hypot(
+            pts[0].x - pts[1].x,
+            pts[0].y - pts[1].y,
+          );
+
+          pinchStartZoom = zoomMul;
+        }
+      });
+
+      renderer.domElement.addEventListener("pointermove", (e) => {
+        if (e.pointerType !== "touch") return;
+        if (!activePointers.has(e.pointerId)) return;
+
+        activePointers.set(e.pointerId, {
+          x: e.clientX,
+          y: e.clientY,
+        });
+
+        if (activePointers.size !== 2) return;
+
+        const pts = [...activePointers.values()];
+
+        const distance = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+
+        if (pinchStartDistance <= 0) return;
+
+        const scale = distance / pinchStartDistance;
+
+        zoomMul = Math.max(0.7, Math.min(1.5, pinchStartZoom * scale));
+
+        sizeCamera();
+      });
+
+      function endPointerGesture(e) {
+        activePointers.delete(e.pointerId);
+
+        if (activePointers.size < 2) {
+          pinchStartDistance = 0;
+        }
+      }
+
+      renderer.domElement.addEventListener("pointerup", endPointerGesture);
+      renderer.domElement.addEventListener("pointercancel", endPointerGesture);
+      renderer.domElement.addEventListener("pointerleave", endPointerGesture);
+
+      // Suppress the right-click context menu — this is a game surface, not a document; a context menu mid-play is only ever an interruption.
+      renderer.domElement.addEventListener("contextmenu", (e) =>
+        e.preventDefault(),
+      );
+
+      /* ---- Audio unlock + mute ----
+      Browsers keep the AudioContext suspended until a user gesture. I resume on the first pointerdown anywhere and play the opening chime then, so the first sound the player hears is the start cue on their first interaction.
+      The listener removes itself after firing once. */
+      function unlockAudioOnce() {
+        Sound.unlock();
+        if (!Sound.muted) Sound.start();
+        window.removeEventListener("pointerdown", unlockAudioOnce, true);
+        window.removeEventListener("keydown", unlockAudioOnce, true);
+      }
+      window.addEventListener("pointerdown", unlockAudioOnce, true);
+      window.addEventListener("keydown", unlockAudioOnce, true);
+
+      const muteBtn = document.getElementById("muteBtn");
+      if (Sound.muted) muteBtn.classList.add("muted");
+      muteBtn.addEventListener("click", () => {
+        Sound.unlock(); // ensure context exists so the toggle takes effect now
+        const m = Sound.toggleMute();
+        muteBtn.classList.toggle("muted", m);
+      });
+
+      /* ---- Fullscreen (capability-detected) ---- */
+      const fsBtn = document.getElementById("fullscreenBtn");
+      function toggleFullscreen() {
+        const d = document,
+          el = d.documentElement;
+        const isFs = d.fullscreenElement || d.webkitFullscreenElement;
+        if (!isFs)
+          (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+        else (d.exitFullscreen || d.webkitExitFullscreen)?.call(d);
+      }
+      if (
+        document.documentElement.requestFullscreen ||
+        document.documentElement.webkitRequestFullscreen
+      ) {
+        fsBtn.addEventListener("click", toggleFullscreen);
+      } else {
+        fsBtn.style.display = "none";
+      }
+
+      /* ---- Help flyout ---- */
+      const helpBtn = document.getElementById("helpBtn");
+      const helpPanel = document.getElementById("helpPanel");
+      helpBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        helpPanel.classList.toggle("show");
+      });
+      document.addEventListener("pointerdown", (e) => {
+        if (
+          helpPanel.classList.contains("show") &&
+          !helpPanel.contains(e.target) &&
+          !helpBtn.contains(e.target)
+        )
+          helpPanel.classList.remove("show");
+      });
+
+      window.addEventListener("keydown", (e) => {
+        if (e.repeat) return;
+        if (e.code === "KeyF") toggleFullscreen();
+        else if (e.code === "KeyU") undo();
+        else if (e.code === "KeyN") showConfirm();
+        else if (e.code === "KeyM") {
+          Sound.unlock();
+          muteBtn.classList.toggle("muted", Sound.toggleMute());
+        } else if (e.code === "Escape") {
+          if (modal.classList.contains("show")) return; // game over: stay put
+          if (confirmModal.classList.contains("show")) return hideConfirm();
+          helpPanel.classList.remove("show");
+          clearSelection();
+        }
+      });
+
+      /* ---- Discreet stats: FPS always; draw-calls/tris/geo on tap ---- */
+      const statsEl = document.getElementById("stats");
+      const statsFps = document.getElementById("statsFps");
+      const statsExtra = document.getElementById("statsExtra");
+      statsEl.addEventListener("pointerdown", (e) => {
+        statsEl.classList.toggle("expanded");
+        e.stopPropagation();
+      });
+      let fpsAcc = 0,
+        fpsFrames = 0,
+        lastFps = -1,
+        extraAcc = 0,
+        lastDC = -1,
+        lastTRI = -1,
+        lastGEO = -1,
+        lastTEX = -1;
+
+      /* ============================================================
+      Loop with tab/focus energy conservation (no render while unseen).
+      ============================================================ */
+      const clock = {
+        last: 0,
+        elapsed: 0,
+        reset() {
+          this.last = performance.now() / 1000;
+        },
+        tick() {
+          const n = performance.now() / 1000;
+          let d = n - this.last;
+          this.last = n;
+          if (d > 0.05) d = 0.05; // clamp after a stall / tab-resume
+          this.elapsed += d;
+          return d;
+        },
+      };
+      let running = false;
+      function startLoop() {
+        if (!running) {
+          running = true;
+          clock.reset();
+          renderer.setAnimationLoop(frame);
+        }
+      }
+      function stopLoop() {
+        if (running) {
+          running = false;
+          renderer.setAnimationLoop(null);
+        }
+      }
+      // Parking the loop also drops any pending selection. Otherwise the very click that refocuses the document (or returns to the tab) could land on a reachable cell and commit a move the player never intended
+      // — the blur click and the move click would be the same gesture. clearSelection is a no-op when nothing is selected, so this is safe to call unconditionally.
+      function pauseGame() {
+        clearSelection();
+        stopLoop();
+      }
+      document.addEventListener("visibilitychange", () => {
+        document.hidden ? pauseGame() : startLoop();
+      });
+      addEventListener("blur", pauseGame);
+      addEventListener("focus", () => {
+        if (!document.hidden) startLoop();
+      });
+
+      addEventListener("resize", () => {
+        sizeCamera();
+        renderer.setSize(innerWidth, innerHeight);
+        composer.setSize(innerWidth, innerHeight);
+        if (!running) {
+          renderer.shadowMap.needsUpdate = true; // loop parked: refresh now
+          composer.render();
+        }
+      });
+
+      function frame() {
+        const dt = clock.tick();
+        const t = clock.elapsed;
+
+        updateTweens(dt);
+
+        // Idle life: gentle bob; a selected marble lifts, spins and swells.
+        for (const m of active) {
+          if (m.tweening) continue;
+          if (m.shake > 0) {
+            m.position.x = m.bx + Math.sin(t * 60) * 0.03 * m.shake;
+            m.position.z = m.bz;
+            m.position.y = REST_Y;
+            m.shake = Math.max(0, m.shake - dt * 3);
+          } else if (m.selected) {
+            m.position.set(m.bx, REST_Y + 0.2 + Math.sin(t * 2) * 0.02, m.bz);
+            m.quaternion.premultiply(_incQ.setFromAxisAngle(_UP, dt * 1.0));
+          } else {
+            m.position.set(
+              m.bx,
+              REST_Y + Math.sin(t * 1.5 + m.phase) * 0.012,
+              m.bz,
+            );
+          }
+          const target = m.selected ? 1.12 : 1;
+          if (Math.abs(m.scale.x - target) > 1e-4)
+            m.scale.setScalar(
+              m.scale.x + (target - m.scale.x) * Math.min(1, dt * 12),
+            );
+        }
+
+        syncMarbles();
+
+        // Shadow pass on demand. The idle bob (±0.012u) is below a shadow texel, so it doesn't count — but live tweens (launches, slides, spawns) and the lifted/spinning selected marble do move real silhouettes, so keep the map live then.
+        // Otherwise the previous shadow map is reused for free.
+        if (tweens.length > 0 || selCell >= 0) shadowDirty = true;
+        if (shadowDirty) {
+          renderer.shadowMap.needsUpdate = true;
+          shadowDirty = false;
+        }
+
+        renderer.info.autoReset = false;
+        renderer.info.reset();
+        composer.render();
+
+        fpsAcc += dt;
+        fpsFrames++;
+        if (fpsAcc >= 0.5) {
+          const fps = Math.round(fpsFrames / fpsAcc);
+          if (fps !== lastFps) {
+            statsFps.textContent = `${fps} fps`;
+            lastFps = fps;
+          }
+          fpsAcc = 0;
+          fpsFrames = 0;
+        }
+        if (statsEl.classList.contains("expanded")) {
+          extraAcc += dt;
+          if (extraAcc >= 1.0) {
+            const r = renderer.info.render,
+              mem = renderer.info.memory;
+            if (
+              r.calls !== lastDC ||
+              r.triangles !== lastTRI ||
+              mem.geometries !== lastGEO ||
+              mem.textures !== lastTEX
+            ) {
+              const tri =
+                r.triangles >= 1000
+                  ? (r.triangles / 1000).toFixed(1) + "K"
+                  : String(r.triangles);
+              statsExtra.textContent = `\nDC ${r.calls}\nTRI ${tri}\nGEO ${mem.geometries}\nTEX ${mem.textures}`;
+              lastDC = r.calls;
+              lastTRI = r.triangles;
+              lastGEO = mem.geometries;
+              lastTEX = mem.textures;
+            }
+            extraAcc = 0;
+          }
+        }
+      }
+
+      /* ---- Boot ---- */
+      newGame();
+      startLoop();
+    </script>
+  </body>
+</html>

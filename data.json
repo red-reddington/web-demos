@@ -15,7 +15,8 @@
     "description": "Full dynamic day/night sky system",
     "created": "2025-11-04",
     "thumb": "threejs-complete-sky-system.jpg",
-    "preview": "threejs-complete-sky-system.webm"
+    "preview": "threejs-complete-sky-system.webm",
+    "related": ["deathchase-3d", "eternal-ride"]
   },
   {
     "folder": "threejs-water-ripples",
@@ -24,7 +25,8 @@
     "description": "Screen-space water ripple system",
     "created": "2025-10-28",
     "thumb": "threejs-water-ripples.jpg",
-    "preview": "threejs-water-ripples.webm"
+    "preview": "threejs-water-ripples.webm",
+    "related": ["threejs-multi-boat-water", "threejs-parametric-boat", "eternal-ride"]
   },
   {
     "folder": "threejs-xzfog",
@@ -42,7 +44,8 @@
     "description": "Canvas 2D tribute to classic QBasic game",
     "created": "2026-05-03",
     "thumb": "nibbles.jpg",
-    "preview": "nibbles.webm"
+    "preview": "nibbles.webm",
+    "related": ["gorillas", "jumping-jack"]
   },
   {
     "folder": "gorillas",
@@ -51,7 +54,8 @@
     "description": "Canvas 2D tribute to classic QBasic game",
     "created": "2026-05-05",
     "thumb": "gorillas.jpg",
-    "preview": "gorillas.webm"
+    "preview": "gorillas.webm",
+    "related": ["nibbles", "jumping-jack"]
   },  
   {
     "folder": "jumping-jack",
@@ -60,7 +64,8 @@
     "description": "Retro 2D platformer",
     "created": "2026-04-28",
     "thumb": "jumping-jack.jpg",
-    "preview": "jumping-jack.webm"
+    "preview": "jumping-jack.webm",
+    "related": ["nibbles", "gorillas"]
   },
   {
     "folder": "velvetshuffle-cards",
@@ -96,7 +101,8 @@
     "description": "Real-time local AI voice synthesis with synchronized subtitles",
     "created": "2026-05-06",
     "thumb": "browser-local-tts.jpg",
-    "preview": "browser-local-tts.webm"
+    "preview": "browser-local-tts.webm",
+    "related": ["browser-local-tts-piper"]
   },
   {
     "folder": "browser-local-tts-piper",
@@ -105,7 +111,8 @@
     "description": "Smaller/faster local TTS with a Romanian-accent demo",
     "created": "2026-05-16",
     "thumb": "browser-local-tts-piper.jpg",
-    "preview": "browser-local-tts-piper.webm"
+    "preview": "browser-local-tts-piper.webm",
+    "related": ["browser-local-tts"]
   },
   {
     "folder": "calendar-cubes",
@@ -177,7 +184,8 @@
     "description": "Per-tree frustum culling",
     "created": "2025-12-11",
     "thumb": "threejs-forest-culling.jpg",
-    "preview": "threejs-procedural-forest.webm" 
+    "preview": "threejs-procedural-forest.webm",
+    "related": ["threejs-procedural-forest"]
   },
   {
     "folder": "threejs-procedural-forest",
@@ -186,7 +194,8 @@
     "description": "High-performance instanced tree rendering",
     "created": "2025-12-10",
     "thumb": "threejs-procedural-forest.jpg",
-    "preview": "threejs-procedural-forest.webm"
+    "preview": "threejs-procedural-forest.webm",
+    "related": ["threejs-forest-culling"]
   },
   {
     "folder": "threejs-ground-fog",
@@ -204,7 +213,8 @@
     "description": "Multiple boats interacting with water",
     "created": "2025-11-27",
     "thumb": "threejs-multi-boat-water.jpg",
-    "preview": "threejs-multi-boat-water.webm"
+    "preview": "threejs-multi-boat-water.webm",
+    "related": ["threejs-parametric-boat", "threejs-water-ripples"]
   },
   {
     "folder": "threejs-parametric-boat",
@@ -213,7 +223,8 @@
     "description": "Procedural boat with dynamic water physics",
     "created": "2025-11-13",
     "thumb": "threejs-parametric-boat.jpg",
-    "preview": "threejs-parametric-boat.webm"
+    "preview": "threejs-parametric-boat.webm",
+    "related": ["threejs-multi-boat-water", "threejs-water-ripples"]
   },
   {
     "folder": "threejs-volumetric-fire",
@@ -231,7 +242,8 @@
     "description": "Three.js homage to the 1983 ZX Spectrum chase classic",
     "created": "2026-05-18",
     "thumb": "deathchase-3d.jpg",
-    "preview": "deathchase-3d.webm"
+    "preview": "deathchase-3d.webm",
+    "related": ["eternal-ride", "threejs-procedural-forest", "threejs-complete-sky-system"]
   },
   {
     "folder": "eternal-ride",
@@ -240,7 +252,8 @@
     "description": "Infinite terrain, no LOD seams, float64-precise at 1 AU",
     "created": "2026-05-27",
     "thumb": "eternal-ride.jpg",
-    "preview": "eternal-ride.webm"
+    "preview": "eternal-ride.webm",
+    "related": ["deathchase-3d", "threejs-water-ripples", "threejs-complete-sky-system"]
   },
   {
     "folder": "abalone",
@@ -249,6 +262,17 @@
     "description": "3D version of the classic boardgame, with two play modes: local PvP and custom AI opponent.",
     "created": "2026-05-30",
     "thumb": "abalone.jpg",
-    "preview": "abalone.webm"
-  }
+    "preview": "abalone.webm",
+    "related": ["lines"]
+  },
+  {
+  "folder": "lines",
+  "title": "Lines",
+  "category": "Game",
+  "description": "3D take on the classic Color Lines (Lines 98) — orthographic board, synthesized audio, BFS pathfinding.",
+  "created": "2026-06-05",
+  "thumb": "lines.jpg",
+  "preview": "lines.webm",
+  "related": ["abalone"]
+}
 ]
