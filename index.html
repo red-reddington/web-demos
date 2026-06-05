@@ -2,401 +2,315 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <title>Red Reddington's Web Demos</title>
 
     <link rel="icon" type="image/png" href="RRfavicon.png" />
     <link rel="apple-touch-icon" href="RRfavicon.png" />
     <link rel="apple-touch-icon" type="image/png" href="RRfavicon.png" />
-
     <meta
       name="apple-mobile-web-app-title"
       content="Red Reddington's Web Demos"
     />
-
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-
     <link rel="icon" type="image/x-icon" href="RRfavicon.ico" />
 
     <style>
       :root {
         --bg: #0f1115;
-        --panel: #1a1d24;
-        --panel-hover: #20242d;
+        --surface: #1a1d24;
+        --surface-hover: #20242d;
         --border: #2a2f3a;
         --text: #e6e6e6;
         --muted: #9aa3b2;
         --accent: #4c8bf5;
       }
-
       * {
         box-sizing: border-box;
       }
-
       body {
         margin: 0;
-        font-family: system-ui, sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
         background: var(--bg);
         color: var(--text);
         -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
+        overflow-y: scroll;
       }
-
       header {
         text-align: center;
-        padding: 40px 20px 10px;
+        padding: 40px 20px 16px;
       }
-
       header img {
         width: 32px;
         height: 32px;
         vertical-align: middle;
         mix-blend-mode: lighten;
       }
-
       h1 {
         margin: 0;
         font-size: 28px;
         display: inline-block;
         vertical-align: middle;
+        margin-left: 8px;
       }
-
-      p {
-        opacity: 0.65;
+      header p {
+        color: var(--muted);
         margin-top: 8px;
+        font-size: 15px;
       }
-
       .toolbar {
-        width: min(1200px, calc(100dvw - 40px));
-        margin: 0 auto;
-        padding: 0 20px;
-      }
-
-      .search-bar {
+        width: min(1200px, 100% - 40px);
+        margin: 0 auto 32px;
         display: flex;
-        justify-content: center;
-        margin: 20px 0;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
       }
-
-      .search-bar input {
+      .search-input {
         width: min(500px, 100%);
-        padding: 12px 16px;
+        padding: 12px 20px;
         border-radius: 999px;
         border: 1px solid var(--border);
-        background: var(--panel);
+        background: var(--surface);
         color: var(--text);
         font-size: 14px;
         outline: none;
       }
-
-      .search-bar input:focus {
+      .search-input:focus {
         border-color: var(--accent);
       }
-
-      .filters,
-      .sort-bar {
-        text-align: center;
+      .btn-group {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        min-height: 38px;
       }
-
-      .filters {
-        margin: 20px 0;
-      }
-
-      .sort-bar {
-        margin: 10px 0 20px;
-      }
-
-      .filters button,
-      .sort-bar button {
-        margin: 5px;
-        padding: 5px 10px;
+      .btn {
+        padding: 6px 14px;
         border-radius: 999px;
         border: 1px solid var(--border);
         background: #1f232b;
-        color: #ccc;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 500;
         cursor: pointer;
-        opacity: 0.55;
-
-        transition:
-          opacity 0.15s ease,
-          background 0.15s ease,
-          transform 0.1s ease;
+        transition: all 0.1s ease;
       }
-
-      .filters button.active,
-      .sort-bar button.active {
+      .btn.active {
         background: var(--accent);
-        color: white;
-        opacity: 1;
+        color: #fff;
         border-color: var(--accent);
       }
-
-      .filters button:hover:not(.active),
-      .sort-bar button:hover:not(.active) {
-        opacity: 0.8;
-        background: #262b34;
-      }
-
-      .filters button:active,
-      .sort-bar button:active {
-        transform: scale(0.96);
-      }
-
-      .filters button:focus-visible,
-      .sort-bar button:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
-
-      /* ------------------------- */
-      /* RANGE SLIDER */
-      /* ------------------------- */
-
-      .range-container {
-        max-width: min(300px, 80dvw);
-        margin: 0 auto 20px;
+      .range-module {
+        width: min(320px, 90vw);
         text-align: center;
+        position: relative;
+        height: 56px;
       }
-
       .range-labels {
         font-size: 12px;
-        opacity: 0.6;
+        color: var(--muted);
+        margin-bottom: 6px;
+        font-variant-numeric: tabular-nums;
+        min-height: 16px;
       }
-
-      .range-slider {
+      .range-track-container {
         position: relative;
-        height: 32px;
+        height: 28px;
+        display: flex;
+        align-items: center;
       }
-
-      .range-slider input[type="range"] {
+      .range-track-bg {
         position: absolute;
         width: 100%;
-        height: 32px;
-        top: 50%;
-        left: 0;
-        margin: 2px 0;
-        transform: translateY(-50%);
-        pointer-events: none;
-        -webkit-appearance: none;
-        background: none;
-      }
-
-      .range-slider input[type="range"]::-webkit-slider-thumb {
-        pointer-events: all;
-        width: 16px;
-        height: 16px;
-        margin-top: -6px;
-        border-radius: 50%;
-        background: var(--accent);
-        cursor: pointer;
-        -webkit-appearance: none;
-      }
-
-      .range-slider .track {
-        position: absolute;
         height: 4px;
-        background: #333;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 100%;
-        border-radius: 2px;
+        background: var(--border);
+        border-radius: 999px;
       }
-
-      .range-slider .range {
+      .range-track-fill {
         position: absolute;
         height: 4px;
         background: var(--accent);
-        top: 50%;
-        transform: translateY(-50%);
-        border-radius: 2px;
+        border-radius: 999px;
+        will-change: left, width;
       }
-
-      /* ------------------------- */
-      /* GRID */
-      /* ------------------------- */
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-
-        gap: 16px;
-
-        width: min(1200px, calc(100dvw - 40px));
-
-        margin: 0 auto;
-
-        padding: 20px;
-      }
-
-      /* ------------------------- */
-      /* CARD */
-      /* ------------------------- */
-
-      .card {
-        display: block;
-        overflow: hidden;
-
-        border-radius: 12px;
-
-        background: var(--panel);
-
-        color: inherit;
-        text-decoration: none;
-
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
-
-        transition:
-          transform 0.15s ease,
-          box-shadow 0.15s ease,
-          background 0.15s ease;
-      }
-
-      .card:hover {
-        transform: translateY(-4px);
-
-        background: var(--panel-hover);
-
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-      }
-
-      .thumb {
-        position: relative;
-
-        width: 100%;
-
-        aspect-ratio: 16 / 9;
-
-        overflow: hidden;
-
-        background: #2a2f3a;
-
-        border-bottom: 1px solid #0003;
-      }
-
-      .thumb img,
-      .thumb video {
+      .range-input {
         position: absolute;
-        inset: 0;
-
         width: 100%;
         height: 100%;
-
-        object-fit: cover;
+        top: 2px;
+        left: 0;
+        margin: 0;
+        -webkit-appearance: none;
+        background: transparent;
+        pointer-events: none;
       }
-
-      .thumb img {
+      .range-input::-webkit-slider-thumb {
+        pointer-events: auto;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 3px solid var(--accent);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        cursor: grab;
+        -webkit-appearance: none;
+        margin-top: -9px;
+        position: relative;
+        z-index: 10;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
+        width: min(1200px, 100% - 40px);
+        margin: 0 auto;
+        padding: 0 0 60px 0;
+      }
+      .empty-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--muted);
+        font-size: 15px;
+        display: none;
+      }
+      .empty-state.visible {
+        display: block;
+      }
+      .card {
+        display: flex;
+        flex-direction: column;
+        background: var(--surface);
+        border-radius: 12px;
+        overflow: hidden;
+        text-decoration: none;
+        color: inherit;
+        content-visibility: auto;
+        contain-intrinsic-size: 320px;
+        transform: translateZ(0);
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+      .card:hover {
+        transform: translateY(-4px);
+        background: var(--surface-hover);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+      }
+      .card-visual {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16/9;
+        background: var(--border);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.2);
+      }
+      .card-visual img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
         z-index: 1;
       }
-
-      .thumb video {
+      .card-visual video {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
         z-index: 2;
-
         opacity: 0;
-
         transition: opacity 0.2s ease;
-
         pointer-events: none;
-
-        will-change: opacity;
       }
-
-      .card.preview-active {
-        box-shadow: 0 0 0 4px rgba(76, 139, 245, 0.75) !important;
-        z-index: 10;
-        transition: box-shadow 80ms ease-out;
-      }
-
-      .card.preview-active .thumb video {
+      .card.is-previewing video {
         opacity: 1;
       }
-
-      .content {
-        padding: 12px;
+      .card.is-previewing {
+        box-shadow: 0 0 0 3px rgba(76, 139, 245, 0.6);
+        z-index: 10;
       }
-
-      .tag {
-        font-size: 11px;
-        opacity: 0.5;
+      .card.target-highlight {
+        animation: pulse 2s cubic-bezier(0.23, 1, 0.32, 1);
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(76, 139, 245, 0.8);
+          transform: scale(1.02);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      .card-body {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+      }
+      .card-meta {
+        display: flex;
+        justify-content: space-between;
         margin-bottom: 6px;
       }
-
-      .title {
+      .card-cat {
+        font-size: 11px;
+        text-transform: uppercase;
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .card-date {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .card-title {
+        font-size: 16px;
         font-weight: 600;
-        margin-bottom: 6px;
+        margin: 0 0 6px;
+        line-height: 1.3;
       }
-
-      .desc {
+      .card-desc {
         font-size: 13px;
-        opacity: 0.7;
+        color: var(--muted);
+        line-height: 1.5;
+        margin: 0 0 16px;
+        flex-grow: 1;
       }
-
-      .date {
-        font-size: 11px;
-        opacity: 0.45;
-        margin-top: 8px;
-      }
-
-      .related {
-        margin-top: 10px;
+      .related-group {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;
+        margin-top: auto;
       }
-
       .related-pill {
-        font-size: 10px;
-        padding: 2px 8px;
-        background: rgba(76, 139, 245, 0.12);
+        font-size: 11px;
+        padding: 4px 10px;
+        background: rgba(76, 139, 245, 0.1);
         color: var(--accent);
         border-radius: 999px;
-        border: 1px solid rgba(76, 139, 245, 0.25);
-        cursor: pointer;
+        border: 1px solid rgba(76, 139, 245, 0.2);
         transition: all 0.1s ease;
-        text-decoration: none;
-        white-space: nowrap;
-        line-height: 1.3;
       }
-
       .related-pill:hover {
         background: var(--accent);
-        color: white;
-        transform: translateY(-1px);
+        color: #fff;
       }
-
-      /* Highlight animation when jumping to related card */
-      .card.related-highlight {
-        box-shadow: 0 0 0 4px rgba(76, 139, 245, 0.6) !important;
-        transform: scale(1.02);
-        transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
-      }
-
-      .empty {
+      footer {
         text-align: center;
-        opacity: 0.6;
-        padding: 50px 20px;
-      }
-
-      .footer {
-        text-align: center;
-        margin: 40px 0;
-        opacity: 0.6;
+        padding: 40px 0;
+        color: var(--muted);
         font-size: 14px;
       }
-
-      .footer a {
+      footer a {
         color: inherit;
         text-decoration: none;
       }
-
-      .footer a:hover {
-        opacity: 0.8;
-      }
-
-      @media (hover: none) {
+      @media (hover: none) and (pointer: coarse) {
         .card:hover {
           transform: none;
           box-shadow: none;
@@ -404,868 +318,456 @@
       }
     </style>
   </head>
-
   <body>
     <header>
-      <img src="RRfavicon.png" alt="Red Reddington" />
-
+      <img src="RRfavicon.png" alt="" aria-hidden="true" />
       <h1>Red Reddington's Web Demos</h1>
-
       <p>
         High-performance Three.js demos, browser AI experiments, procedural
         systems, and games
       </p>
     </header>
 
-    <div class="toolbar">
-      <div class="search-bar">
-        <input
-          type="text"
-          id="searchInput"
-          placeholder="Search demos..."
-          autocomplete="off"
-        />
+    <nav class="toolbar">
+      <input
+        type="search"
+        id="searchInput"
+        class="search-input"
+        placeholder="Search demos..."
+        autocomplete="off"
+      />
+      <div class="btn-group" id="filterGroup"></div>
+      <div class="btn-group" id="sortGroup">
+        <button class="btn active" data-sort="date-desc">Newest</button>
+        <button class="btn" data-sort="date-asc">Oldest</button>
+        <button class="btn" data-sort="az">A–Z</button>
+        <button class="btn" data-sort="za">Z–A</button>
       </div>
-
-      <div class="filters" id="filters"></div>
-
-      <div class="sort-bar" id="sortBar">
-        <button data-sort="az">A–Z</button>
-        <button data-sort="za">Z–A</button>
-        <button data-sort="date-desc">Newest</button>
-        <button data-sort="date-asc">Oldest</button>
-      </div>
-
-      <div class="range-container">
-        <div class="range-labels" id="rangeLabel"></div>
-
-        <div class="range-slider">
-          <div class="track"></div>
-
-          <div class="range" id="rangeFill"></div>
-
-          <input type="range" id="minDate" step="1" />
-          <input type="range" id="maxDate" step="1" />
+      <div class="range-module">
+        <div class="range-labels" id="rangeLabel">Loading timeline...</div>
+        <div class="range-track-container">
+          <div class="range-track-bg"></div>
+          <div class="range-track-fill" id="rangeFill"></div>
+          <input type="range" class="range-input" id="minDate" step="1" />
+          <input type="range" class="range-input" id="maxDate" step="1" />
         </div>
       </div>
-    </div>
+    </nav>
 
-    <div class="grid" id="grid"></div>
+    <main>
+      <div class="grid" id="grid" aria-live="polite"></div>
+      <div id="emptyState" class="empty-state">
+        No results found. Try adjusting your search terms or filters.
+      </div>
+    </main>
 
-    <footer class="footer">
-      <a href="https://github.com/red-reddington/web-demos" target="_blank">
-        Source code on GitHub
-      </a>
+    <footer>
+      <a href="https://github.com/red-reddington/web-demos" target="_blank"
+        >Source code on GitHub</a
+      >
     </footer>
 
+    <template id="card-tpl">
+      <a class="card" target="_blank" rel="noopener noreferrer">
+        <div class="card-visual">
+          <img loading="lazy" decoding="async" src="" alt="" />
+        </div>
+        <div class="card-body">
+          <div class="card-meta">
+            <span class="card-cat"></span><span class="card-date"></span>
+          </div>
+          <h2 class="card-title"></h2>
+          <p class="card-desc"></p>
+          <div class="related-group"></div>
+        </div>
+      </a>
+    </template>
+
     <script>
-      /*************************
-       * STATE
-       *************************/
+      "use strict";
+
+      const DOM = {
+        grid: document.getElementById("grid"),
+        emptyState: document.getElementById("emptyState"),
+        searchInput: document.getElementById("searchInput"),
+        filterGroup: document.getElementById("filterGroup"),
+        sortGroup: document.getElementById("sortGroup"),
+        minDate: document.getElementById("minDate"),
+        maxDate: document.getElementById("maxDate"),
+        rangeFill: document.getElementById("rangeFill"),
+        rangeLabel: document.getElementById("rangeLabel"),
+        cardTpl: document.getElementById("card-tpl").content,
+      };
+
+      const fmtDate = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      const debounce = (fn, delay) => {
+        let t;
+        return (...a) => {
+          clearTimeout(t);
+          t = setTimeout(() => fn(...a), delay);
+        };
+      };
+      const toYMD = (ts) => {
+        const d = new Date(ts);
+        return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}${String(d.getUTCDate()).padStart(2, "0")}`;
+      };
+      const fromYMD = (ymd) => {
+        if (!ymd || ymd.length !== 8) return NaN;
+        return Date.UTC(
+          +ymd.slice(0, 4),
+          +ymd.slice(4, 6) - 1,
+          +ymd.slice(6, 8),
+        );
+      };
+
+      const Sorters = {
+        az: (a, b) => a.title.localeCompare(b.title),
+        za: (a, b) => b.title.localeCompare(a.title),
+        "date-asc": (a, b) => a.ts - b.ts,
+        "date-desc": (a, b) => b.ts - a.ts,
+      };
+      const db = [];
+      const dbMap = new Map();
+      const sortedDates = [];
+      const catCounts = new Map([["All", 0]]);
+      const resultsPool = [];
+      let lastFilterKey = "";
+      let cachedView = [];
+      let renderPending = false;
+      let lastFilterState = null;
 
       const state = {
         filter: "All",
         sort: "date-desc",
         search: "",
-        minDate: null,
-        maxDate: null,
-      };
-
-      let allDemos = [];
-      let sortedDates = [];
-      let categoryTotals = {};
-
-      /*************************
-       * DOM CACHE
-       *************************/
-
-      const DOM = {
-        grid: document.getElementById("grid"),
-        filters: document.getElementById("filters"),
-
-        sortButtons: [...document.querySelectorAll("#sortBar button")],
-
-        searchInput: document.getElementById("searchInput"),
-
-        minDate: document.getElementById("minDate"),
-        maxDate: document.getElementById("maxDate"),
-
-        rangeFill: document.getElementById("rangeFill"),
-      };
-
-      // Global lookup for fast related demo access
-      let demoByFolder = {};
-
-      /*************************
-       * URL SYNC
-       *************************/
-
-      let urlQueued = false;
-
-      function scheduleURLUpdate() {
-        if (urlQueued) return;
-
-        urlQueued = true;
-
-        requestAnimationFrame(() => {
-          updateURL();
-          urlQueued = false;
-        });
-      }
-
-      function setState(patch, { skipURL = false } = {}) {
-        Object.assign(state, patch);
-
-        normalizeState();
-
-        render();
-
-        if (!skipURL) {
-          scheduleURLUpdate();
-        }
-      }
-
-      /*************************
-       * URL HELPERS
-       *************************/
-
-      function getParam(name, fallback = "") {
-        const params = new URLSearchParams(window.location.search);
-
-        return params.get(name) || fallback;
-      }
-
-      function updateURL() {
-        const params = new URLSearchParams();
-
-        if (state.filter !== "All") {
-          params.set("category", state.filter);
-        }
-
-        if (state.sort !== "date-desc") {
-          params.set("sort", state.sort);
-        }
-
-        if (state.search) {
-          params.set("search", state.search);
-        }
-
-        if (state.minDate !== sortedDates[0]) {
-          params.set("minDate", formatDateParam(state.minDate));
-        }
-
-        if (state.maxDate !== sortedDates.at(-1)) {
-          params.set("maxDate", formatDateParam(state.maxDate));
-        }
-
-        const query = params.toString();
-
-        const url = query ? `${location.pathname}?${query}` : location.pathname;
-
-        history.replaceState(null, "", url);
-      }
-
-      /*************************
-       * DATE HELPERS
-       *************************/
-
-      function formatDateParam(ts) {
-        const d = new Date(ts);
-
-        return (
-          d.getFullYear() +
-          String(d.getMonth() + 1).padStart(2, "0") +
-          String(d.getDate()).padStart(2, "0")
-        );
-      }
-
-      function parseDateParam(value, endOfDay = false) {
-        if (!value || !/^\d{8}$/.test(value)) {
-          return null;
-        }
-
-        const y = +value.slice(0, 4);
-        const m = +value.slice(4, 6) - 1;
-        const d = +value.slice(6, 8);
-
-        return new Date(
-          y,
-          m,
-          d,
-          endOfDay ? 23 : 0,
-          endOfDay ? 59 : 0,
-          endOfDay ? 59 : 0,
-          endOfDay ? 999 : 0,
-        ).getTime();
-      }
-
-      function formatDate(iso) {
-        return new Date(iso).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        });
-      }
-
-      /*************************
-       * SORT HELPERS
-       *************************/
-
-      const sortFn = {
-        az: (a, b) => a.title.localeCompare(b.title),
-
-        za: (a, b) => b.title.localeCompare(a.title),
-
-        "date-asc": (a, b) => a.ts - b.ts,
-
-        "date-desc": (a, b) => b.ts - a.ts,
-      };
-
-      /*************************
-       * PREVIEW MANAGER
-       *************************/
-
-      const PreviewManager = {
-        activeVideo: null,
-
-        stop() {
-          if (this.activeVideo) {
-            this.activeVideo.pause();
-            this.activeVideo = null;
-          }
-          document.querySelectorAll(".card.preview-active").forEach((card) => {
-            card.classList.remove("preview-active");
-          });
-        },
-
-        activate(video, card) {
-          // ← pass card too
-          if (this.activeVideo && this.activeVideo !== video) {
-            this.stop();
-          }
-
-          this.activeVideo = video;
-
-          // Ensure the card gets the class (in case stop() removed it)
-          if (card) {
-            card.classList.add("preview-active");
-            void card.offsetWidth; // force repaint
-          }
-
-          video.play().catch(() => {});
-        },
-      };
-
-      /*************************
-       * RELATED NAVIGATION
-       *************************/
-
-      function navigateToRelated(folder) {
-        const card = document.querySelector(
-          `.card[href="./${folder}/index.html"]`,
-        );
-
-        if (!card) return;
-
-        // Remove previous highlights
-        document
-          .querySelectorAll(".card.related-highlight")
-          .forEach((c) => c.classList.remove("related-highlight"));
-
-        // Scroll smoothly
-        card.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
-
-        // Highlight
-        setTimeout(() => {
-          card.classList.add("related-highlight");
-        }, 300);
-
-        // Auto-remove highlight after 2.5 seconds
-        setTimeout(() => {
-          card.classList.remove("related-highlight");
-        }, 2500);
-      }
-
-      /*************************
-       * HOVER + TOUCH PREVIEW HANDLERS
-       *************************/
-
-      const hoverTimers = new WeakMap();
-
-      function attachPreviewHandlers(card, video, preview) {
-        if (!video || !preview) return;
-
-        let loaded = false;
-
-        // Desktop Hover
-        const startPreview = async () => {
-          if (!loaded) {
-            video.src = `./thumbs/${preview}`;
-            loaded = true;
-          }
-          try {
-            await video.play();
-            card.classList.add("preview-active");
-          } catch (e) {}
-        };
-
-        const stopPreview = () => {
-          card.classList.remove("preview-active");
-          video.pause();
-        };
-
-        card.addEventListener("mouseenter", () => {
-          const timer = setTimeout(startPreview, 120);
-          hoverTimers.set(card, timer);
-        });
-
-        card.addEventListener("mouseleave", () => {
-          const timer = hoverTimers.get(card);
-          if (timer) clearTimeout(timer);
-          stopPreview();
-        });
-
-        // === MOBILE TOUCH ===
-        card.addEventListener(
-          "touchstart",
-          (e) => {
-            if (PreviewManager.activeVideo === video) {
-              // Second tap → navigate
-              PreviewManager.stop();
-              return;
+        minIdx: 0,
+        maxIdx: 0,
+        set(updates) {
+          let changed = false;
+          for (const k in updates) {
+            if (this[k] !== updates[k]) {
+              this[k] = updates[k];
+              changed = true;
             }
-
-            // First touch → preview
-            e.preventDefault();
-            e.stopImmediatePropagation();
-
-            if (!video.src) {
-              video.src = `./thumbs/${preview}`;
+          }
+          if (changed) {
+            debouncedURLSync();
+            if (!renderPending) {
+              renderPending = true;
+              requestAnimationFrame(render);
             }
-
-            card.classList.add("preview-active");
-            PreviewManager.activate(video, card);
-          },
-          { passive: false },
-        );
-      }
-
-      // ==================== GLOBAL SETUP ====================
-
-      // Touch outside cards
-      document.addEventListener(
-        "touchstart",
-        (e) => {
-          if (!e.target.closest(".card")) {
-            PreviewManager.stop();
           }
         },
-        { passive: true },
-      );
-
-      // Visibility cleanup (background tab, etc.)
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") PreviewManager.stop();
-      });
-      window.addEventListener("pagehide", () => PreviewManager.stop());
-
-      // Intersection Observer
-      const previewObserver = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (!entry.isIntersecting) {
-              const video = entry.target.querySelector("video");
-              if (video && PreviewManager.activeVideo === video) {
-                PreviewManager.stop();
-              }
-            }
-          });
-        },
-        { threshold: 0.18, rootMargin: "-20px 0px" },
-      );
-
-      function observeCards() {
-        previewObserver.disconnect();
-        document
-          .querySelectorAll(".card")
-          .forEach((card) => previewObserver.observe(card));
-      }
-
-      function normalizeState() {
-        if (!sortedDates.length) return;
-
-        if (!sortFn[state.sort]) {
-          state.sort = "date-desc";
-        }
-
-        const categories = new Set(["All", ...allDemos.map((d) => d.category)]);
-
-        if (!categories.has(state.filter)) {
-          state.filter = "All";
-        }
-
-        if (state.minDate == null) {
-          state.minDate = sortedDates[0];
-        }
-
-        if (state.maxDate == null) {
-          state.maxDate = sortedDates.at(-1);
-        }
-
-        state.minDate = Math.max(state.minDate, sortedDates[0]);
-
-        state.maxDate = Math.min(state.maxDate, sortedDates.at(-1));
-      }
-
-      function hydrateStateFromURL() {
-        state.filter = getParam("category", "All");
-
-        state.sort = getParam("sort", "date-desc");
-
-        state.search = getParam("search", "").trim();
-
-        const min = parseDateParam(getParam("minDate"));
-
-        const max = parseDateParam(getParam("maxDate"), true);
-
-        state.minDate = min ?? sortedDates[0];
-
-        state.maxDate = max ?? sortedDates.at(-1);
-      }
-
-      /*************************
-       * INIT
-       *************************/
-
-      fetch("./data.json")
-        .then((r) => {
-          if (!r.ok) {
-            throw new Error("Failed to load data.json");
-          }
-
-          return r.json();
-        })
-
-        .then((demos) => {
-          allDemos = demos.map((d) => {
-            const ts = new Date(d.created).getTime();
-
-            return {
-              ...d,
-
-              ts,
-
-              _hay: (
-                d.title +
-                d.description +
-                d.category +
-                d.folder
-              ).toLowerCase(),
-            };
-          });
-
-          demoByFolder = Object.fromEntries(allDemos.map((d) => [d.folder, d]));
-
-          if (!allDemos.length) {
-            throw new Error("No demos in data.json");
-          }
-
-          sortedDates = allDemos.map((d) => d.ts).sort((a, b) => a - b);
-
-          categoryTotals = allDemos.reduce(
-            (acc, d) => {
-              acc.All++;
-
-              acc[d.category] = (acc[d.category] || 0) + 1;
-
-              return acc;
-            },
-            { All: 0 },
-          );
-
-          hydrateStateFromURL();
-
-          normalizeState();
-
-          setupUI();
-
-          render();
-
-          scheduleURLUpdate();
-        })
-
-        .catch((err) => {
-          console.error(err);
-
-          DOM.grid.innerHTML = `
-                  <div class="empty">
-                    Failed to load demos.
-                    Please try again later.
-                  </div>
-                `;
-        });
-
-      /*************************
-       * UI SETUP
-       *************************/
-
-      function setupUI() {
-        setupSearch();
-        setupFilters();
-        setupSort();
-        setupDateSlider();
-      }
-
-      function setupSearch() {
-        const input = DOM.searchInput;
-
-        if (!input) return;
-
-        input.value = state.search;
-
-        input.addEventListener("input", () => {
-          setState({
-            search: input.value.trim(),
-          });
-        });
-
-        input.addEventListener("keydown", (e) => {
-          if (e.key === "Escape") {
-            input.value = "";
-
-            setState({
-              search: "",
-            });
-          }
-        });
-      }
-
-      function setupFilters() {
-        const el = DOM.filters;
-
-        if (!el) return;
-
-        const cats = ["All", ...new Set(allDemos.map((d) => d.category))].sort(
-          (a, b) => (a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b)),
-        );
-
-        for (const cat of cats) {
-          const btn = document.createElement("button");
-
-          btn.dataset.cat = cat;
-
-          btn.textContent = cat;
-
-          btn.type = "button";
-
-          btn.onclick = () => {
-            setState({
-              filter: cat,
-            });
-          };
-
-          el.appendChild(btn);
-        }
-      }
-
-      function setupSort() {
-        for (const btn of DOM.sortButtons) {
-          btn.onclick = () => {
-            const sort = btn.dataset.sort;
-
-            if (!sortFn[sort]) return;
-
-            setState({
-              sort,
-            });
-          };
-        }
-      }
-
-      function setupDateSlider() {
-        const min = DOM.minDate;
-        const max = DOM.maxDate;
-        const fill = DOM.rangeFill;
-
-        if (!min || !max || !fill || !sortedDates.length) {
-          return;
-        }
-
-        min.min = max.min = 0;
-
-        min.max = max.max = sortedDates.length - 1;
-
-        let minIdx = 0;
-        let maxIdx = sortedDates.length - 1;
-
-        for (let i = 0; i < sortedDates.length; i++) {
-          if (sortedDates[i] >= state.minDate) {
-            minIdx = i;
-            break;
-          }
-        }
-
-        for (let i = sortedDates.length - 1; i >= 0; i--) {
-          if (sortedDates[i] <= state.maxDate) {
-            maxIdx = i;
-            break;
-          }
-        }
-
-        min.value = String(minIdx);
-        max.value = String(maxIdx);
-
-        const update = () => {
-          let a = +min.value;
-          let b = +max.value;
-
-          if (a > b) {
-            [a, b] = [b, a];
-          }
-
-          setState(
-            {
-              minDate: sortedDates[a],
-              maxDate: sortedDates[b],
-            },
-            { skipURL: true },
-          );
-
-          const span = sortedDates.length - 1 || 1;
-
-          const left = (a / span) * 100;
-
-          const width = ((b - a) / span) * 100;
-
-          fill.style.left = left + "%";
-
-          fill.style.width = width + "%";
-
-          scheduleURLUpdate();
-        };
-
-        min.oninput = update;
-        max.oninput = update;
-
-        update();
-      }
-
-      /*************************
-       * FILTER + SORT
-       *************************/
-
-      let memo = {
-        key: "",
-        result: [],
       };
 
-      function getFilteredSorted() {
-        const key = JSON.stringify({
-          filter: state.filter,
-          sort: state.sort,
-          search: state.search,
-          minDate: state.minDate,
-          maxDate: state.maxDate,
-        });
+      const VideoController = {
+        timer: null,
+        play(card, src) {
+          const visual = card.querySelector(".card-visual");
+          let vid = visual.querySelector("video");
+          if (!vid) {
+            vid = document.createElement("video");
+            vid.muted = vid.loop = vid.playsInline = true;
+            visual.appendChild(vid);
+          }
+          if (!vid.src) vid.src = `./thumbs/${src}`;
+          card.classList.add("is-previewing");
+          vid.play().catch(() => {});
+        },
+        stop(card) {
+          card.classList.remove("is-previewing");
+          const vid = card.querySelector("video");
+          if (vid) vid.pause();
+        },
+      };
 
-        if (memo.key === key) {
-          return memo.result;
+      function computeView() {
+        const key = `${state.filter}|${state.sort}|${state.search}|${state.minIdx}|${state.maxIdx}`;
+        if (key === lastFilterKey) return cachedView;
+        const query = state.search.toLowerCase().trim();
+        resultsPool.length = 0;
+        for (let i = 0; i < db.length; i++) {
+          const item = db[i];
+          if (
+            (state.filter === "All" || item.category === state.filter) &&
+            item.ts >= sortedDates[state.minIdx] &&
+            item.ts <= sortedDates[state.maxIdx] &&
+            (!query || item._haystack.includes(query))
+          ) {
+            resultsPool.push(item);
+          }
         }
-
-        const search = state.search.toLowerCase();
-
-        let result = allDemos.filter((d) => {
-          const matchesCat =
-            state.filter === "All" || d.category === state.filter;
-
-          const matchesDate = d.ts >= state.minDate && d.ts <= state.maxDate;
-
-          const matchesSearch = !search || d._hay.includes(search);
-
-          return matchesCat && matchesDate && matchesSearch;
-        });
-
-        result.sort(sortFn[state.sort] || sortFn["date-desc"]);
-
-        memo = {
-          key,
-          result,
-        };
-
-        return result;
+        resultsPool.sort(Sorters[state.sort]);
+        lastFilterKey = key;
+        cachedView = resultsPool;
+        return resultsPool;
       }
-
-      /*************************
-       * RENDER
-       *************************/
 
       function render() {
-        const grid = DOM.grid;
-
-        if (!grid) return;
-
-        // Clean slate on every render (critical for correctness)
-        PreviewManager.stop();
-
-        const filtered = getFilteredSorted();
-
-        updateFilterLabels(filtered.length);
-
-        updateSortUI();
-
-        if (!filtered.length) {
-          grid.innerHTML = `
-                  <div class="empty">
-                    No demos found.
-                  </div>
-                `;
-
-          return;
+        renderPending = false;
+        const view = computeView();
+        let ref = DOM.grid.firstElementChild;
+        for (let i = 0; i < view.length; i++) {
+          const node = view[i].el;
+          if (node.parentNode !== DOM.grid || node !== ref)
+            DOM.grid.insertBefore(node, ref);
+          ref = node.nextElementSibling || null;
         }
+        let node = ref;
+        while (node) {
+          const next = node.nextElementSibling;
+          DOM.grid.removeChild(node);
+          node = next;
+        }
+        DOM.emptyState.classList.toggle("visible", view.length === 0);
+        updateUIControls(view.length);
+      }
 
-        const frag = document.createDocumentFragment();
+      function updateUIControls(matchCount) {
+        DOM.filterGroup.querySelectorAll(".btn").forEach((btn) => {
+          const cat = btn.dataset.cat;
+          const total = catCounts.get(cat);
+          const active = cat === state.filter;
+          btn.classList.toggle("active", active);
+          btn.textContent =
+            active && total
+              ? `${cat} (${matchCount}/${total})`
+              : total
+                ? `${cat} (${total})`
+                : cat;
+        });
+        DOM.sortGroup
+          .querySelectorAll(".btn")
+          .forEach((btn) =>
+            btn.classList.toggle("active", btn.dataset.sort === state.sort),
+          );
+        if (sortedDates.length) {
+          const span = sortedDates.length - 1 || 1;
+          DOM.rangeFill.style.left = `${(state.minIdx / span) * 100}%`;
+          DOM.rangeFill.style.width = `${((state.maxIdx - state.minIdx) / span) * 100}%`;
+          DOM.rangeLabel.textContent = `${fmtDate.format(sortedDates[state.minIdx])} — ${fmtDate.format(sortedDates[state.maxIdx])}`;
+          DOM.minDate.value = state.minIdx;
+          DOM.maxDate.value = state.maxIdx;
+        }
+      }
 
-        for (const demo of filtered) {
-          const card = document.createElement("a");
+      const debouncedURLSync = debounce(() => {
+        const p = new URLSearchParams();
+        if (state.filter !== "All") p.set("category", state.filter);
+        if (state.sort !== "date-desc") p.set("sort", state.sort);
+        if (state.search) p.set("search", state.search);
+        if (state.minIdx > 0) p.set("start", toYMD(sortedDates[state.minIdx]));
+        if (state.maxIdx < sortedDates.length - 1)
+          p.set("end", toYMD(sortedDates[state.maxIdx]));
+        history.replaceState(
+          null,
+          "",
+          p.toString() ? `?${p.toString()}` : location.pathname,
+        );
+      }, 250);
 
-          card.className = "card";
+      function hydrateURL() {
+        const p = new URLSearchParams(location.search);
+        let minIdx = 0,
+          maxIdx = sortedDates.length - 1;
+        const minTs = fromYMD(p.get("start"));
+        const maxTs = fromYMD(p.get("end"));
+        if (!isNaN(minTs))
+          minIdx = Math.max(
+            0,
+            sortedDates.findIndex((ts) => ts >= minTs),
+          );
+        if (!isNaN(maxTs)) {
+          const idx = sortedDates.findLastIndex((ts) => ts <= maxTs);
+          maxIdx = idx === -1 ? sortedDates.length - 1 : idx;
+        }
+        state.set({
+          filter: catCounts.has(p.get("category")) ? p.get("category") : "All",
+          sort: Sorters[p.get("sort")] ? p.get("sort") : "date-desc",
+          search: p.get("search") || "",
+          minIdx,
+          maxIdx,
+        });
+        DOM.searchInput.value = state.search;
+      }
 
-          card.href = `./${demo.folder}/index.html`;
+      function setupEvents() {
+        DOM.grid.addEventListener("mouseover", (e) => {
+          const card = e.target.closest(".card");
+          if (!card || !card.dataset.preview) return;
+          clearTimeout(VideoController.timer);
+          VideoController.timer = setTimeout(
+            () => VideoController.play(card, card.dataset.preview),
+            140,
+          );
+        });
 
-          card.target = "_blank";
+        DOM.grid.addEventListener("mouseout", (e) => {
+          const card = e.target.closest(".card");
+          if (!card) return;
+          clearTimeout(VideoController.timer);
+          if (!e.relatedTarget || !card.contains(e.relatedTarget))
+            VideoController.stop(card);
+        });
 
-          card.rel = "noopener noreferrer";
-
-          const thumb = document.createElement("div");
-
-          thumb.className = "thumb";
-
-          if (demo.thumb) {
-            const img = document.createElement("img");
-
-            img.loading = "lazy";
-
-            img.decoding = "async";
-
-            img.src = `./thumbs/${demo.thumb}`;
-
-            img.alt = demo.title;
-
-            thumb.appendChild(img);
-          }
-
-          let video = null;
-
-          if (demo.preview) {
-            video = document.createElement("video");
-
-            video.muted = true;
-
-            video.loop = true;
-
-            video.playsInline = true;
-
-            video.preload = "none";
-
-            video.disablePictureInPicture = true;
-
-            video.setAttribute("muted", "");
-
-            video.setAttribute("playsinline", "");
-
-            thumb.appendChild(video);
-          }
-
-          const content = document.createElement("div");
-
-          content.className = "content";
-
-          let html = `
-  <div class="tag">${demo.category}</div>
-  <div class="title">${demo.title}</div>
-  <div class="desc">${demo.description}</div>
-  <div class="date">${formatDate(demo.created)}</div>
-`;
-
-          // Related demos
-          if (demo.related && demo.related.length > 0) {
-            html += `<div class="related">`;
-
-            // Get related demos and sort A-Z
-            const relatedItems = demo.related
-              .map((folder) => demoByFolder[folder])
-              .filter(Boolean) // remove any missing
-              .sort((a, b) => a.title.localeCompare(b.title));
-
-            relatedItems.forEach((relatedDemo) => {
-              html += `
-                <a href="#" 
-                   class="related-pill"
-                   data-folder="${relatedDemo.folder}"
-                   onclick="navigateToRelated('${relatedDemo.folder}'); event.preventDefault(); event.stopImmediatePropagation();">
-                  ${relatedDemo.title}
-                </a>
-              `;
+        DOM.grid.addEventListener("click", (e) => {
+          const pill = e.target.closest(".related-pill");
+          if (pill) {
+            e.preventDefault();
+            e.stopPropagation();
+            const targetItem = dbMap.get(pill.dataset.target);
+            if (!targetItem || !targetItem.el) return;
+            lastFilterState = {
+              filter: state.filter,
+              minIdx: state.minIdx,
+              maxIdx: state.maxIdx,
+              search: state.search,
+            };
+            state.set({
+              filter: "All",
+              minIdx: 0,
+              maxIdx: sortedDates.length - 1,
+              search: "",
             });
+            setTimeout(() => {
+              targetItem.el.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+              targetItem.el.classList.remove("target-highlight");
+              void targetItem.el.offsetWidth;
+              targetItem.el.classList.add("target-highlight");
+            }, 30);
+            showUndoToast();
+          }
+        });
 
-            html += `</div>`;
+        let activeToast = null;
+
+        function showUndoToast() {
+          if (activeToast) {
+            activeToast.remove();
           }
 
-          content.innerHTML = html;
+          const toast = document.createElement("div");
+          toast.style.cssText = `position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#1a1d24; color:#fff; padding:10px 18px; border-radius:999px; box-shadow:0 10px 30px rgba(0,0,0,0.6); font-size:14px; z-index:10000; display:flex; align-items:center; gap:12px; white-space:nowrap;`;
+          toast.innerHTML = `Filters cleared to show related demo <button style="background:none; border:none; color:#4c8bf5; font-weight:600; cursor:pointer; padding:0 4px;">Undo</button>`;
 
-          card.appendChild(thumb);
-
-          card.appendChild(content);
-
-          frag.appendChild(card);
-
-          if (video && demo.preview) {
-            attachPreviewHandlers(card, video, demo.preview);
-          }
-        }
-
-        grid.innerHTML = "";
-
-        grid.appendChild(frag);
-
-        // Re-observe after DOM update
-        observeCards();
-      }
-
-      function updateSortUI() {
-        for (const btn of DOM.sortButtons) {
-          btn.classList.toggle("active", btn.dataset.sort === state.sort);
-        }
-      }
-
-      function updateFilterLabels(currentCount = null) {
-        const buttons = DOM.filters.querySelectorAll("button");
-
-        for (const b of buttons) {
-          const cat = b.dataset.cat;
-
-          const total = categoryTotals[cat] ?? 0;
-
-          let label = cat;
-
-          if (total) {
-            if (currentCount != null && cat === state.filter) {
-              label += ` (${currentCount}/${total})`;
-            } else {
-              label += ` (${total})`;
+          const cleanup = () => {
+            clearTimeout(timer);
+            if (activeToast === toast) {
+              toast.remove();
+              activeToast = null;
             }
-          }
+          };
 
-          if (b.textContent !== label) {
-            b.textContent = label;
-          }
+          const timer = setTimeout(cleanup, 7000);
 
-          b.classList.toggle("active", cat === state.filter);
+          document.body.appendChild(toast);
+          activeToast = toast;
+
+          toast.querySelector("button").onclick = () => {
+            if (lastFilterState) state.set(lastFilterState);
+            cleanup();
+          };
+        }
+
+        DOM.searchInput.addEventListener("input", (e) =>
+          state.set({ search: e.target.value.trim() }),
+        );
+        DOM.filterGroup.addEventListener("click", (e) => {
+          if (e.target.matches(".btn"))
+            state.set({ filter: e.target.dataset.cat });
+        });
+        DOM.sortGroup.addEventListener("click", (e) => {
+          if (e.target.matches(".btn"))
+            state.set({ sort: e.target.dataset.sort });
+        });
+        const handleRange = () => {
+          let a = +DOM.minDate.value,
+            b = +DOM.maxDate.value;
+          state.set({ minIdx: Math.min(a, b), maxIdx: Math.max(a, b) });
+        };
+        DOM.minDate.addEventListener("input", handleRange);
+        DOM.maxDate.addEventListener("input", handleRange);
+      }
+
+      async function boot() {
+        try {
+          const res = await fetch("./data.json");
+          if (!res.ok) throw new Error();
+          const raw = await res.json();
+          raw.forEach((d) => {
+            d.ts = new Date(d.created).getTime();
+            d._haystack = (
+              d.title +
+              d.description +
+              d.category +
+              d.folder
+            ).toLowerCase();
+            db.push(d);
+            dbMap.set(d.folder, d);
+            sortedDates.push(d.ts);
+            catCounts.set(d.category, (catCounts.get(d.category) || 0) + 1);
+            catCounts.set("All", catCounts.get("All") + 1);
+          });
+          sortedDates.sort((a, b) => a - b);
+          DOM.minDate.max = DOM.maxDate.max = sortedDates.length - 1;
+
+          db.forEach((item) => {
+            const node = DOM.cardTpl.cloneNode(true);
+            const card = node.querySelector(".card");
+            card.href = `./${item.folder}/index.html`;
+            if (item.preview) card.dataset.preview = item.preview;
+            node.querySelector("img").src = `./thumbs/${item.thumb}`;
+            node.querySelector(".card-cat").textContent = item.category;
+            node.querySelector(".card-date").textContent = fmtDate.format(
+              item.ts,
+            );
+            node.querySelector(".card-title").textContent = item.title;
+            node.querySelector(".card-desc").textContent = item.description;
+            if (item.related) {
+              const group = node.querySelector(".related-group");
+              item.related.forEach((id) => {
+                const rel = dbMap.get(id);
+                if (rel) {
+                  const pill = document.createElement("button");
+                  pill.className = "related-pill";
+                  pill.textContent = rel.title;
+                  pill.dataset.target = id;
+                  group.appendChild(pill);
+                }
+              });
+            }
+            item.el = card;
+            DOM.grid.appendChild(card);
+          });
+
+          const frag = document.createDocumentFragment();
+          Array.from(catCounts.keys())
+            .sort((a, b) =>
+              a === "All" ? -1 : b === "All" ? 1 : a.localeCompare(b),
+            )
+            .forEach((cat) => {
+              const btn = document.createElement("button");
+              btn.className = "btn";
+              btn.dataset.cat = cat;
+              btn.textContent = cat;
+              frag.appendChild(btn);
+            });
+          DOM.filterGroup.appendChild(frag);
+          setupEvents();
+          hydrateURL();
+        } catch (e) {
+          console.error(e);
+          DOM.emptyState.classList.add("visible");
         }
       }
+      boot();
     </script>
   </body>
 </html>
