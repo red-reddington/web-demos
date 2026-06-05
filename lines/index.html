@@ -1654,12 +1654,19 @@
           };
           p.byId[id] = m;
         }
+
+        // snap marble to exact cell center
         const w = cellToWorld(col(cell), row(cell));
         m.color = color;
         m.cell = cell;
+        // authoritative snapped world coords
         m.bx = w.x;
         m.bz = w.z;
         m.position.set(w.x, REST_Y, w.z);
+        // ensure no residual drift survives
+        m.vx = 0;
+        m.vz = 0;
+
         m.quaternion.identity();
         m.scale.setScalar(1);
         m.selected = false;
