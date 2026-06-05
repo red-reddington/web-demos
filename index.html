@@ -183,6 +183,7 @@
         display: block;
       }
       .card {
+        position: relative;
         display: flex;
         flex-direction: column;
         background: var(--surface);
@@ -231,8 +232,13 @@
       .card.is-previewing video {
         opacity: 1;
       }
-      .card.is-previewing {
-        box-shadow: 0 0 0 3px rgba(76, 139, 245, 0.6);
+      .card.is-previewing::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 3px solid rgba(76, 139, 245, 0.6);
+        border-radius: 12px;
+        pointer-events: none;
         z-index: 10;
       }
       .card.target-highlight {
@@ -385,6 +391,7 @@
 
     <script>
       "use strict";
+      const ASSET_BASE = "./"; // "https://red-reddington.github.io/web-demos/"
 
       const DOM = {
         grid: document.getElementById("grid"),
@@ -474,7 +481,7 @@
             vid.muted = vid.loop = vid.playsInline = true;
             visual.appendChild(vid);
           }
-          if (!vid.src) vid.src = `./thumbs/${src}`;
+          if (!vid.src) vid.src = `${ASSET_BASE}thumbs/${src}`;
           card.classList.add("is-previewing");
           vid.play().catch(() => {});
         },
@@ -598,7 +605,7 @@
       function setupEvents() {
         // Ensure videos stop when the user leaves the tab
         document.addEventListener("visibilitychange", () => {
-          if (document.hidden) {
+          if (document.visibilityState === "hidden") {
             document.querySelectorAll(".card.is-previewing").forEach((c) => {
               VideoController.stop(c);
             });
@@ -751,7 +758,7 @@
 
       async function boot() {
         try {
-          const res = await fetch("./data.json");
+          const res = await fetch(`${ASSET_BASE}data.json`);
           if (!res.ok) throw new Error();
           const raw = await res.json();
           raw.forEach((d) => {
@@ -774,9 +781,9 @@
           db.forEach((item) => {
             const node = DOM.cardTpl.cloneNode(true);
             const card = node.querySelector(".card");
-            card.href = `./${item.folder}/index.html`;
+            card.href = `${ASSET_BASE}${item.folder}/index.html`;
             if (item.preview) card.dataset.preview = item.preview;
-            node.querySelector("img").src = `./thumbs/${item.thumb}`;
+            node.querySelector("img").src = `${ASSET_BASE}thumbs/${item.thumb}`;
             node.querySelector(".card-cat").textContent = item.category;
             node.querySelector(".card-date").textContent = fmtDate.format(
               item.ts,
