@@ -596,6 +596,15 @@
       }
 
       function setupEvents() {
+        // Ensure videos stop when the user leaves the tab
+        document.addEventListener("visibilitychange", () => {
+          if (document.hidden) {
+            document.querySelectorAll(".card.is-previewing").forEach((c) => {
+              VideoController.stop(c);
+            });
+          }
+        });
+
         // Desktop Hover
         DOM.grid.addEventListener("mouseover", (e) => {
           const card = e.target.closest(".card");
