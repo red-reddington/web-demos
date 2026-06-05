@@ -619,21 +619,29 @@
         DOM.grid.addEventListener(
           "touchstart",
           (e) => {
+            // 1. Check if the user touched a "related-pill"
+            const pill = e.target.closest(".related-pill");
+            if (pill) {
+              // If it's a pill, do nothing here and let the click handler take over.
+              // We do NOT call e.preventDefault() so the native link behavior works.
+              return;
+            }
+
+            // 2. Otherwise, look for the card
             const card = e.target.closest(".card");
             if (!card) return;
 
-            // If we are already previewing this card, let the standard link behavior happen
+            // 3. If we are already previewing this card, allow the click to navigate
             if (card.classList.contains("is-previewing")) return;
 
-            // Otherwise, prevent default to stop instant navigation
+            // 4. Otherwise, prevent default to stop instant navigation
             e.preventDefault();
 
-            // Stop any existing previews on other cards
+            // 5. Cleanup other cards and play this one
             document
               .querySelectorAll(".card.is-previewing")
               .forEach((c) => VideoController.stop(c));
 
-            // Play this one
             if (card.dataset.preview) {
               VideoController.play(card, card.dataset.preview);
             }
