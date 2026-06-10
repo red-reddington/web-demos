@@ -391,7 +391,7 @@
 
     <script>
       "use strict";
-      const ASSET_BASE = "./"; // "https://red-reddington.github.io/web-demos/"
+      const ASSET_BASE = "./"; //"https://red-reddington.github.io/web-demos/";
 
       const DOM = {
         grid: document.getElementById("grid"),
@@ -473,6 +473,7 @@
 
       const VideoController = {
         timer: null,
+        activeCard: null,
         play(card, src) {
           const visual = card.querySelector(".card-visual");
           let vid = visual.querySelector("video");
@@ -482,29 +483,65 @@
             visual.appendChild(vid);
           }
           if (!vid.src) vid.src = `${ASSET_BASE}thumbs/${src}`;
+          if (this.activeCard && this.activeCard !== card) {
+            this.stop(this.activeCard);
+          }
+
+          this.activeCard = card;
+
           card.classList.add("is-previewing");
           vid.play().catch(() => {});
         },
         stop(card) {
+          if (!card) return;
+
+          if (this.activeCard === card) {
+            this.activeCard = null;
+          }
+
           card.classList.remove("is-previewing");
+
           const vid = card.querySelector("video");
-          if (vid) vid.pause();
+          if (vid) {
+            vid.pause();
+            vid.currentTime = 0;
+          }
+        },
+
+        stopActive() {
+          this.stop(this.activeCard);
         },
       };
+
+      const previewObserver = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) {
+              VideoController.stop(entry.target);
+            }
+          }
+        },
+        {
+          threshold: 0.18,
+          rootMargin: "-20px 0px",
+        },
+      );
 
       function computeView() {
         const key = `${state.filter}|${state.sort}|${state.search}|${state.minIdx}|${state.maxIdx}`;
         if (key === lastFilterKey) return cachedView;
-        const query = state.search.toLowerCase().trim();
+        const query = state.search.trim().toLowerCase();
         resultsPool.length = 0;
         for (let i = 0; i < db.length; i++) {
           const item = db[i];
-          if (
+          const passesFilters =
             (state.filter === "All" || item.category === state.filter) &&
             item.ts >= sortedDates[state.minIdx] &&
-            item.ts <= sortedDates[state.maxIdx] &&
-            (!query || item._haystack.includes(query))
-          ) {
+            item.ts <= sortedDates[state.maxIdx];
+
+          if (!passesFilters) continue;
+
+          if (!query || item._haystack.includes(query)) {
             resultsPool.push(item);
           }
         }
@@ -527,6 +564,9 @@
         let node = ref;
         while (node) {
           const next = node.nextElementSibling;
+          if (node.classList.contains("is-previewing")) {
+            VideoController.stop(node);
+          }
           DOM.grid.removeChild(node);
           node = next;
         }
@@ -535,6 +575,20 @@
       }
 
       function updateUIControls(matchCount) {
+        const key =
+          state.filter +
+          "|" +
+          state.sort +
+          "|" +
+          state.minIdx +
+          "|" +
+          state.maxIdx +
+          "|" +
+          matchCount;
+
+        if (updateUIControls._last === key) return;
+        updateUIControls._last = key;
+
         DOM.filterGroup.querySelectorAll(".btn").forEach((btn) => {
           const cat = btn.dataset.cat;
           const total = catCounts.get(cat);
@@ -606,9 +660,7 @@
         // Ensure videos stop when the user leaves the tab
         document.addEventListener("visibilitychange", () => {
           if (document.visibilityState === "hidden") {
-            document.querySelectorAll(".card.is-previewing").forEach((c) => {
-              VideoController.stop(c);
-            });
+            VideoController.stopActive();
           }
         });
 
@@ -651,12 +703,11 @@
             if (card.classList.contains("is-previewing")) return;
 
             // 4. Otherwise, prevent default to stop instant navigation
+            if (!e.cancelable) return;
             e.preventDefault();
 
             // 5. Cleanup other cards and play this one
-            document
-              .querySelectorAll(".card.is-previewing")
-              .forEach((c) => VideoController.stop(c));
+            VideoController.stopActive();
 
             if (card.dataset.preview) {
               VideoController.play(card, card.dataset.preview);
@@ -668,42 +719,38 @@
         // Add a listener to close when touching empty space in the grid
         document.addEventListener("touchstart", (e) => {
           if (!e.target.closest(".card")) {
-            document
-              .querySelectorAll(".card.is-previewing")
-              .forEach((c) => VideoController.stop(c));
+            VideoController.stopActive();
           }
         });
 
         DOM.grid.addEventListener("click", (e) => {
           const pill = e.target.closest(".related-pill");
-          if (pill) {
-            e.preventDefault();
-            e.stopPropagation();
-            const targetItem = dbMap.get(pill.dataset.target);
-            if (!targetItem || !targetItem.el) return;
-            lastFilterState = {
-              filter: state.filter,
-              minIdx: state.minIdx,
-              maxIdx: state.maxIdx,
-              search: state.search,
-            };
-            state.set({
-              filter: "All",
-              minIdx: 0,
-              maxIdx: sortedDates.length - 1,
-              search: "",
+          if (!pill) return;
+          e.stopPropagation();
+          const targetItem = dbMap.get(pill.dataset.target);
+          if (!targetItem || !targetItem.el) return;
+          lastFilterState = {
+            filter: state.filter,
+            minIdx: state.minIdx,
+            maxIdx: state.maxIdx,
+            search: state.search,
+          };
+          state.set({
+            filter: "All",
+            minIdx: 0,
+            maxIdx: sortedDates.length - 1,
+            search: "",
+          });
+          setTimeout(() => {
+            targetItem.el.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
             });
-            setTimeout(() => {
-              targetItem.el.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-              });
-              targetItem.el.classList.remove("target-highlight");
-              void targetItem.el.offsetWidth;
-              targetItem.el.classList.add("target-highlight");
-            }, 30);
-            showUndoToast();
-          }
+            targetItem.el.classList.remove("target-highlight");
+            void targetItem.el.offsetWidth;
+            targetItem.el.classList.add("target-highlight");
+          }, 30);
+          showUndoToast();
         });
 
         let activeToast = null;
@@ -736,8 +783,11 @@
           };
         }
 
-        DOM.searchInput.addEventListener("input", (e) =>
-          state.set({ search: e.target.value.trim() }),
+        DOM.searchInput.addEventListener(
+          "input",
+          debounce((e) => {
+            state.set({ search: e.target.value });
+          }, 180),
         );
         DOM.filterGroup.addEventListener("click", (e) => {
           if (e.target.matches(".btn"))
@@ -804,6 +854,7 @@
               });
             }
             item.el = card;
+            previewObserver.observe(card);
             DOM.grid.appendChild(card);
           });
 
