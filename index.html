@@ -162,8 +162,9 @@
         position: relative;
         z-index: 10;
       }
-      /* Firefox needs its own thumb rule: pointer-events:none on the input is only re-enabled per-engine on the thumb pseudo-element.
-         Without this block the sliders are completely inert (unclickable) in Firefox. */
+      /* Firefox needs its own thumb rule: pointer-events:none on the input is only
+         re-enabled per-engine on the thumb pseudo-element. Without this block the
+         sliders are completely inert (unclickable) in Firefox. */
       .range-input::-moz-range-thumb {
         pointer-events: auto;
         width: 22px;
@@ -430,10 +431,10 @@
         cardTpl: document.getElementById("card-tpl").content,
       };
 
-      // Touch-first device? Drives the tap-to-preview interception below.
-      // Matches the same media query the CSS uses to disable hover lift, so the two stay in step.
-      const COARSE_POINTER = matchMedia("(hover: none) and (pointer: coarse)");
-
+      // timeZone:"UTC" is load-bearing: `new Date("2024-05-03")` parses as UTC midnight,
+      // and without it the formatter renders in LOCAL time — every date displays one day
+      // early for any viewer west of Greenwich. toYMD/fromYMD below are already UTC;
+      // this keeps the formatter on the same clock.
       const fmtDate = new Intl.DateTimeFormat("en-US", {
         month: "short",
         day: "numeric",
@@ -712,8 +713,13 @@
             VideoController.stop(card);
         });
 
-        // Close any active preview when touching empty space.
-        // PASSIVE on purpose: no touchstart handler anywhere calls preventDefault, so touch scrolling is never blocked.
+        // Close any active preview when touching empty space. PASSIVE on purpose:
+        // no touchstart handler anywhere calls preventDefault, so touch scrolling is
+        // never blocked. (The old grid touchstart preventDefault'ed the first touch
+        // on every previewable card — which cancelled the SCROLL gesture too, so the
+        // page couldn't be dragged wherever a card was under the finger. Tap-to-
+        // preview interception now lives in the click handler below, where cancelling
+        // navigation doesn't touch scrolling at all.)
         document.addEventListener(
           "touchstart",
           (e) => {
@@ -724,49 +730,105 @@
           { passive: true },
         );
 
-        DOM.grid.addEventListener("click", (e) => {
-          // Related pill -> in-page jump to the target card.
-          const pill = e.target.closest(".related-pill");
-          if (pill) {
-            e.preventDefault();
-            const targetItem = dbMap.get(pill.dataset.target);
-            if (!targetItem || !targetItem.el) return;
-            lastFilterState = {
-              filter: state.filter,
-              minIdx: state.minIdx,
-              maxIdx: state.maxIdx,
-              search: state.search,
-            };
-            state.set({
-              filter: "All",
-              minIdx: 0,
-              maxIdx: sortedDates.length - 1,
-              search: "",
-            });
-            setTimeout(() => {
-              targetItem.el.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-              });
-              targetItem.el.classList.remove("target-highlight");
-              void targetItem.el.offsetWidth;
-              targetItem.el.classList.add("target-highlight");
-            }, 30);
-            showUndoToast();
-            return;
-          }
+        // --- Tap-to-preview on touch devices --------------------------------
+        // Driven by TOUCH events, deliberately NOT by click. iOS Safari emulates
+        // hover on the first tap (mouseover -> mousemove -> ... -> click) and has
+        // a documented rule: if page content changes during the hover events, the
+        // remaining events -- INCLUDING THE CLICK -- are never sent. Our mouseover/
+        // mouseout preview handlers change content (start/stop videos, toggle
+        // classes), so a click-routed tap drops on iPhone whenever a preview
+        // switches: dead taps. preventDefault on TOUCHEND opts the tap out of the
+        // entire synthetic mouse pipeline (deterministic on iOS), and -- unlike
+        // preventDefault on touchSTART, the original scroll-killer -- it can never
+        // block scrolling: the scroll gesture is decided at touchstart/touchmove,
+        // which stay passive here. Slop check = tap vs scroll; duration check
+        // leaves long-press (iOS link peek) native, which neither earlier version
+        // managed. First tap previews; second tap (card already previewing) is not
+        // intercepted, so its click follows the link.
+        let tap = null; // current single-finger tap candidate
+        DOM.grid.addEventListener(
+          "touchstart",
+          (e) => {
+            tap = null;
+            if (e.touches.length !== 1) return; // multi-touch: not a tap
+            if (e.target.closest(".related-pill")) return; // pills use the click path
+            const card = e.target.closest(".card");
+            if (!card || !card.dataset.preview) return;
+            const t0 = e.touches[0];
+            tap = { card, x: t0.clientX, y: t0.clientY, t: performance.now() };
+          },
+          { passive: true },
+        );
+        DOM.grid.addEventListener(
+          "touchmove",
+          (e) => {
+            if (!tap) return;
+            const t0 = e.touches[0];
+            if (
+              Math.abs(t0.clientX - tap.x) > 10 ||
+              Math.abs(t0.clientY - tap.y) > 10
+            )
+              tap = null; // finger moved: it's a scroll/drag, not a tap
+          },
+          { passive: true },
+        );
+        DOM.grid.addEventListener(
+          "touchcancel",
+          () => {
+            tap = null;
+          },
+          {
+            passive: true,
+          },
+        );
+        DOM.grid.addEventListener(
+          "touchend",
+          (e) => {
+            const t = tap;
+            tap = null;
+            if (!t) return;
+            if (performance.now() - t.t > 350) return; // long-press: native peek/callout
+            if (t.card.classList.contains("is-previewing")) return; // 2nd tap -> navigate
+            if (!e.cancelable) return;
+            e.preventDefault(); // swallow the synthetic click: no navigation on 1st tap
+            VideoController.play(t.card, t.card.dataset.preview); // also stops any other
+          },
+          { passive: false },
+        );
 
-          // Touch devices: first tap previews (cancel the navigation), second tap — the card is now previewing — falls through and follows the link.
-          const card = e.target.closest(".card");
-          if (
-            COARSE_POINTER.matches &&
-            card &&
-            card.dataset.preview &&
-            !card.classList.contains("is-previewing")
-          ) {
-            e.preventDefault();
-            VideoController.play(card, card.dataset.preview);
-          }
+        DOM.grid.addEventListener("click", (e) => {
+          // Related pill -> in-page jump to the target card. preventDefault is
+          // load-bearing: the pill is a <button> nested inside the card's <a>, and
+          // stopPropagation alone does NOT cancel the ancestor anchor's default
+          // activation — without preventDefault every pill click ALSO opened the
+          // demo in a new tab.
+          const pill = e.target.closest(".related-pill");
+          if (!pill) return;
+          e.preventDefault();
+          const targetItem = dbMap.get(pill.dataset.target);
+          if (!targetItem || !targetItem.el) return;
+          lastFilterState = {
+            filter: state.filter,
+            minIdx: state.minIdx,
+            maxIdx: state.maxIdx,
+            search: state.search,
+          };
+          state.set({
+            filter: "All",
+            minIdx: 0,
+            maxIdx: sortedDates.length - 1,
+            search: "",
+          });
+          setTimeout(() => {
+            targetItem.el.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+            targetItem.el.classList.remove("target-highlight");
+            void targetItem.el.offsetWidth;
+            targetItem.el.classList.add("target-highlight");
+          }, 30);
+          showUndoToast();
         });
 
         let activeToast = null;
