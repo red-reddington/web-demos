@@ -7,7 +7,6 @@
 
     <link rel="icon" type="image/png" href="RRfavicon.png" />
     <link rel="apple-touch-icon" href="RRfavicon.png" />
-    <link rel="apple-touch-icon" type="image/png" href="RRfavicon.png" />
     <meta
       name="apple-mobile-web-app-title"
       content="Red Reddington's Web Demos"
@@ -162,6 +161,18 @@
         margin-top: -9px;
         position: relative;
         z-index: 10;
+      }
+      /* Firefox needs its own thumb rule: pointer-events:none on the input is only re-enabled per-engine on the thumb pseudo-element.
+         Without this block the sliders are completely inert (unclickable) in Firefox. */
+      .range-input::-moz-range-thumb {
+        pointer-events: auto;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 3px solid var(--accent);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+        cursor: grab;
       }
       .grid {
         display: grid;
@@ -340,6 +351,7 @@
         id="searchInput"
         class="search-input"
         placeholder="Search demos..."
+        aria-label="Search demos"
         autocomplete="off"
       />
       <div class="btn-group" id="filterGroup"></div>
@@ -354,8 +366,20 @@
         <div class="range-track-container">
           <div class="range-track-bg"></div>
           <div class="range-track-fill" id="rangeFill"></div>
-          <input type="range" class="range-input" id="minDate" step="1" />
-          <input type="range" class="range-input" id="maxDate" step="1" />
+          <input
+            type="range"
+            class="range-input"
+            id="minDate"
+            step="1"
+            aria-label="Timeline start date"
+          />
+          <input
+            type="range"
+            class="range-input"
+            id="maxDate"
+            step="1"
+            aria-label="Timeline end date"
+          />
         </div>
       </div>
     </nav>
@@ -391,7 +415,7 @@
 
     <script>
       "use strict";
-      const ASSET_BASE = "./"; //"https://red-reddington.github.io/web-demos/";
+      const ASSET_BASE = "https://red-reddington.github.io/web-demos/";
 
       const DOM = {
         grid: document.getElementById("grid"),
@@ -406,10 +430,15 @@
         cardTpl: document.getElementById("card-tpl").content,
       };
 
+      // Touch-first device? Drives the tap-to-preview interception below.
+      // Matches the same media query the CSS uses to disable hover lift, so the two stay in step.
+      const COARSE_POINTER = matchMedia("(hover: none) and (pointer: coarse)");
+
       const fmtDate = new Intl.DateTimeFormat("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
+        timeZone: "UTC",
       });
       const debounce = (fn, delay) => {
         let t;
@@ -683,74 +712,61 @@
             VideoController.stop(card);
         });
 
-        // Mobile Touch Support
-        DOM.grid.addEventListener(
+        // Close any active preview when touching empty space.
+        // PASSIVE on purpose: no touchstart handler anywhere calls preventDefault, so touch scrolling is never blocked.
+        document.addEventListener(
           "touchstart",
           (e) => {
-            // 1. Check if the user touched a "related-pill"
-            const pill = e.target.closest(".related-pill");
-            if (pill) {
-              // If it's a pill, do nothing here and let the click handler take over.
-              // We do NOT call e.preventDefault() so the native link behavior works.
-              return;
-            }
-
-            // 2. Otherwise, look for the card
-            const card = e.target.closest(".card");
-            if (!card) return;
-
-            // 3. If we are already previewing this card, allow the click to navigate
-            if (card.classList.contains("is-previewing")) return;
-
-            // 4. Otherwise, prevent default to stop instant navigation
-            if (!e.cancelable) return;
-            e.preventDefault();
-
-            // 5. Cleanup other cards and play this one
-            VideoController.stopActive();
-
-            if (card.dataset.preview) {
-              VideoController.play(card, card.dataset.preview);
+            if (!e.target.closest(".card")) {
+              VideoController.stopActive();
             }
           },
-          { passive: false },
+          { passive: true },
         );
 
-        // Add a listener to close when touching empty space in the grid
-        document.addEventListener("touchstart", (e) => {
-          if (!e.target.closest(".card")) {
-            VideoController.stopActive();
-          }
-        });
-
         DOM.grid.addEventListener("click", (e) => {
+          // Related pill -> in-page jump to the target card.
           const pill = e.target.closest(".related-pill");
-          if (!pill) return;
-          e.stopPropagation();
-          const targetItem = dbMap.get(pill.dataset.target);
-          if (!targetItem || !targetItem.el) return;
-          lastFilterState = {
-            filter: state.filter,
-            minIdx: state.minIdx,
-            maxIdx: state.maxIdx,
-            search: state.search,
-          };
-          state.set({
-            filter: "All",
-            minIdx: 0,
-            maxIdx: sortedDates.length - 1,
-            search: "",
-          });
-          setTimeout(() => {
-            targetItem.el.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
+          if (pill) {
+            e.preventDefault();
+            const targetItem = dbMap.get(pill.dataset.target);
+            if (!targetItem || !targetItem.el) return;
+            lastFilterState = {
+              filter: state.filter,
+              minIdx: state.minIdx,
+              maxIdx: state.maxIdx,
+              search: state.search,
+            };
+            state.set({
+              filter: "All",
+              minIdx: 0,
+              maxIdx: sortedDates.length - 1,
+              search: "",
             });
-            targetItem.el.classList.remove("target-highlight");
-            void targetItem.el.offsetWidth;
-            targetItem.el.classList.add("target-highlight");
-          }, 30);
-          showUndoToast();
+            setTimeout(() => {
+              targetItem.el.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+              targetItem.el.classList.remove("target-highlight");
+              void targetItem.el.offsetWidth;
+              targetItem.el.classList.add("target-highlight");
+            }, 30);
+            showUndoToast();
+            return;
+          }
+
+          // Touch devices: first tap previews (cancel the navigation), second tap — the card is now previewing — falls through and follows the link.
+          const card = e.target.closest(".card");
+          if (
+            COARSE_POINTER.matches &&
+            card &&
+            card.dataset.preview &&
+            !card.classList.contains("is-previewing")
+          ) {
+            e.preventDefault();
+            VideoController.play(card, card.dataset.preview);
+          }
         });
 
         let activeToast = null;
@@ -809,7 +825,7 @@
       async function boot() {
         try {
           const res = await fetch(`${ASSET_BASE}data.json`);
-          if (!res.ok) throw new Error();
+          if (!res.ok) throw new Error(`data.json: HTTP ${res.status}`);
           const raw = await res.json();
           raw.forEach((d) => {
             d.ts = new Date(d.created).getTime();
