@@ -1004,6 +1004,7 @@
       const activePointers = new Map();
       let pinchStartDistance = 0;
       let pinchStartZoom = 1;
+      let isPinching = false;
 
       function sizeCamera() {
         const a = innerWidth / innerHeight;
@@ -1720,6 +1721,7 @@
           }
           if (p.mesh.count > 0) p.mesh.instanceMatrix.needsUpdate = true;
           p.mesh.count = 0;
+          p.count = 0; // reset the id allocator too, not just the draw count
           p.free.length = 0;
         }
         selMarble = null; // every proxy was just detached/zeroed
@@ -2232,6 +2234,9 @@
         grid.fill(0);
         cellMesh.fill(null);
         resetPools();
+        activePointers.clear(); // drop stale touch pointers from prior play
+        pinchStartDistance = 0;
+        isPinching = false;
 
         const cells = pickEmpties(INITIAL);
         const colors = randColors(INITIAL);
@@ -2366,7 +2371,7 @@
       renderer.domElement.addEventListener("pointerdown", (e) => {
         if (busy || gameOver) return;
 
-        if (e.pointerType === "touch" && activePointers.size > 1) {
+        if (e.pointerType === "touch" && isPinching) {
           return;
         }
 
@@ -2430,7 +2435,7 @@
 
       // Prevent iOS Safari double-tap zoom WITHOUT interfering with joystick movement, multi-touch, or normal taps.
       // Only cancel the SECOND tap of a rapid double-tap gesture.
-      let __lastTouchEnd = 0;
+      let lastTouchEnd = 0;
 
       renderer.domElement.addEventListener(
         "touchend",
@@ -2466,6 +2471,7 @@
           );
 
           pinchStartZoom = zoomMul;
+          isPinching = true;
         }
       });
 
@@ -2498,6 +2504,7 @@
 
         if (activePointers.size < 2) {
           pinchStartDistance = 0;
+          isPinching = false;
         }
       }
 
