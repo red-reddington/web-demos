@@ -329,7 +329,8 @@
         border: 1px solid var(--cyan);
         background: rgba(25, 227, 255, 0.07);
         box-shadow: 0 0 16px rgba(25, 227, 255, 0.25) inset;
-        pointer-events: auto;
+        /* hit area is gated on .show below: while the plunger is hidden this element must be click-THROUGH, or it silently eats right-flipper taps in the bottom-right corner */
+        pointer-events: none;
         opacity: 0;
         transform: scale(0.85);
         transition:
@@ -385,6 +386,7 @@
       #pull.show {
         opacity: 1;
         transform: scale(1);
+        pointer-events: auto; /* tappable only while visible */
       }
       @media (prefers-reduced-motion: reduce) {
         #msg p {
