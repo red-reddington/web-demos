@@ -1,0 +1,4054 @@
+<!-- https://codepen.io/editor/the-red-reddington/pen/019fa083-49ce-7a4e-977d-c570a7b6ad91?show=preview -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no"
+    />
+    <title>NEON GUTTER - 3D Pinball</title>
+    <style>
+      :root {
+        --cyan: #19e3ff;
+        --purple: #b14cff;
+        --amber: #ffb347;
+        --ink: #05050f;
+        --hot: #f5f7ff;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+        background: var(--ink);
+        font-family:
+          "Chakra Petch", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        -webkit-user-select: none;
+        user-select: none;
+        touch-action: none;
+      }
+      canvas {
+        display: block;
+      }
+      #hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        color: var(--hot);
+        z-index: 5;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 4;
+        background: radial-gradient(
+          ellipse at 50% 42%,
+          transparent 52%,
+          rgba(0, 0, 6, 0.55) 100%
+        );
+      }
+      .glow-c {
+        text-shadow:
+          0 0 6px rgba(25, 227, 255, 0.9),
+          0 0 22px rgba(25, 227, 255, 0.45);
+      }
+      .glow-m {
+        text-shadow:
+          0 0 6px rgba(177, 76, 255, 0.9),
+          0 0 22px rgba(177, 76, 255, 0.45);
+      }
+      #scorebox {
+        position: absolute;
+        top: 14px;
+        left: 18px;
+        line-height: 1.05;
+      }
+      #score {
+        font-size: clamp(26px, 4.5vw, 44px);
+        font-weight: 700;
+        color: var(--cyan);
+        font-variant-numeric: tabular-nums;
+      }
+      #mult {
+        display: inline-block;
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--amber);
+        text-shadow: 0 0 8px rgba(255, 179, 71, 0.8);
+      }
+      #mult.pop {
+        animation: multpop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes multpop {
+        0% {
+          transform: scale(1);
+        }
+        45% {
+          transform: scale(1.6);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      #stat {
+        position: absolute;
+        top: 16px;
+        right: 18px;
+        text-align: right;
+        font-size: 12px;
+        line-height: 1.9;
+        opacity: 0.9;
+      }
+      #stat b {
+        color: var(--purple);
+        font-weight: 700;
+      }
+      /* splash sits on a dim scrim: without it the title lands directly on the bright bumpers/rails and becomes unreadable */
+      #msg {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        background: rgba(5, 5, 15, 0.66);
+        transition: opacity 0.35s;
+        opacity: 0;
+      }
+      #msg.show {
+        opacity: 1;
+      }
+      #msg.hidden {
+        opacity: 0 !important;
+        pointer-events: none;
+      }
+      #msg h1 {
+        font-size: clamp(30px, 7vw, 62px);
+        font-weight: 700;
+        color: var(--purple);
+        letter-spacing: 0.22em;
+        margin-bottom: 10px;
+      }
+      #msg h1 i {
+        font-style: normal;
+        color: var(--cyan);
+        margin-left: 0.2em;
+      }
+      #msg p {
+        font-size: clamp(11px, 1.8vw, 14px);
+        opacity: 0.9;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+        animation: blink 1.4s steps(2) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0.25;
+        }
+      }
+      .iconbtn {
+        position: fixed;
+        right: 14px;
+        width: 34px;
+        height: 34px;
+        z-index: 6;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--cyan);
+        background: rgba(10, 10, 26, 0.55);
+        border: 1px solid rgba(25, 227, 255, 0.28);
+        border-radius: 9px;
+        cursor: pointer;
+        padding: 0;
+        pointer-events: auto;
+        transition: 0.15s;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: none;
+      }
+      .iconbtn:hover {
+        transform: scale(1.08);
+        border-color: rgba(25, 227, 255, 0.6);
+      }
+      /* fullscreen is capability-detected and may be removed — it stays LAST (highest top) so its absence never leaves a gap in the column */
+      #helpBtn {
+        top: 118px;
+      }
+      #muteBtn {
+        top: 160px;
+      }
+      #fsBtn {
+        top: 202px;
+      }
+      #muteBtn.muted {
+        color: #c9708a;
+      }
+      #muteBtn .slash {
+        opacity: 0;
+      }
+      #muteBtn.muted .wave {
+        opacity: 0.2;
+      }
+      #muteBtn.muted .slash {
+        opacity: 1;
+      }
+      #helpPanel {
+        position: fixed;
+        right: 56px;
+        top: 118px;
+        z-index: 7;
+        width: min(78vw, 270px);
+        font-size: 11px;
+        line-height: 1.7;
+        color: var(--hot);
+        text-transform: none;
+        letter-spacing: 0.03em;
+        background: rgba(8, 8, 22, 0.92);
+        border: 1px solid rgba(25, 227, 255, 0.3);
+        border-radius: 12px;
+        padding: 13px 15px;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(6px);
+        transition:
+          opacity 0.16s,
+          transform 0.16s;
+        box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+      }
+      #helpPanel.show {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+      }
+      #helpPanel h2 {
+        font-size: 14px;
+        letter-spacing: 0.2em;
+        color: var(--purple);
+        margin-bottom: 8px;
+        text-shadow: 0 0 10px rgba(177, 76, 255, 0.6);
+      }
+      #helpPanel b {
+        color: var(--cyan);
+        font-weight: 700;
+      }
+      #helpPanel p {
+        margin: 0 0 7px;
+        opacity: 0.85;
+      }
+      #perf {
+        position: absolute;
+        bottom: 12px;
+        right: 14px;
+        font-size: 10px;
+        opacity: 0.55;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: pre;
+        pointer-events: auto;
+        cursor: pointer;
+        line-height: 1.5;
+      }
+      #perf:hover {
+        opacity: 0.85;
+      }
+      .tz {
+        position: fixed;
+        pointer-events: auto;
+        background: transparent;
+      }
+      #tzL {
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 38%;
+      }
+      #tzR {
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 38%;
+      }
+      #tzP {
+        left: 38%;
+        right: 38%;
+        top: 0;
+        bottom: 0;
+      }
+      #tilt {
+        position: absolute;
+        left: 50%;
+        top: 16%;
+        transform: translateX(-50%);
+        font-size: clamp(24px, 5vw, 44px);
+        font-weight: 700;
+        color: var(--amber);
+        text-shadow: 0 0 20px rgba(255, 179, 71, 0.9);
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      #tilt.show {
+        opacity: 1;
+      }
+      #pause {
+        position: absolute;
+        inset: 0;
+        display: none;
+        place-content: center;
+        text-align: center;
+        background: rgba(5, 5, 15, 0.72);
+      }
+      #pause.show {
+        display: grid;
+      }
+      #pause h1 {
+        font-size: clamp(26px, 6vw, 52px);
+        letter-spacing: 0.3em;
+        color: var(--cyan);
+        text-shadow: 0 0 24px rgba(25, 227, 255, 0.6);
+      }
+      #pause p {
+        margin-top: 10px;
+        font-size: 12px;
+        opacity: 0.7;
+      }
+      /* the plunger control IS the meter: press and drag DOWN to pull, release to fire — one gesture, mirroring the physical mechanism */
+      #pull {
+        position: fixed;
+        right: 18px;
+        bottom: 70px;
+        width: 46px;
+        height: 150px;
+        border-radius: 24px;
+        border: 1px solid var(--cyan);
+        background: rgba(25, 227, 255, 0.07);
+        box-shadow: 0 0 16px rgba(25, 227, 255, 0.25) inset;
+        pointer-events: auto;
+        opacity: 0;
+        transform: scale(0.85);
+        transition:
+          opacity 0.2s,
+          transform 0.2s;
+        touch-action: none;
+        -webkit-tap-highlight-color: transparent;
+        overflow: visible;
+      }
+      #pull .lab {
+        position: absolute;
+        bottom: 100%;
+        margin-bottom: 7px;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        color: var(--cyan);
+        opacity: 0.8;
+        pointer-events: none;
+        text-shadow: 0 0 8px rgba(25, 227, 255, 0.6);
+      }
+      #pull .lab b {
+        display: block;
+        font-size: 12px;
+        letter-spacing: 0.14em;
+      }
+      #chargebar {
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        top: 4px;
+        height: 26px;
+        border-radius: 20px;
+        background: linear-gradient(180deg, var(--cyan), var(--purple));
+        opacity: 0.85;
+        pointer-events: none;
+      }
+      #knob {
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        top: 4px;
+        height: 38px;
+        border-radius: 19px;
+        background: rgba(245, 247, 255, 0.92);
+        box-shadow:
+          0 2px 8px rgba(0, 0, 0, 0.5),
+          inset 0 -3px 6px rgba(0, 0, 0, 0.25);
+        pointer-events: none;
+      }
+      #pull.show {
+        opacity: 1;
+        transform: scale(1);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #msg p {
+          animation: none;
+        }
+      }
+      #err {
+        position: fixed;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        z-index: 99;
+        display: none;
+        padding: 12px 14px;
+        border: 1px solid var(--purple);
+        border-radius: 8px;
+        background: rgba(14, 4, 24, 0.95);
+        color: #ecd7ff;
+        font-size: 11px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-word;
+        text-transform: none;
+        letter-spacing: 0;
+        max-height: 40vh;
+        overflow: auto;
+      }
+      #err.show {
+        display: block;
+      }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="hud">
+      <div id="scorebox">
+        <div id="score" class="glow-c">0</div>
+        <div id="mult">&times;1 bonus</div>
+      </div>
+      <div id="stat">
+        ball <b id="ball">-</b><br />high <span id="high">0</span>
+      </div>
+      <div id="tilt">T I L T</div>
+      <div id="msg" class="show">
+        <h1>NEON<i>GUTTER</i></h1>
+        <p id="msgp">press enter / tap to start</p>
+      </div>
+      <div id="perf"></div>
+      <div id="pull">
+        <span class="lab"><b>PULL</b> &#8595;</span><i id="chargebar"></i
+        ><i id="knob"></i>
+      </div>
+      <div id="pause">
+        <h1>PAUSED</h1>
+        <p>tap, ESC or Enter to resume</p>
+      </div>
+    </div>
+    <button class="iconbtn" id="helpBtn" title="How to play (H)">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+      </svg>
+    </button>
+    <button class="iconbtn" id="muteBtn" title="Sound (S)">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="wave"></path>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="wave"></path>
+        <line x1="14" y1="6" x2="22" y2="18" class="slash"></line>
+        <line x1="22" y1="6" x2="14" y2="18" class="slash"></line>
+      </svg>
+    </button>
+    <button class="iconbtn" id="fsBtn" title="Fullscreen (F)">
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <polyline points="3 9 3 3 9 3"></polyline>
+        <polyline points="21 9 21 3 15 3"></polyline>
+        <polyline points="3 15 3 21 9 21"></polyline>
+        <polyline points="21 15 21 21 15 21"></polyline>
+      </svg>
+    </button>
+    <div id="helpPanel">
+      <h2>NEON GUTTER</h2>
+      <p>
+        <b>Flip:</b> Z / &#8592; and M / &#8594; &mdash; or tap the left / right
+        half of the screen.
+      </p>
+      <p>
+        <b>Launch:</b> drag the plunger handle down and release &mdash; or hold
+        SPACE. Reach a top lane quickly for a <b>skill shot</b> bonus.
+      </p>
+      <p>
+        <b>Nudge:</b> N / &#8593; &mdash; or swipe up mid-screen. Three in four
+        seconds is a TILT.
+      </p>
+      <p>
+        <b>Score:</b> bumpers &amp; slings; light all 3 top lanes to raise the
+        bonus multiplier. Flipper presses <b>shift</b> the lit lanes left /
+        right.
+      </p>
+      <p style="opacity: 0.55; margin: 0">
+        <b>ESC</b> pause &middot; <b>ENTER</b> start &middot; <b>S</b> sound
+        &middot; <b>F</b> fullscreen
+      </p>
+    </div>
+    <div class="tz" id="tzL"></div>
+    <div class="tz" id="tzP"></div>
+    <div class="tz" id="tzR"></div>
+    <div id="err"></div>
+
+    <script>
+      /* Global error trap, installed before anything else can fail. Capture phase (3rd arg true) also sees RESOURCE load failures — a script or stylesheet that fails to download gets named here with its URL. */
+      (function () {
+        const show = (txt) => {
+          const el = document.getElementById("err");
+          if (!el) return;
+          el.textContent =
+            "⚠ " + txt + (el.textContent ? "\n\n" + el.textContent : "");
+          el.classList.add("show");
+        };
+        window.__fatal = show;
+        window.addEventListener(
+          "error",
+          (e) => {
+            if (
+              e.target &&
+              e.target !== window &&
+              (e.target.src || e.target.href)
+            ) {
+              show(
+                "RESOURCE FAILED TO LOAD: " + (e.target.src || e.target.href),
+              );
+              return;
+            }
+            show(
+              (e.message || "unknown error") +
+                (e.filename
+                  ? "\n" + e.filename + ":" + e.lineno + ":" + e.colno
+                  : "") +
+                (e.error && e.error.stack ? "\n" + e.error.stack : ""),
+            );
+          },
+          true,
+        );
+        window.addEventListener("unhandledrejection", (e) => {
+          show(
+            "unhandled rejection: " +
+              ((e.reason && (e.reason.stack || e.reason.message)) || e.reason),
+          );
+        });
+      })();
+    </script>
+    <script type="module">
+      import * as THREE from "https://unpkg.com/three@0.185.1/build/three.module.js";
+      /* ============================================================================
+        NEON GUTTER — single-file 3D pinball
+        ----------------------------------------------------------------------------
+        Architecture notes:
+
+        1. Physics is 2-D on the playfield plane, in REAL units: a 0.514 m × 1.07 m playfield, a 27 mm ball, gravity g·sin(6.5°) — the actual geometry of a standard-body machine.
+          Rendering is a pure function of physics state.
+
+        2. Fixed timestep, 480 Hz, driven by an accumulator ("Fix Your Timestep").
+          Render state is interpolated between the last two physics states, so motion is smooth at 30, 60, 144 or 240 fps and the simulation is identical on all of them.
+          Accumulator is clamped to kill the spiral of death; it is reset on tab-blur.
+
+        3. Inside every physics step the ball moves by CONTINUOUS collision detection: analytic swept-circle vs. capsule (segments) and swept-circle vs. circle time-of-impact.
+          The ball is advanced to the earliest TOI, the impulse is resolved, and the remaining step time is re-swept (up to 5 deflections per step).
+          A ball moving 5 m/s therefore cannot pass through a 0-thickness wall regardless of frame rate.
+
+        4. Flippers are the only moving colliders. They rotate ≤ 0.071 rad per 480 Hz step (tip travel ≈ 4.7 mm, well under the 23.5 mm combined contact radius),
+          and the ball speed is capped so per-step travel stays below the contact radius too, so the frozen-pose TOI test per substep is sufficient — no tunneling through a mid-swing flipper.
+          Flipper energy transfer is physical: impulses are computed against the surface velocity ω×r at the contact point, so cradling, dead bounces and tip shots all emerge naturally.
+          Powered elements (slings, bumpers) jitter their kick normal ±2.5° via a SEEDED PRNG — real rubber isn't perfect, it provably breaks closed periodic orbits, and the sim stays exactly reproducible.
+          Math.random() is reserved for cosmetics.
+
+        5. Zero allocation in the physics path: sweep routines write into one reusable hit record, gameplay events go through a fixed pool of reused records, vectors are scalar locals, and DOM writes are batched to one per rendered frame.
+          Rendering uses two InstancedMesh draws for all rails plus a handful of meshes; effects are pooled.
+          All reflections(c hrome ball, clearcoat playfield lacquer) are prefiltered-environment lookups from a single PMREM baked at startup — constant per-pixel cost, no render-to-texture, no postprocessing chain.
+          No physics engine, no dependencies beyond three.js.
+      ============================================================================ */
+      ("use strict");
+
+      /* ------------------------------- CONFIG ----------------------------------
+      Single source of truth for every tunable: real-world table dimensions, solver settings, element layout (right side is DERIVED by mirroring the left about the playfield centre), and all gameplay numbers. */
+      const CONFIG = {
+        table: {
+          width: 0.514,
+          length: 1.07,
+          ballR: 0.0135,
+          slopeDeg: 6.5,
+          laneX: 0.469,
+          apron: 0.015,
+          /* playfield alpha: <1 lets the starfield bleed through the darkest areas of the wood without washing out the neon art */
+          opacity: 0.46,
+          /* slingshot elastic-band overlay opacity (bow-and-snap) */
+          slingBandAlpha: 0.6,
+        },
+        physics: {
+          hz: 480,
+          maxFrame: 0.25,
+          maxSpeed: 5.5,
+          damping: 0.1,
+          skin: 1e-4,
+          restThresh: 0.22,
+        },
+        /* Pivot spacing tuned so resting-tip CLEARANCE (gap minus both capsule radii, ~30.5 mm) exceeds the 27 mm ball with a ~3.5 mm centre window — dead-centre drains possible but rare.
+           Guarded by a build-time assert. */
+        flippers: {
+          len: 0.066,
+          r: 0.01,
+          e: 0.45,
+          upSpeed: 34,
+          downSpeed: 16,
+          restDroop: 0.44,
+          hitLift: 0.58,
+          pivotY: 0.935,
+          pivotLX: 0.1495,
+        },
+        /* Fatigue = the trap-termination guarantee: kick strength decays geometrically under rapid re-fire while dissipation stays constant, so closed sling↔wall orbits must bleed out.
+           Deterministic, O(1). */
+        solenoids: {
+          bumperJ: 1.35,
+          slingJ: 1.05,
+          jitter: 0.09,
+          fatigue: {
+            bumper: { f: 0.85, tau: 1.2 },
+            sling: { f: 0.74, tau: 1.6 },
+          },
+        },
+        layout: {
+          arcY: 0.28,
+          arcSegs: 22,
+          guidesX: [0.118, 0.196, 0.274, 0.352],
+          guideY: [0.15, 0.215],
+          guideR: 0.004,
+          laneBand: [0.165, 0.205],
+          bumpers: [
+            [0.15, 0.355],
+            [0.32, 0.355],
+            [0.235, 0.47],
+          ],
+          bumperR: 0.026,
+          sling: [
+            [0.075, 0.72],
+            [0.075, 0.8],
+            [0.145, 0.825],
+          ],
+          funnel: [
+            [0, 0.775],
+            [0.1375, 0.915],
+            [0.1495, 0.948],
+          ],
+          gateInnerY: 0.3,
+          gateOuter: [0.5135, 0.284],
+          laneWallBotY: 0.775,
+          laneFloorY: 0.9485,
+          ballHomeY: 0.9185,
+          /* Ball rest and plunger raised together so the resting ball lines up with the flipper pivots; plungerY cradles the ball. */
+          plungerY: 0.9695,
+          drainY: 1.015,
+          postR: 0.013,
+        },
+        camera: {
+          pos: [0, 0.74, 0.93],
+          look: [0, 0.07, 0.05],
+          fovMin: 42,
+          fovMax: 72,
+          ndcMargin: 0.985,
+        },
+        /* physical falloff: point intensities are candela-like */
+        lights: { ambient: 1.13, giHeat: 0.31, key: 5.2, rim: 1.6 },
+        game: {
+          balls: 3,
+          saveSecs: 8,
+          skillSecs: 4,
+          skillScore: 3000,
+          laneScore: 500,
+          laneBonus: 2500,
+          multMax: 5,
+          slingScore: 50,
+          tierScores: [150, 250, 400],
+          tierHits: 5,
+          comboWindow: 2.5,
+          comboScore: 2500,
+          /* hot bumper: one bumper glows "hot" in a round-robin; hitting it while hot scores big and builds a streak multiplier.
+             Order runs the two top bumpers then the centre; the LAST (index 2, apex) pays most. */
+          hotOrder: [0, 1, 2],
+          hotSecs: 3.0, // how long a bumper stays hot
+          hotGap: 1.6, // dark gap between hots
+          hotScore: [1500, 1500, 3000], // per-index jackpot (apex worth 2×)
+          hotStreakBonus: 1500, // added per consecutive hot-hit
+          /* Capture zone: a flat slanted decal on the shooter-lane tunnel that drifts up/down while dark and freezes when it lights up.
+             A flipper shot striking the tunnel-mouth rail at the zone's live height, while lit, captures the ball briefly then releases it to the play area. */
+          targetX: 0.4915, // lane centre: decal span and the held-ball rest x
+          targetY: 0.41, // drift-range midpoint
+          targetDriftMin: 0.32, // reachable range top
+          targetDriftMax: 0.5, // reachable range bottom
+          targetDriftSpeed: 0.55, // rad/s of the up-down oscillation
+          targetLitSecs: 6.0, // lit long enough to aim a flipper shot
+          targetGapSecs: 4.0, // shorter dark interval
+          targetHoldSecs: 1.5, // capture-hold before release
+          targetScore: 5000,
+          serveDelaySecs: 0.9, // beat between losing a ball and the next serve
+          stingDelaySecs: 0.45, // pause before the game-over sting
+          extraFirst: 50000,
+          extraStep: 100000,
+          tiltNudges: 3,
+          tiltWindowMs: 4000,
+          /* plungeMin BELOW the arc-clear threshold (~1.21 m/s) on purpose: a weak pull loses steam and dribbles back, so the player can't game a fixed minimum for a perfect predictable feed — they must commit to a real pull.
+             Full pull (0.3+4.0) stays punchy. */
+          plungeMin: 0.3,
+          plungeRange: 4.0,
+          chargeSecs: 1.1,
+          kickback: 3.2,
+        },
+      };
+      /* derived — ergonomic names, all reading from CONFIG */
+      const W = CONFIG.table.width,
+        L = CONFIG.table.length,
+        BR = CONFIG.table.ballR;
+      const SLOPE = (CONFIG.table.slopeDeg * Math.PI) / 180;
+      const GRAV = 9.81 * Math.sin(SLOPE);
+      const PHYS_HZ = CONFIG.physics.hz,
+        DT = 1 / PHYS_HZ;
+      const MAX_FRAME = CONFIG.physics.maxFrame,
+        MAX_SPEED = CONFIG.physics.maxSpeed;
+      const LIN_DAMP = CONFIG.physics.damping,
+        SKIN = CONFIG.physics.skin;
+      const REST_THRESH = CONFIG.physics.restThresh;
+      const LANE_X = CONFIG.table.laneX;
+      const mir = (x) => LANE_X - x; // mirror about the playfield centre
+      const LY = CONFIG.layout,
+        GG = CONFIG.game;
+      const BALL_HOME = { x: (LANE_X + W) / 2, y: LY.ballHomeY };
+      const FC = CONFIG.flippers;
+      const FLIP = {
+        len: FC.len,
+        r: FC.r,
+        e: FC.e,
+        upSpeed: FC.upSpeed,
+        downSpeed: FC.downSpeed,
+        L: {
+          px: FC.pivotLX,
+          py: FC.pivotY,
+          rest: FC.restDroop,
+          hit: -FC.hitLift,
+        },
+        R: {
+          px: mir(FC.pivotLX),
+          py: FC.pivotY,
+          rest: Math.PI - FC.restDroop,
+          hit: Math.PI + FC.hitLift,
+        },
+      };
+      const BUMPER_KICK = CONFIG.solenoids.bumperJ,
+        SLING_KICK = CONFIG.solenoids.slingJ;
+      const FATIGUE = {
+        bumper: { k: BUMPER_KICK, ...CONFIG.solenoids.fatigue.bumper },
+        sling: { k: SLING_KICK, ...CONFIG.solenoids.fatigue.sling },
+      };
+
+      /* Deterministic PRNG for physics-side jitter (mulberry32).
+         Real rubber and real pop-bumper skirts are not geometrically perfect; a ±2.5° kick jitter provably breaks the closed periodic orbits (sling ↔ wall ↔ sling …) that pure specular reflection admits.
+         Seeded, so the sim stays reproducible — Math.random() is reserved strictly for cosmetics. */
+      let rngState = 0x9e3779b9;
+      function rand() {
+        rngState |= 0;
+        rngState = (rngState + 0x6d2b79f5) | 0;
+        let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+
+      /* ------------------------- SWEPT COLLISION CORE --------------------------- */
+      /* One reusable hit record — no allocation while solving. */
+      const HIT = { t: 0, nx: 0, ny: 1, depen: 0, col: null };
+      let bestT;
+
+      /* Candidate contact.
+         Overlapping contacts (depen>0) outrank future TOIs and are ranked among themselves by depth; future TOIs race on earliest time. */
+      function consider(t, nx, ny, depen, col) {
+        if (depen > 0) {
+          if (bestT > 0 || depen > HIT.depen) {
+            bestT = 0;
+            HIT.t = 0;
+            HIT.nx = nx;
+            HIT.ny = ny;
+            HIT.depen = depen;
+            HIT.col = col;
+          }
+        } else if (t < bestT) {
+          bestT = t;
+          HIT.t = t;
+          HIT.nx = nx;
+          HIT.ny = ny;
+          HIT.depen = 0;
+          HIT.col = col;
+        }
+      }
+
+      /* Swept circle (p, v, radius reff) vs point circle (cx,cy,R) over time span t. */
+      function sweepVsCircle(px, py, vx, vy, tmax, cx, cy, R, col) {
+        const mx = px - cx,
+          my = py - cy;
+        const c = mx * mx + my * my - R * R;
+        if (c < 0) {
+          // already overlapping
+          const d = Math.sqrt(mx * mx + my * my) || 1e-9;
+          consider(0, mx / d, my / d, R - d, col);
+          return;
+        }
+        const b = mx * vx + my * vy;
+        if (b >= 0) return; // separating
+        const a = vx * vx + vy * vy;
+        const disc = b * b - a * c;
+        if (disc < 0 || a < 1e-12) return;
+        const t = (-b - Math.sqrt(disc)) / a;
+        if (t < 0 || t > tmax) return;
+        const hx = px + vx * t - cx,
+          hy = py + vy * t - cy;
+        const d = Math.sqrt(hx * hx + hy * hy) || 1e-9;
+        consider(t, hx / d, hy / d, 0, col);
+      }
+
+      /* Swept circle vs capsule (segment inflated by reff). */
+      function sweepVsSegment(px, py, vx, vy, tmax, col, reff) {
+        const ax = col.ax,
+          ay = col.ay;
+        const abx = col.bx - ax,
+          aby = col.by - ay;
+        const len2 = abx * abx + aby * aby;
+        const inv = 1 / Math.sqrt(len2);
+        let nx = -aby * inv,
+          ny = abx * inv;
+        let d = (px - ax) * nx + (py - ay) * ny;
+        if (d < 0) {
+          nx = -nx;
+          ny = -ny;
+          d = -d;
+        }
+
+        /* one-way gate: POSITION-based.
+           If the ball's centre is on the pass-through (lane) side, the gate doesn't exist; once the centre crosses, it is a solid wall.
+           Velocity-based checks flicker for a ball resting on the gate (vy oscillates around 0 in contact) and drop it through — this doesn't. */
+        if (col.ow && (px - ax) * col.owx + (py - ay) * col.owy < 0) return;
+
+        if (d < reff) {
+          // starting inside the slab
+          const s = ((px - ax) * abx + (py - ay) * aby) / len2;
+          if (s >= 0 && s <= 1) {
+            consider(0, nx, ny, reff - d, col);
+            return;
+          }
+        } else {
+          const vn = vx * nx + vy * ny;
+          if (vn < -1e-9) {
+            const t = (d - reff) / -vn;
+            if (t >= 0 && t <= tmax) {
+              const s =
+                ((px + vx * t - ax) * abx + (py + vy * t - ay) * aby) / len2;
+              if (s >= 0 && s <= 1) {
+                consider(t, nx, ny, 0, col);
+                return;
+              }
+            }
+          }
+        }
+        /* end caps */
+        sweepVsCircle(px, py, vx, vy, tmax, ax, ay, reff, col);
+        sweepVsCircle(px, py, vx, vy, tmax, col.bx, col.by, reff, col);
+      }
+
+      /* ------------------------------ TABLE DATA -------------------------------- */
+      const SEGS = [],
+        CIRCS = [];
+
+      function seg(ax, ay, bx, by, o) {
+        console.assert(
+          (bx - ax) * (bx - ax) + (by - ay) * (by - ay) > 1e-12,
+          "degenerate segment",
+        );
+        const s = Object.assign(
+          {
+            ax,
+            ay,
+            bx,
+            by,
+            rad: 0,
+            e: 0.32,
+            mu: 0.02,
+            kind: "wall",
+            ow: false,
+            flip: null,
+          },
+          o,
+        );
+        SEGS.push(s);
+        return s;
+      }
+
+      function circ(cx, cy, cr, o) {
+        const c = Object.assign(
+          { cx, cy, cr, e: 0.4, mu: 0.02, kind: "post" },
+          o,
+        );
+        CIRCS.push(c);
+        return c;
+      }
+
+      /* outer + funnel rails — right side mirrored from the left */
+      seg(0, LY.arcY, 0, LY.laneWallBotY);
+      seg(LY.funnel[0][0], LY.funnel[0][1], LY.funnel[1][0], LY.funnel[1][1]);
+      seg(LY.funnel[1][0], LY.funnel[1][1], LY.funnel[2][0], LY.funnel[2][1]);
+      seg(LANE_X, LY.gateInnerY, LANE_X, LY.laneWallBotY, {
+        bridgeMouth: true,
+      });
+      seg(
+        mir(LY.funnel[0][0]),
+        LY.funnel[0][1],
+        mir(LY.funnel[1][0]),
+        LY.funnel[1][1],
+      );
+      seg(
+        mir(LY.funnel[1][0]),
+        LY.funnel[1][1],
+        mir(LY.funnel[2][0]),
+        LY.funnel[2][1],
+      );
+      seg(W, LY.arcY, W, LY.laneFloorY);
+      seg(LANE_X, LY.laneFloorY, W, LY.laneFloorY, {
+        kind: "floor",
+        e: 0.15,
+        noRender: true,
+      });
+      /* one-way gate at the shooter-lane exit.
+         Its inner endpoint COINCIDES with the lane-wall top: any ball that settles on the gate rolls down its slope, around the shared rounded endpoint, and drops into the playfield.
+        */
+      {
+        const g = seg(LANE_X, LY.gateInnerY, LY.gateOuter[0], LY.gateOuter[1], {
+          ow: true,
+          e: 0.1,
+          kind: "gate",
+        });
+        const dx = g.bx - g.ax,
+          dy = g.by - g.ay,
+          il = 1 / Math.hypot(dx, dy);
+        g.owx = -dy * il;
+        g.owy = dx * il; // unit normal…
+        if (g.owy > 0) {
+          g.owx = -g.owx;
+          g.owy = -g.owy;
+        } // …pointing up-table
+      }
+
+      /* top arc as a polyline — same code path as every other wall */
+      {
+        const cx = W / 2,
+          r = W / 2,
+          N = LY.arcSegs;
+        let lx = 0,
+          ly = LY.arcY;
+        for (let i = 1; i <= N; i++) {
+          const a = Math.PI + (i / N) * Math.PI;
+          const x = cx + r * Math.cos(a),
+            y = LY.arcY + r * Math.sin(a);
+          seg(lx, ly, x, y, { kind: "arc" });
+          lx = x;
+          ly = y;
+        }
+      }
+
+      /* rollover lane guides (capsules) */
+      const GUIDE_X = LY.guidesX;
+      for (const gx of GUIDE_X)
+        seg(gx, LY.guideY[0], gx, LY.guideY[1], {
+          rad: LY.guideR,
+          kind: "guide",
+          e: 0.25,
+        });
+
+      /* slingshots — active face carries the kick */
+      function sling(ax, ay, bx, by, cx2, cy2) {
+        seg(ax, ay, bx, by, { kind: "slingBack", e: 0.3 });
+        seg(bx, by, cx2, cy2, { kind: "slingBack", e: 0.3 });
+        return seg(ax, ay, cx2, cy2, {
+          kind: "sling",
+          e: 0.5,
+          cool: 0,
+          heat: 0,
+          lastKick: -Infinity,
+        });
+      }
+
+      const slings = [
+        sling(...LY.sling[0], ...LY.sling[1], ...LY.sling[2]),
+        sling(
+          mir(LY.sling[0][0]),
+          LY.sling[0][1],
+          mir(LY.sling[1][0]),
+          LY.sling[1][1],
+          mir(LY.sling[2][0]),
+          LY.sling[2][1],
+        ),
+      ];
+
+      /* pop bumpers + pivot posts */
+      /* No separate collider: when the capture zone is ARMED, a flipper shot striking the tunnel-mouth rail at the zone's live height IS the trigger.
+         This flag (mirrored with the live y) is the whole mechanism. */
+      const laneTarget = { armed: false, y: 0.5 }; // y mirrors game.tgtY for physics
+      const bumpers = LY.bumpers.map(([bx, by]) =>
+        circ(bx, by, LY.bumperR, {
+          kind: "bumper",
+          e: 0.6,
+          cool: 0,
+          heat: 0,
+          lastKick: -Infinity,
+        }),
+      );
+      bumpers.forEach((b, i) => {
+        b.idx = i;
+      });
+      circ(FLIP.L.px, FLIP.L.py, LY.postR, { e: 0.3 });
+      circ(FLIP.R.px, FLIP.R.py, LY.postR, { e: 0.3 });
+
+      /* -------------------------------- FLIPPERS -------------------------------- */
+      class Flipper {
+        constructor(cfg) {
+          this.px = cfg.px;
+          this.py = cfg.py;
+          this.rest = cfg.rest;
+          this.hit = cfg.hit;
+          this.a = cfg.rest;
+          this.pa = cfg.rest; // angle + previous (for interp)
+          this.w = 0; // angular velocity applied this step
+          this.pressed = false;
+          this.col = seg(
+            this.px,
+            this.py,
+            this.px + Math.cos(this.a) * FLIP.len,
+            this.py + Math.sin(this.a) * FLIP.len,
+            { rad: FLIP.r, e: FLIP.e, mu: 0.08, kind: "flipper", flip: this },
+          );
+        }
+
+        sync() {
+          this.col.ax = this.px;
+          this.col.ay = this.py;
+          this.col.bx = this.px + Math.cos(this.a) * FLIP.len;
+          this.col.by = this.py + Math.sin(this.a) * FLIP.len;
+        }
+
+        step(dt) {
+          this.pa = this.a;
+          const target = this.pressed ? this.hit : this.rest;
+          const speed = this.pressed ? FLIP.upSpeed : FLIP.downSpeed;
+          const d = target - this.a;
+          if (Math.abs(d) > 1e-5) {
+            const move = Math.sign(d) * Math.min(Math.abs(d), speed * dt);
+            this.a += move;
+            this.w = move / dt;
+          } else this.w = 0;
+          this.sync();
+        }
+      }
+
+      const flipperL = new Flipper(FLIP.L);
+      const flipperR = new Flipper(FLIP.R);
+      {
+        /* invariant: a dead ball must drain between resting flippers */
+        const tipGap = flipperR.col.bx - flipperL.col.bx;
+        const clearance = tipGap - 2 * FLIP.r;
+        console.assert(
+          clearance > 2 * BR * 1.08,
+          `flipper rest clearance ${(clearance * 1000).toFixed(1)}mm must exceed ball ${(2 * BR * 1000).toFixed(1)}mm`,
+        );
+      }
+
+      /* --------------------------------- WORLD ---------------------------------- */
+      /* Fixed pool of event records, reused every frame — physics allocates nothing. 32 is generous: events are rate-limited by element cooldowns. */
+      const EV_POOL = Array.from({ length: 32 }, () => ({
+        k: "",
+        x: 0,
+        y: 0,
+        i: 0,
+        v: 0,
+      }));
+      let evCount = 0;
+      function pushEvent(k, x, y, i, v) {
+        if (evCount >= EV_POOL.length) return; // overflow: drop, never grow
+        const e = EV_POOL[evCount++];
+        e.k = k;
+        e.x = x;
+        e.y = y;
+        e.i = i;
+        e.v = v;
+      }
+
+      const world = {
+        px: BALL_HOME.x,
+        py: BALL_HOME.y,
+        vx: 0,
+        vy: 0,
+        ppx: BALL_HOME.x,
+        ppy: BALL_HOME.y,
+        active: false, // physics running for the ball?
+        captured: false, // held by the capture zone (physics-owned)
+        flippersLive: true, // false while tilted
+        time: 0,
+        wallCool: 0,
+
+        place(x, y) {
+          this.px = this.ppx = x;
+          this.py = this.ppy = y;
+          this.vx = this.vy = 0;
+        },
+
+        queryFirstHit(tmax) {
+          bestT = Infinity;
+          HIT.col = null;
+          HIT.depen = 0;
+          const { px, py, vx, vy } = this;
+          for (let i = 0; i < SEGS.length; i++) {
+            /* flippersLive means the COILS have power (no actuation, no kicks) — a tilted machine's flippers are unpowered, not dematerialised.
+               They stay solid at rest; the ball rattles off them and drains through the gap, exactly like real dead hardware. */
+            sweepVsSegment(px, py, vx, vy, tmax, SEGS[i], BR + SEGS[i].rad);
+          }
+          for (let i = 0; i < CIRCS.length; i++) {
+            const c = CIRCS[i];
+            sweepVsCircle(px, py, vx, vy, tmax, c.cx, c.cy, c.cr + BR, c);
+          }
+          return HIT.col ? HIT : null;
+        },
+
+        resolve(hit) {
+          const col = hit.col,
+            nx = hit.nx,
+            ny = hit.ny;
+          /* surface velocity: ω × r at the contact point (flippers only) */
+          let sx = 0,
+            sy = 0;
+          if (col.flip) {
+            const f = col.flip;
+            const cpx = this.px - nx * BR,
+              cpy = this.py - ny * BR;
+            sx = -f.w * (cpy - f.py);
+            sy = f.w * (cpx - f.px);
+          }
+          const rvn = (this.vx - sx) * nx + (this.vy - sy) * ny;
+          const impact = Math.max(0, -rvn);
+          if (rvn < 0) {
+            const e = -rvn < REST_THRESH ? 0 : col.e; // inelastic micro-contacts → stable rest
+            const j = -(1 + e) * rvn;
+            this.vx += j * nx;
+            this.vy += j * ny;
+            const tx = -ny,
+              ty = nx;
+            const rvt = (this.vx - sx) * tx + (this.vy - sy) * ty;
+            this.vx -= rvt * col.mu * tx;
+            this.vy -= rvt * col.mu * ty;
+          }
+          /* element behaviour.
+             Powered elements add a solenoid impulse J on TOP of the restitution bounce already applied above: v_out ≈ e·v_in + J, so exit speed scales with impact speed (soft grazes leave gently, hard hits leave hot) instead of clamping everything to one constant.
+             J is jittered ±2.5° (seeded PRNG, breaks periodic orbits) and fatigued (decays under rapid re-fire — the trap-termination guarantee). */
+          if (
+            (col.kind === "bumper" || col.kind === "sling") &&
+            this.flippersLive
+          ) {
+            const ja = (rand() - 0.5) * 0.09,
+              ca = Math.cos(ja),
+              sa = Math.sin(ja);
+            const kx = nx * ca - ny * sa,
+              ky = nx * sa + ny * ca;
+            const fp = FATIGUE[col.kind];
+            col.heat =
+              col.heat * Math.exp((col.lastKick - this.time) / fp.tau) + 1;
+            col.lastKick = this.time;
+            const J = fp.k * Math.pow(fp.f, col.heat - 1);
+            this.vx += J * kx;
+            this.vy += J * ky;
+            if (this.time > col.cool) {
+              col.cool = this.time + (col.kind === "bumper" ? 0.05 : 0.09);
+              if (col.kind === "bumper")
+                pushEvent(
+                  "bumper",
+                  this.px - nx * BR,
+                  this.py - ny * BR,
+                  col.idx,
+                  impact,
+                );
+              else
+                pushEvent(
+                  "sling",
+                  this.px - nx * BR,
+                  this.py - ny * BR,
+                  0,
+                  impact,
+                );
+            }
+          } else if (
+            col.bridgeMouth &&
+            laneTarget.armed &&
+            !this.captured &&
+            Math.abs(this.py - laneTarget.y) < 0.05
+          ) {
+            // flipper shot struck the mouth rail at the zone's live height
+            this.captured = true;
+            laneTarget.armed = false;
+            pushEvent("target", this.px, this.py, 0, impact);
+          } else if (col.flip && impact > 0.35) {
+            pushEvent("flip", this.px - nx * BR, this.py - ny * BR, 0, impact);
+          } else if (impact > 0.9 && this.time > this.wallCool) {
+            this.wallCool = this.time + 0.07;
+            pushEvent("wall", this.px - nx * BR, this.py - ny * BR, 0, impact);
+          }
+        },
+
+        /* one 480 Hz step: integrate → sweep → deflect (≤5) → sweep remainder */
+        step(dt) {
+          this.time += dt;
+          flipperL.step(dt);
+          flipperR.step(dt);
+          this.ppx = this.px;
+          this.ppy = this.py;
+          if (!this.active) return;
+          /* rotate-into depenetration (see ejectFlippers): a flipper that swung onto the ball is an overlap the swept TOI can't catch — it tests the ball's motion, not the capsule's.
+             Run before integration. */
+          this.ejectFlippers();
+
+          this.vy += GRAV * dt;
+          const damp = 1 - LIN_DAMP * dt;
+          this.vx *= damp;
+          this.vy *= damp;
+          const sp2 = this.vx * this.vx + this.vy * this.vy;
+          if (sp2 > MAX_SPEED * MAX_SPEED) {
+            const s = MAX_SPEED / Math.sqrt(sp2);
+            this.vx *= s;
+            this.vy *= s;
+          }
+
+          let t = dt;
+          for (let iter = 0; iter < 5 && t > 1e-7; iter++) {
+            const hit = this.queryFirstHit(t);
+            if (!hit) {
+              this.px += this.vx * t;
+              this.py += this.vy * t;
+              break;
+            }
+            this.px += this.vx * hit.t;
+            this.py += this.vy * hit.t;
+            if (hit.depen > 0) {
+              this.px += hit.nx * hit.depen;
+              this.py += hit.ny * hit.depen;
+            }
+            this.px += hit.nx * SKIN;
+            this.py += hit.ny * SKIN;
+            this.resolve(hit);
+            t -= hit.t;
+          }
+          this.ejectFlippers(); // integrate-into: ball may have driven back in
+        },
+        /* Eject the ball from any moving flipper capsule it overlaps, adding the capsule's surface velocity so it is flung rather than un-stuck.
+           Called both before and after integration, so neither a flipper rotating onto the ball nor the ball integrating into a rotating flipper can leave a penetrating state. */
+        ejectFlippers() {
+          /* up to 3 passes: two flippers rising together can pinch a
+             dead-centre ball — pushing out of one presses into the other, so
+             alternate until clear. One flipper resolves on the first pass. */
+          for (let pass = 0; pass < 3; pass++) {
+            let hitAny = false;
+            for (const f of [flipperL, flipperR]) {
+              if (f.w === 0) continue;
+              const c = f.col,
+                abx = c.bx - c.ax,
+                aby = c.by - c.ay,
+                l2 = abx * abx + aby * aby || 1e-9;
+              let u = ((this.px - c.ax) * abx + (this.py - c.ay) * aby) / l2;
+              u = u < 0 ? 0 : u > 1 ? 1 : u;
+              const cx = c.ax + abx * u,
+                cy = c.ay + aby * u;
+              let dx = this.px - cx,
+                dy = this.py - cy,
+                dd = Math.hypot(dx, dy);
+              const rr = BR + c.rad;
+              if (dd < rr) {
+                if (dd < 1e-6) {
+                  dx = 0;
+                  dy = 1;
+                  dd = 1;
+                }
+                const nx = dx / dd,
+                  ny = dy / dd;
+                this.px = cx + nx * (rr + SKIN);
+                this.py = cy + ny * (rr + SKIN);
+                const svx = -f.w * (cy - f.py),
+                  svy = f.w * (cx - f.px);
+                const rvn = (this.vx - svx) * nx + (this.vy - svy) * ny;
+                if (rvn < 0) {
+                  const j = -(1 + FLIP.e) * rvn;
+                  this.vx += j * nx;
+                  this.vy += j * ny;
+                }
+                hitAny = true;
+              }
+            }
+            if (!hitAny) break;
+          }
+        },
+      };
+
+      /* Persistence: one JSON object under a single key, every touch wrapped so storage-less environments degrade to session-only.
+         Legacy two-key saves (neongutter.best / .muted) migrate on first load. */
+      const SAVE_KEY = "neongutter.save";
+      const SAVE = (() => {
+        try {
+          const o = JSON.parse(localStorage.getItem(SAVE_KEY));
+          if (o && typeof o === "object")
+            return { best: o.best | 0, muted: !!o.muted };
+        } catch {}
+        try {
+          const b = parseInt(localStorage.getItem("neongutter.best"), 10);
+          return {
+            best: Number.isFinite(b) && b > 0 ? b : 0,
+            muted: localStorage.getItem("neongutter.muted") === "1",
+          };
+        } catch {
+          return { best: 0, muted: false };
+        }
+      })();
+
+      const persist = () => {
+        try {
+          localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE));
+        } catch {}
+      };
+      const loadBest = () => SAVE.best;
+      const saveBest = (v) => {
+        SAVE.best = v;
+        persist();
+      };
+      const loadMuted = () => SAVE.muted;
+      const saveMuted = (m) => {
+        SAVE.muted = m;
+        persist();
+      };
+
+      /* --------------------------------- AUDIO ----------------------------------
+        Tiny additive synth + one shared noise buffer.
+         Created lazily on first user gesture.
+         Impact sounds take a hit speed v (m/s) and modulate gain and pitch through imp(v): soft grazes whisper, full hits crack. */
+      const Sfx = {
+        ctx: null,
+        vol: null,
+        nbuf: null,
+        muted: loadMuted(),
+        init() {
+          if (this.ctx) return;
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          try {
+            this.ctx = new AC();
+          } catch (_) {
+            return;
+          }
+          this.vol = this.ctx.createGain();
+          this.vol.gain.value = this.muted ? 0 : 0.22;
+          this.vol.connect(this.ctx.destination);
+          const n = Math.floor(this.ctx.sampleRate * 0.25);
+          this.nbuf = this.ctx.createBuffer(1, n, this.ctx.sampleRate);
+          const d = this.nbuf.getChannelData(0);
+          for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+        },
+        /* iOS: the context can be created (or later flip to) 'suspended' even inside a gesture — resume with a swallowed rejection, called from a one-shot capture-phase listener on the very first interaction */
+        unlock() {
+          this.init();
+          if (this.ctx && this.ctx.state === "suspended")
+            this.ctx.resume().catch(() => {});
+        },
+        /* mute ramps the master gain (no click), cues are also gated (no CPU) */
+        toggleMute() {
+          this.muted = !this.muted;
+          saveMuted(this.muted);
+          if (this.ctx) {
+            const t = this.ctx.currentTime;
+            this.vol.gain.cancelScheduledValues(t);
+            this.vol.gain.setTargetAtTime(this.muted ? 0 : 0.22, t, 0.02);
+          }
+          return this.muted;
+        },
+        /* impact speed → 0..1 response curve */
+        imp(v) {
+          return Math.min(1, Math.max(0, (v - 0.25) / 3.2));
+        },
+        tone(f0, f1, dur, type, g0) {
+          if (!this.ctx || this.muted || g0 < 0.01) return;
+          const t = this.ctx.currentTime;
+          const o = this.ctx.createOscillator(),
+            g = this.ctx.createGain();
+          o.type = type;
+          o.frequency.setValueAtTime(f0, t);
+          o.frequency.exponentialRampToValueAtTime(Math.max(f1, 1), t + dur);
+          g.gain.setValueAtTime(g0, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+          o.connect(g);
+          g.connect(this.vol);
+          o.start(t);
+          o.stop(t + dur + 0.02);
+          o.onended = () => g.disconnect(); // one-shot: no graph accumulation
+        },
+        burst(dur, freq, q, g0) {
+          // bandpass-filtered noise crack
+          if (!this.ctx || this.muted || g0 < 0.01) return;
+          const t = this.ctx.currentTime;
+          const s = this.ctx.createBufferSource();
+          s.buffer = this.nbuf;
+          const f = this.ctx.createBiquadFilter();
+          f.type = "bandpass";
+          f.frequency.value = freq;
+          f.Q.value = q;
+          const g = this.ctx.createGain();
+          g.gain.setValueAtTime(g0, t);
+          g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+          s.connect(f);
+          f.connect(g);
+          g.connect(this.vol);
+          s.start(t);
+          s.stop(t + dur + 0.02);
+          s.onended = () => g.disconnect();
+        },
+        /* --- impacts, modulated by hit speed --- */
+        bumper(v) {
+          const k = this.imp(v);
+          this.tone(200 + 60 * k, 130, 0.09, "square", 0.3 + 0.35 * k);
+          this.tone(880 + 220 * k, 620, 0.07, "sine", 0.2 + 0.25 * k);
+          this.burst(0.03, 2600, 1.5, 0.1 + 0.2 * k);
+        },
+        sling(v) {
+          const k = this.imp(v);
+          this.tone(320 + 80 * k, 190, 0.06, "square", 0.22 + 0.3 * k);
+          this.burst(0.025, 1900, 1.5, 0.08 + 0.18 * k);
+        },
+        flipHit(v) {
+          const k = this.imp(v); // ball meets rubber+bakelite
+          this.tone(150 + 90 * k, 85, 0.07, "triangle", 0.25 + 0.45 * k);
+          this.burst(0.03, 1500 + 900 * k, 1.2, 0.12 + 0.3 * k);
+        },
+        wallTick(v) {
+          const k = this.imp(v);
+          this.burst(0.02, 2800, 2.5, 0.04 + 0.14 * k);
+        },
+        /* --- mechanism sounds --- */
+        flipUp() {
+          this.burst(0.045, 850, 1.0, 0.4);
+          this.tone(75, 52, 0.06, "square", 0.4);
+        },
+        flipDown() {
+          this.burst(0.035, 480, 1.0, 0.16);
+        },
+        ratchet(i) {
+          this.tone(260 + i * 55, 260 + i * 55, 0.03, "square", 0.2);
+          this.burst(0.015, 3200, 3, 0.08);
+        },
+        launch(p) {
+          this.tone(180, 180 + 760 * p, 0.22, "sawtooth", 0.35);
+          this.burst(0.1, 900, 0.8, 0.25 + 0.25 * p);
+        },
+        roll() {
+          this.tone(880, 1320, 0.12, "sine", 0.35);
+        },
+        laneTick() {
+          this.tone(1200, 1100, 0.03, "square", 0.12);
+        },
+        serveClunk() {
+          this.burst(0.05, 700, 1, 0.3);
+          this.tone(120, 80, 0.08, "triangle", 0.3);
+        },
+        nudgeThump() {
+          this.burst(0.08, 240, 0.8, 0.5);
+          this.tone(65, 45, 0.1, "sine", 0.5);
+        },
+        skill() {
+          this.tone(420, 1680, 0.28, "sawtooth", 0.35);
+          this.burst(0.12, 2600, 1.4, 0.2);
+        },
+        extra() {
+          [523, 659, 784, 988, 1319].forEach((f, i) =>
+            setTimeout(() => this.tone(f, f, 0.22, "square", 0.3), i * 90),
+          );
+        },
+        combo() {
+          [660, 880, 1100].forEach((f, i) =>
+            setTimeout(() => {
+              this.tone(f, f * 0.98, 0.08, "square", 0.35);
+              this.burst(0.03, 2200, 1.5, 0.15);
+            }, i * 55),
+          );
+        },
+        newHigh() {
+          this.tone(880, 1760, 0.5, "sine", 0.3);
+          setTimeout(() => this.tone(1320, 1320, 0.3, "triangle", 0.28), 160);
+        },
+        start() {
+          [392, 523, 659].forEach((f, i) =>
+            setTimeout(() => this.tone(f, f, 0.3, "triangle", 0.3), i * 90),
+          );
+        },
+        gameOver() {
+          [523, 466, 392, 311].forEach((f, i) =>
+            setTimeout(() => this.tone(f, f, 0.4, "sine", 0.32), i * 150),
+          );
+        },
+        /* continuous rolling rumble: one looped noise source, gain + filter driven by ball speed each frame — the sound that makes the physics audible */
+        setRoll(speed) {
+          if (!this.ctx) return;
+          if (!this.rollGain) {
+            const src = this.ctx.createBufferSource();
+            src.buffer = this.nbuf;
+            src.loop = true;
+            this.rollFilt = this.ctx.createBiquadFilter();
+            this.rollFilt.type = "bandpass";
+            this.rollFilt.Q.value = 0.9;
+            this.rollGain = this.ctx.createGain();
+            this.rollGain.gain.value = 0;
+            src.connect(this.rollFilt);
+            this.rollFilt.connect(this.rollGain);
+            this.rollGain.connect(this.vol);
+            src.start();
+          }
+          const t = this.ctx.currentTime;
+          const g = Math.min(0.1, Math.max(0, speed - 0.15) * 0.028);
+          this.rollGain.gain.setTargetAtTime(g, t, 0.06);
+          this.rollFilt.frequency.setTargetAtTime(280 + speed * 230, t, 0.08);
+        },
+        drain() {
+          this.tone(420, 55, 0.5, "sawtooth", 0.4);
+        },
+        saved() {
+          this.tone(660, 660, 0.09, "square", 0.3);
+          setTimeout(() => this.tone(990, 990, 0.12, "square", 0.3), 90);
+        },
+        bonus() {
+          [523, 659, 784, 1047].forEach((f, i) =>
+            setTimeout(() => this.tone(f, f, 0.14, "square", 0.32), i * 70),
+          );
+        },
+        tilt() {
+          this.tone(120, 40, 0.6, "square", 0.5);
+        },
+      };
+
+      /* ------------------------------- RENDERING -------------------------------- */
+      /* Failure outside my control: the GL context.
+         Gets a human-readable diagnosis instead of a masked exception. */
+      let renderer;
+      try {
+        renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          powerPreference: "high-performance",
+        });
+      } catch (err) {
+        window.__fatal(
+          "WebGL is unavailable in this browser/webview: " +
+            err.message +
+            "\nTry opening in Safari/Chrome directly.",
+        );
+        throw err;
+      }
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setClearColor(0x05050f, 1);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.18;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.Fog(0x05050f, 1.6, 3.4);
+
+      const camera = new THREE.PerspectiveCamera(
+        42,
+        innerWidth / innerHeight,
+        0.05,
+        20,
+      );
+      const BASE_POS = new THREE.Vector3(...CONFIG.camera.pos);
+      const CAM_BASE = BASE_POS.clone(); // mutated by fitCamera
+      camera.position.copy(CAM_BASE);
+      camera.lookAt(0, 0.07, 0.05);
+
+      /* Stars: a world-space POINTS sphere pinned to the camera every frame (my Eternal Ride method).
+         Being geometry rather than a stretched 2D texture, it is mathematically immune to viewport-aspect skew.
+         Twinkle is per-vertex on the GPU (sin(time*freq+phase) → gl_PointSize + alpha), depth-pinned to the far plane so it never occludes the table. */
+      const starUniforms = {
+        time: { value: 0 },
+        pr: { value: Math.min(devicePixelRatio, 2) },
+      };
+      const starField = (() => {
+        const N = 1100;
+        const pos = new Float32Array(N * 3),
+          col = new Float32Array(N * 3),
+          siz = new Float32Array(N),
+          pha = new Float32Array(N),
+          frq = new Float32Array(N);
+        for (let i = 0; i < N; i++) {
+          const u = Math.random(),
+            v = Math.random();
+          const th = 2 * Math.PI * u,
+            ph = Math.acos(2 * v - 1);
+          pos[i * 3] = Math.sin(ph) * Math.cos(th);
+          pos[i * 3 + 1] = Math.cos(ph);
+          pos[i * 3 + 2] = Math.sin(ph) * Math.sin(th);
+          const r = Math.random();
+          const c =
+            r < 0.16
+              ? [0.72, 0.82, 1.0]
+              : r < 0.3
+                ? [0.92, 0.84, 1.0]
+                : [1, 1, 1];
+          col.set(c, i * 3);
+          const sr = Math.random();
+          siz[i] =
+            sr < 0.02
+              ? 7 + Math.random() * 3 // rare bright
+              : sr < 0.12
+                ? 5 + Math.random() * 2 // medium
+                : 3.5 + Math.random() * 1.5; // common floor raised — no dust
+          pha[i] = Math.random() * 6.283;
+          frq[i] = 0.6 + Math.random() * 2.2;
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+        geo.setAttribute("size", new THREE.BufferAttribute(siz, 1));
+        geo.setAttribute("phase", new THREE.BufferAttribute(pha, 1));
+        geo.setAttribute("freq", new THREE.BufferAttribute(frq, 1));
+        const mat = new THREE.ShaderMaterial({
+          uniforms: starUniforms,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          fog: false,
+          depthTest: true,
+          depthWrite: false,
+          vertexShader: `
+            attribute float size; attribute vec3 color;
+            attribute float phase; attribute float freq;
+            varying vec3 vColor; varying float vTw;
+            uniform float time; uniform float pr;
+            void main(){
+              vColor = color;
+              float tw = sin(time * freq + phase) * 0.35 + 0.65;
+              vTw = tw; // brightness twinkle (used in fragment)
+              vec4 mv = modelViewMatrix * vec4(position, 1.0);
+              // size barely shimmers so small stars never shrink to dust;
+              // the twinkle lives in alpha instead
+              gl_PointSize = size * (0.92 + 0.08 * tw) * pr;
+              vec4 p = projectionMatrix * mv;
+              p.z = p.w * 0.999999;
+              gl_Position = p;
+            }`,
+          fragmentShader: `
+            varying vec3 vColor; varying float vTw;
+            void main(){
+              vec2 c = gl_PointCoord - 0.5;
+              float d = length(c) * 2.0;
+              float core = 1.0 - smoothstep(0.0, 0.25, d);
+              float glow = (1.0 - smoothstep(0.25, 1.0, d)) * 0.35;
+              gl_FragColor = vec4(mix(vec3(1.0), vColor, 0.7), (core + glow) * vTw);
+            }`,
+        });
+        const pts = new THREE.Points(geo, mat);
+        pts.frustumCulled = false;
+        pts.scale.setScalar(60);
+        pts.renderOrder = -10; // draw the sky before the transparent playfield
+        scene.add(pts);
+        return pts;
+      })();
+
+      /* cheap PMREM environment → convincing metal ball & clearcoat speculars.
+         Baked ONCE at startup; every "reflection" in the scene is a constant-cost prefiltered texture lookup — no render-to-texture, no postprocessing. */
+      {
+        const env = new THREE.Scene();
+        env.add(
+          new THREE.Mesh(
+            new THREE.SphereGeometry(5, 8, 8),
+            new THREE.MeshBasicMaterial({
+              color: 0x0a0a22,
+              side: THREE.BackSide,
+            }),
+          ),
+        );
+        const strip = (c, x, y, z, ry, w = 3, h = 0.8) => {
+          const m = new THREE.Mesh(
+            new THREE.PlaneGeometry(w, h),
+            new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide }),
+          );
+          m.position.set(x, y, z);
+          m.rotation.y = ry;
+          env.add(m);
+        };
+        strip(0x19e3ff, 0, 1.6, -2, 0);
+        strip(0xb14cff, -2, 1.2, 0, Math.PI / 2);
+        strip(0xffb347, 2, 1.4, 0, -Math.PI / 2);
+        strip(0x19e3ff, 0, 0.5, 2, 0, 3, 0.25); // low front rim
+        strip(0xb14cff, 0, 2.1, -1.2, 0, 4, 0.18); // thin high accent
+        const softbox = new THREE.Mesh(
+          new THREE.CircleGeometry(1.1, 24),
+          new THREE.MeshBasicMaterial({
+            color: 0xf5f7ff,
+            side: THREE.DoubleSide,
+          }),
+        );
+        softbox.position.set(0, 2.6, 0.8);
+        softbox.rotation.x = Math.PI / 2;
+        env.add(softbox);
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmrem.fromScene(env).texture;
+        pmrem.dispose();
+        env.traverse((o) => {
+          // bake done — free the source scene
+          if (o.geometry) o.geometry.dispose();
+          if (o.material) o.material.dispose();
+        });
+      }
+
+      /* table group — tilted like the real cabinet */
+      const table = new THREE.Group();
+      table.rotation.x = SLOPE;
+      scene.add(table);
+      const TX = (x) => x - W / 2,
+        TZ = (y) => y - L / 2;
+
+      /* playfield: procedural canvas art */
+      {
+        const cv = document.createElement("canvas");
+        cv.width = 1024;
+        cv.height = 2130;
+        const g = cv.getContext("2d");
+        const AP = CONFIG.table.apron; // apron margin: rails never overhang the wood
+        const U = (x) => ((x + AP) / (W + 2 * AP)) * 1024,
+          V = (y) => ((y + AP) / (L + 2 * AP)) * 2130;
+        const OA = CONFIG.table.opacity; // dark base alpha → stars peek through
+        const bg = g.createLinearGradient(0, 0, 0, 2130);
+        bg.addColorStop(0, `rgba(13,14,38,${OA})`);
+        bg.addColorStop(0.55, `rgba(10,10,28,${OA})`);
+        bg.addColorStop(1, `rgba(18,8,28,${OA})`);
+        g.fillStyle = bg;
+        g.clearRect(0, 0, 1024, 2130);
+        g.fillRect(0, 0, 1024, 2130);
+        g.strokeStyle = "rgba(120,140,255,0.06)";
+        g.lineWidth = 2;
+        for (let x = 0; x <= 1024; x += 64) {
+          g.beginPath();
+          g.moveTo(x, 0);
+          g.lineTo(x, 2130);
+          g.stroke();
+        }
+        for (let y = 0; y <= 2130; y += 64) {
+          g.beginPath();
+          g.moveTo(0, y);
+          g.lineTo(1024, y);
+          g.stroke();
+        }
+        const burst = g.createRadialGradient(
+          U(0.235),
+          V(0.42),
+          20,
+          U(0.235),
+          V(0.42),
+          560,
+        );
+        burst.addColorStop(0, "rgba(177,76,255,0.22)");
+        burst.addColorStop(0.5, "rgba(25,227,255,0.10)");
+        burst.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = burst;
+        g.fillRect(0, 0, 1024, 2130);
+        g.strokeStyle = "rgba(25,227,255,0.35)";
+        g.lineWidth = 5;
+        for (const b of bumpers) {
+          g.beginPath();
+          g.arc(U(b.cx), V(b.cy), 78, 0, 7);
+          g.stroke();
+        }
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        const field = new THREE.Mesh(
+          new THREE.PlaneGeometry(
+            W + 2 * CONFIG.table.apron,
+            L + 2 * CONFIG.table.apron,
+          ),
+          new THREE.MeshPhysicalMaterial({
+            map: tex,
+            transparent: CONFIG.table.opacity < 1,
+            depthWrite: CONFIG.table.opacity >= 1, // transparent: don't mask stars
+            roughness: 0.55,
+            metalness: 0.3,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.16,
+            envMapIntensity: 0.85,
+          }),
+        );
+        field.rotation.x = -Math.PI / 2;
+        field.renderOrder = -5; // after stars, before the opaque table furniture
+        table.add(field);
+      }
+
+      /* all rails, drawn 1:1 from the collision data — two instanced draws */
+      let railTubes = null,
+        railCaps = null;
+      const railBase = []; // per-instance base colours, captured at build
+      const railPulses = []; // false for sling geometry — powered elements
+      // keep their own identity, the ambient pulse belongs to the perimeter only
+      const slingViz = []; // instance indices of the sling active faces
+      {
+        const railR = 0.0042,
+          railH = 0.016;
+        const drawSegs = SEGS.filter(
+          (s) => s.kind !== "flipper" && !s.noRender,
+        );
+        const tubeGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
+        const capGeo = new THREE.SphereGeometry(1, 8, 6);
+        const mat = new THREE.MeshBasicMaterial({ toneMapped: false });
+        const tubes = new THREE.InstancedMesh(tubeGeo, mat, drawSegs.length);
+        const caps = new THREE.InstancedMesh(
+          capGeo,
+          mat.clone(),
+          drawSegs.length * 2,
+        );
+        const M = new THREE.Matrix4(),
+          Q = new THREE.Quaternion(),
+          Sv = new THREE.Vector3();
+        const A = new THREE.Vector3(),
+          B = new THREE.Vector3(),
+          MID = new THREE.Vector3(),
+          DIR = new THREE.Vector3(),
+          YUP = new THREE.Vector3(0, 1, 0);
+        const colFor = (s) =>
+          s.kind === "sling" || s.kind === "slingBack"
+            ? 0xb14cff
+            : s.kind === "gate"
+              ? 0xffb347
+              : s.kind === "guide"
+                ? 0xf5f7ff
+                : 0x19e3ff;
+        railTubes = tubes;
+        railCaps = caps;
+        drawSegs.forEach((s, i) => {
+          if (s.kind === "sling")
+            slingViz.push({
+              i,
+              flash: 0,
+              ax: s.ax,
+              ay: s.ay,
+              bx: s.bx,
+              by: s.by,
+              bow: 0,
+              bowV: 0,
+              cx: 0,
+              cy: 0,
+            });
+          A.set(TX(s.ax), railH, TZ(s.ay));
+          B.set(TX(s.bx), railH, TZ(s.by));
+          MID.addVectors(A, B).multiplyScalar(0.5);
+          DIR.subVectors(B, A);
+          const len = DIR.length();
+          DIR.normalize();
+          Q.setFromUnitVectors(YUP, DIR);
+          M.compose(MID, Q, Sv.set(railR, len, railR));
+          tubes.setMatrixAt(i, M);
+          railBase.push(new THREE.Color(colFor(s)));
+          railPulses.push(s.kind !== "sling" && s.kind !== "slingBack");
+          tubes.setColorAt(i, railBase[i]);
+          const QI = new THREE.Quaternion(),
+            SC = Sv.set(railR, railR, railR).clone();
+          M.compose(A, QI, SC);
+          caps.setMatrixAt(i * 2, M);
+          M.compose(B, QI, SC);
+          caps.setMatrixAt(i * 2 + 1, M);
+          caps.setColorAt(i * 2, new THREE.Color(colFor(s)));
+          caps.setColorAt(i * 2 + 1, new THREE.Color(colFor(s)));
+        });
+        table.add(tubes, caps);
+      }
+
+      /* pop bumpers */
+      const bumperViz = bumpers.map((b, i) => {
+        const grp = new THREE.Group();
+        grp.position.set(TX(b.cx), 0, TZ(b.cy));
+        const tint = [0xb14cff, 0x19e3ff, 0xffb347][i];
+        grp.add(
+          new THREE.Mesh(
+            new THREE.CylinderGeometry(b.cr - 0.003, b.cr, 0.03, 24),
+            new THREE.MeshPhysicalMaterial({
+              color: 0x30304f,
+              roughness: 0.22,
+              metalness: 0.92,
+              clearcoat: 0.6,
+              clearcoatRoughness: 0.3,
+            }),
+          ),
+        );
+        // dark chamfer under the cap: a shadow line that separates the glowing top from the metal body so the 3D edge reads
+        const chamfer = new THREE.Mesh(
+          new THREE.CylinderGeometry(b.cr - 0.004, b.cr - 0.001, 0.004, 24),
+          new THREE.MeshStandardMaterial({
+            color: 0x0a0a16,
+            roughness: 0.5,
+            metalness: 0.6,
+          }),
+        );
+        chamfer.position.y = 0.0165;
+        grp.add(chamfer);
+        const cap = new THREE.Mesh(
+          // domed cap (cone-ish) instead of a flat disc → catches a highlight
+          new THREE.CylinderGeometry(b.cr - 0.009, b.cr - 0.005, 0.007, 24),
+          new THREE.MeshBasicMaterial({ color: tint, toneMapped: false }),
+        );
+        cap.position.y = 0.021;
+        grp.add(cap);
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(b.cr, 0.0035, 10, 28),
+          new THREE.MeshBasicMaterial({ color: tint, toneMapped: false }),
+        );
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 0.012;
+        grp.add(ring);
+        /* deliberately NO per-bumper point light: any light over the clearcoat lacquer mirrors as a glow pool on the playfield.
+           Hit feedback comes from the emissive cap/ring flash, the scale pop and the shockwave ring — all light-source-free. */
+        table.add(grp);
+        return { grp, cap, ring, flash: 0, tint };
+      });
+
+      /* flippers */
+      function flipperMesh() {
+        const s = new THREE.Shape();
+        const r0 = FLIP.r,
+          r1 = FLIP.r * 0.72,
+          len = FLIP.len;
+        s.moveTo(0, r0);
+        s.lineTo(len, r1);
+        s.absarc(len, 0, r1, Math.PI / 2, -Math.PI / 2, true);
+        s.lineTo(0, -r0);
+        s.absarc(0, 0, r0, -Math.PI / 2, Math.PI / 2, true);
+        const geo = new THREE.ExtrudeGeometry(s, {
+          depth: 0.014,
+          bevelEnabled: true,
+          bevelThickness: 0.003,
+          bevelSize: 0.002,
+          bevelSegments: 2,
+          curveSegments: 10,
+        });
+        geo.rotateX(Math.PI / 2);
+        geo.translate(0, 0.018, 0);
+        return new THREE.Mesh(
+          geo,
+          new THREE.MeshPhysicalMaterial({
+            color: 0x2a1140,
+            roughness: 0.3,
+            metalness: 0.5,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.12,
+            emissive: 0xb14cff,
+            emissiveIntensity: 0.55,
+          }),
+        );
+      }
+      const flipLViz = flipperMesh(),
+        flipRViz = flipperMesh();
+      flipLViz.position.set(TX(FLIP.L.px), 0, TZ(FLIP.L.py));
+      flipRViz.position.set(TX(FLIP.R.px), 0, TZ(FLIP.R.py));
+      table.add(flipLViz, flipRViz);
+
+      /* ball + fake contact shadow + plunger */
+      /* faint dimples/logo band baked into the ball so its spin is visible — a perfectly uniform chrome sphere looks static however fast it rolls */
+      /* Two great-circle hairlines quarter the sphere: on an equirectangular map, the equator is one horizontal line and the two meridians (lon 0°, 180°) are vertical lines at u=0/1 and u=0.5.
+         Painted on TWO canvases — an emissive map (glowing cyan seams, black elsewhere so the chrome is untinted) and a matching roughness map (seams slightly rougher so they read even in pure reflection).
+         Clean, stylish, unmistakably spinning. */
+      const ballMaps = (() => {
+        const W2 = 512,
+          H2 = 256,
+          LW = 5;
+        const emi = document.createElement("canvas");
+        emi.width = W2;
+        emi.height = H2;
+        const rough = document.createElement("canvas");
+        rough.width = W2;
+        rough.height = H2;
+        const ge = emi.getContext("2d"),
+          gr = rough.getContext("2d");
+        ge.fillStyle = "#000";
+        ge.fillRect(0, 0, W2, H2);
+        gr.fillStyle = "#2e2e2e"; // base roughness ~0.18
+        gr.fillRect(0, 0, W2, H2);
+        const seams = (g, stroke, glow) => {
+          g.strokeStyle = stroke;
+          g.lineWidth = LW;
+          g.shadowColor = glow || "transparent";
+          g.shadowBlur = glow ? 10 : 0;
+          // equator
+          g.beginPath();
+          g.moveTo(0, H2 / 2);
+          g.lineTo(W2, H2 / 2);
+          g.stroke();
+          // two meridians (seam at u=0 wraps, so draw at both edges + centre)
+          for (const x of [1, W2 / 2, W2 - 1]) {
+            g.beginPath();
+            g.moveTo(x, 0);
+            g.lineTo(x, H2);
+            g.stroke();
+          }
+        };
+        seams(ge, "#ffffff", "#ffb347"); // white core, amber glow — tinted per-frame
+        seams(gr, "#cfcfcf"); // brighter = rougher on the seams
+        const mk = (cv, srgb) => {
+          const t = new THREE.CanvasTexture(cv);
+          if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+          t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          return t;
+        };
+        return { emissive: mk(emi, true), rough: mk(rough, false) };
+      })();
+      const ball = new THREE.Mesh(
+        new THREE.SphereGeometry(BR, 40, 28),
+        new THREE.MeshStandardMaterial({
+          color: 0xe8ecf4,
+          metalness: 0.92,
+          roughness: 0.18,
+          envMapIntensity: 1.5,
+          roughnessMap: ballMaps.rough,
+          emissive: 0xffb347,
+          emissiveMap: ballMaps.emissive,
+          emissiveIntensity: 1.2,
+        }),
+      );
+      table.add(ball);
+      const ballShadow = (() => {
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = 64;
+        const g = cv.getContext("2d");
+        const rg = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+        rg.addColorStop(0, "rgba(0,0,0,0.5)");
+        rg.addColorStop(1, "rgba(0,0,0,0)");
+        g.fillStyle = rg;
+        g.fillRect(0, 0, 64, 64);
+        const m = new THREE.Mesh(
+          new THREE.PlaneGeometry(BR * 3.4, BR * 3.4),
+          new THREE.MeshBasicMaterial({
+            map: new THREE.CanvasTexture(cv),
+            transparent: true,
+            depthWrite: false,
+          }),
+        );
+        m.rotation.x = -Math.PI / 2;
+        m.position.y = 0.0015;
+        table.add(m);
+        return m;
+      })();
+      /* plunger: metal rod lying along the lane, rubber tip facing the ball, knob at the back — pulled toward the player (+z) while charging */
+      const plunger = new THREE.Group();
+      {
+        // polished steel — same chrome family as the ball, reads as a real machine part rather than a coloured toy
+        const metal = new THREE.MeshPhysicalMaterial({
+          color: 0xd6dae2,
+          roughness: 0.16,
+          metalness: 1.0,
+          clearcoat: 0.6,
+          clearcoatRoughness: 0.2,
+          envMapIntensity: 1.4,
+        });
+        const rod = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.0045, 0.0045, 0.048, 12),
+          metal,
+        );
+        rod.rotation.x = Math.PI / 2;
+        const tip = new THREE.Mesh(
+          /* open hemisphere: a cup that cradles the ball, not a flat pad */
+          new THREE.SphereGeometry(
+            0.0115,
+            20,
+            12,
+            0,
+            Math.PI * 2,
+            0,
+            Math.PI / 2,
+          ),
+          // brushed steel cup with a faint cyan rim glow so it still reads at rest
+          new THREE.MeshPhysicalMaterial({
+            color: 0xc2c8d2,
+            roughness: 0.28,
+            metalness: 1.0,
+            clearcoat: 0.5,
+            emissive: 0x19e3ff,
+            emissiveIntensity: 0.12,
+            side: THREE.DoubleSide,
+          }),
+        );
+        tip.rotation.x = Math.PI / 2; // apex to +z → opening faces the ball
+        tip.position.z = -0.026;
+        const knob = new THREE.Mesh(
+          new THREE.SphereGeometry(0.011, 20, 14),
+          // the pull handle: the one part a real plunger colours — amber grip
+          new THREE.MeshPhysicalMaterial({
+            color: 0xd98a2b,
+            roughness: 0.35,
+            metalness: 0.4,
+            clearcoat: 0.8,
+            emissive: 0xffb347,
+            emissiveIntensity: 0.45,
+          }),
+        );
+        knob.position.z = 0.028;
+        plunger.add(rod, tip, knob);
+        plunger.position.set(TX(BALL_HOME.x), BR + 0.001, TZ(LY.plungerY));
+        table.add(plunger);
+      }
+
+      /* live neon title sign: drawn once, modulated per frame — breathes and stutters in attract (broken-neon flicker), idles dim in play, surges on multiplier / combo events via titlePulse */
+      const titleCv = document.createElement("canvas");
+      titleCv.width = 1024;
+      titleCv.height = 150;
+      {
+        const g = titleCv.getContext("2d");
+        g.font = '700 112px "Chakra Petch", monospace';
+        g.textBaseline = "middle";
+        g.textAlign = "right";
+        g.shadowBlur = 30;
+        g.shadowColor = "#b14cff";
+        g.fillStyle = "#b14cff";
+        g.fillText("NEON", 492, 80);
+        g.fillText("NEON", 492, 80); // drawn twice on purpose: each pass stacks another copy of the blurred shadow, doubling the neon halo
+        // (the wite pass below then paints the crisp core on top)
+        g.textAlign = "left";
+        g.shadowColor = "#19e3ff";
+        g.fillStyle = "#19e3ff";
+        g.fillText("GUTTER", 532, 80);
+        g.fillText("GUTTER", 532, 80);
+        g.shadowBlur = 0;
+        g.fillStyle = "rgba(255,255,255,0.85)";
+        g.textAlign = "right";
+        g.fillText("NEON", 492, 80);
+        g.textAlign = "left";
+        g.fillText("GUTTER", 532, 80);
+      }
+      const titleTex = new THREE.CanvasTexture(titleCv);
+      titleTex.colorSpace = THREE.SRGBColorSpace;
+      const titlePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.34, 0.0498),
+        new THREE.MeshBasicMaterial({
+          map: titleTex,
+          transparent: true,
+          opacity: 0.2,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+        }),
+      );
+      titlePlane.rotation.x = -Math.PI / 2;
+      titlePlane.position.set(TX(0.2345), 0.0035, TZ(0.655));
+      table.add(titlePlane);
+      let titlePulse = 0;
+
+      /* ball-save lamp between the flippers — the classic shoot-again light */
+      const saveLamp = new THREE.Mesh(
+        new THREE.CircleGeometry(0.01, 20),
+        new THREE.MeshBasicMaterial({
+          color: 0x19e3ff,
+          transparent: true,
+          opacity: 0.05,
+          toneMapped: false,
+        }),
+      );
+      saveLamp.rotation.x = -Math.PI / 2;
+      saveLamp.position.set(TX(0.2345), 0.0025, TZ(0.968));
+      table.add(saveLamp);
+
+      /* Animated drain chevrons: a directional status indicator sitting right at the drain, where the player's eyes already are.
+         A travelling pulse flows through the three of them — UP + cyan while the ball-saver is armed (safe/come-back), DOWN + amber in normal play (mild danger), flaring red + fast when the ball is low (urgency).
+         One additive quad each, colour/opacity driven per frame — no new draw batches of note. */
+      /* Capture zone = a flat, slanted PARALLELOGRAM decal lying on the tunnel at the bridge mouth.
+         Super dim by default, lights bright when active.
+         The slant leans toward the left flipper (the incoming-ball side).
+         No 3D — a single flat quad. */
+      const laneTargetViz = (() => {
+        const zC = TZ(GG.targetY);
+        const xL = TX(LANE_X),
+          xR = TX(W);
+        const H = 0.025, // half-height along the tunnel
+          SLANT = 0.018; // diagonal: inner-rail edge shifted down-tunnel
+        // the inner rail (xL) corners are offset by +SLANT in z relative to the outer rail (xR), so the whole parallelogram slants diagonally toward the flipper side rather than sitting square across the tunnel
+        const geo = new THREE.BufferGeometry();
+        const v = new Float32Array([
+          xL,
+          0.003,
+          zC + H + SLANT, // BL (inner, shifted down-tunnel)
+          xR,
+          0.003,
+          zC + H, // BR (outer)
+          xR,
+          0.003,
+          zC - H, // TR (outer)
+          xL,
+          0.003,
+          zC - H + SLANT, // TL (inner, shifted down-tunnel)
+        ]);
+        geo.setAttribute("position", new THREE.BufferAttribute(v, 3));
+        geo.setIndex([0, 1, 2, 0, 2, 3]);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0x19e3ff,
+          transparent: true,
+          opacity: 0.06, // super dim by default
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        const quad = new THREE.Mesh(geo, mat);
+        table.add(quad);
+        // reposition the quad to a given tunnel-y (drifting capture zone)
+        quad.setY = (ty) => {
+          const z = TZ(ty);
+          const p = geo.attributes.position.array;
+          p[2] = z + H + SLANT; // BL
+          p[5] = z + H; // BR
+          p[8] = z - H; // TR
+          p[11] = z - H + SLANT; // TL
+          geo.attributes.position.needsUpdate = true;
+        };
+        return quad;
+      })();
+      const chevrons = [0, 1, 2].map((i) => {
+        const shape = new THREE.Shape();
+        const w = 0.032,
+          h = 0.02,
+          th = 0.0052; // taller + narrower stroke = pointier
+        shape.moveTo(-w, 0);
+        shape.lineTo(0, -h);
+        shape.lineTo(w, 0);
+        shape.lineTo(w - th, th * 0.9);
+        shape.lineTo(0, -h + th * 1.9);
+        shape.lineTo(-w + th, th * 0.9);
+        const geo = new THREE.ShapeGeometry(shape);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0xb14cff,
+          transparent: true,
+          opacity: 0.5,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        const m = new THREE.Mesh(geo, mat);
+        m.rotation.x = -Math.PI / 2;
+        m.position.set(TX(0.2345), 0.003, TZ(0.985 + i * 0.026));
+        table.add(m);
+        return m;
+      });
+      const CHEV_SAFE = new THREE.Color(0x19e3ff),
+        CHEV_WARN = new THREE.Color(0xffb347),
+        CHEV_DANGER = new THREE.Color(0xff3b30);
+
+      /* rollover lane lights */
+      const laneLights = [0, 1, 2].map((i) => {
+        const x = (GUIDE_X[i] + GUIDE_X[i + 1]) / 2;
+        const m = new THREE.Mesh(
+          new THREE.CircleGeometry(0.011, 20),
+          new THREE.MeshBasicMaterial({
+            color: 0x19e3ff,
+            transparent: true,
+            opacity: 0.15,
+            toneMapped: false,
+          }),
+        );
+        m.rotation.x = -Math.PI / 2;
+        m.position.set(TX(x), 0.002, TZ(0.185));
+        table.add(m);
+        return m;
+      });
+
+      /* lights + stars */
+      const ambient = new THREE.AmbientLight(0x8888bb, CONFIG.lights.ambient);
+      scene.add(ambient);
+      /* key light sits BEHIND and above the camera on purpose: its mirror image through the clearcoat plane must land beyond the table's near edge (z≈1.08 > table edge ≈0.54), or it paints a white specular pool on the playfield bottom.
+         Rim lights' mirror points fall off the sides (x≈±0.53) — verified the same way.
+         Move any light here only after redoing that reflection check. */
+      const key = new THREE.PointLight(0xffffff, CONFIG.lights.key, 5, 2);
+      key.position.set(0, 1.7, 1.5);
+      scene.add(key);
+      const rimL = new THREE.PointLight(0xb14cff, CONFIG.lights.rim, 2.6, 2);
+      rimL.position.set(-0.85, 0.45, 0.15);
+      scene.add(rimL);
+      const rimR = new THREE.PointLight(0x19e3ff, CONFIG.lights.rim, 2.6, 2);
+      rimR.position.set(0.85, 0.45, 0.15);
+      scene.add(rimR);
+      /* low grazing fill from the player side: rakes across the top faces of flippers and bumpers so their upper edges catch a highlight distinct from the vertical walls — restores the 3D read the top-down key flattens */
+      const graze = new THREE.DirectionalLight(0xdfe6ff, 0.5);
+      graze.position.set(0.1, 0.28, 1.4);
+      graze.target.position.set(0, 0, -0.2);
+      scene.add(graze);
+      scene.add(graze.target);
+
+      /* ball trail: a RIBBON, not sprites.
+         One triangle strip threaded through the last ~22 ball positions; width tapers to zero, vertex colour fades to black — which under additive blending IS transparency, so there is no alpha sorting at all.
+         Continuous by construction, one draw call. */
+      const TRAIL_PTS = 22;
+      const trailHist = [];
+      const trailFree = []; // point-object pool: history churn allocates nothing
+      const trailGeo = new THREE.BufferGeometry();
+      {
+        /* 3 vertices per point — edge / core / edge — so the ribbon carries a cross-sectional gradient: near-white over-bright core (additive lets colour exceed 1.0), soft violet edges.
+           Bloom's falloff, in geometry. */
+        const pos = new Float32Array(TRAIL_PTS * 3 * 3);
+        const col = new Float32Array(TRAIL_PTS * 3 * 3);
+        trailGeo.setAttribute(
+          "position",
+          new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage),
+        );
+        trailGeo.setAttribute(
+          "color",
+          new THREE.BufferAttribute(col, 3).setUsage(THREE.DynamicDrawUsage),
+        );
+        const idx = [];
+        for (let i = 0; i < TRAIL_PTS - 1; i++) {
+          const a = i * 3,
+            b = a + 3;
+          idx.push(
+            a,
+            a + 1,
+            b,
+            a + 1,
+            b + 1,
+            b, // left half
+            a + 1,
+            a + 2,
+            b + 1,
+            a + 2,
+            b + 2,
+            b + 1,
+          ); // right half
+        }
+        trailGeo.setIndex(idx);
+      }
+      const trailMesh = new THREE.Mesh(
+        trailGeo,
+        new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          transparent: true,
+          opacity: 0.68,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      trailMesh.frustumCulled = false;
+      trailMesh.visible = false;
+      table.add(trailMesh);
+
+      function updateTrail(bx3, bz3, dtF) {
+        const h = trailHist;
+        const spd = Math.hypot(world.vx, world.vy);
+        /* head anchored BEHIND the ball along its velocity, so the strip's flat leading edge is always hidden under the sphere — no visible cutoff */
+        let hx = bx3,
+          hz = bz3;
+        if (spd > 1e-4) {
+          const back = BR * 0.7;
+          hx -= (world.vx / spd) * back;
+          hz -= (world.vy / spd) * back;
+        }
+        if (h.length && Math.hypot(hx - h[0].x, hz - h[0].z) > 0.08)
+          while (h.length) trailFree.push(h.pop()); // teleport: recycle all
+        if (ball.visible && world.active && spd > 1.2) {
+          if (!h.length || Math.hypot(hx - h[0].x, hz - h[0].z) > 0.006) {
+            const p = trailFree.pop() || { x: 0, z: 0 };
+            p.x = hx;
+            p.z = hz;
+            h.unshift(p);
+          } else {
+            h[0].x = hx;
+            h[0].z = hz;
+          }
+        } else {
+          // retract when slow/hidden
+          let p;
+          if ((p = h.pop())) trailFree.push(p);
+          if ((p = h.pop())) trailFree.push(p);
+        }
+        while (h.length > TRAIL_PTS) trailFree.push(h.pop());
+        const n = h.length;
+        trailMesh.visible = n >= 2;
+        if (!trailMesh.visible) return;
+        const pos = trailGeo.attributes.position.array;
+        const col = trailGeo.attributes.color.array;
+        const sf = Math.min(1, spd / 3.2);
+        let ppx = 0,
+          ppz = 0;
+        for (let i = 0; i < n; i++) {
+          const p = h[i],
+            q = h[Math.min(i + 1, n - 1)];
+          let dx = p.x - q.x,
+            dz = p.z - q.z;
+          if (i === n - 1) {
+            dx = h[n - 2].x - p.x;
+            dz = h[n - 2].z - p.z;
+          }
+          const dl = Math.hypot(dx, dz) || 1;
+          let px = -dz / dl,
+            pz = dx / dl;
+          if (i > 0 && px * ppx + pz * ppz < 0) {
+            px = -px;
+            pz = -pz;
+          } // no twist
+          ppx = px;
+          ppz = pz;
+          const t = i / (n - 1),
+            f = 1 - t;
+          const w = 0.012 * Math.pow(f, 0.65);
+          const br = Math.pow(f, 1.35) * sf;
+          /* hue journey: white-hot cyan head → violet tail */
+          const coreR = (1.0 - 0.55 * t) * br * 1.5;
+          const coreG = (1.0 - 0.45 * t) * br * 1.5;
+          const coreB = 1.15 * br * 1.5;
+          const edgeR = (0.35 + 0.3 * t) * br * 0.45;
+          const edgeG = (0.55 - 0.3 * t) * br * 0.45;
+          const edgeB = 1.0 * br * 0.45;
+          const o = i * 9;
+          pos[o] = p.x - px * w;
+          pos[o + 1] = 0.004;
+          pos[o + 2] = p.z - pz * w;
+          pos[o + 3] = p.x;
+          pos[o + 4] = 0.004;
+          pos[o + 5] = p.z;
+          pos[o + 6] = p.x + px * w;
+          pos[o + 7] = 0.004;
+          pos[o + 8] = p.z + pz * w;
+          col[o] = edgeR;
+          col[o + 1] = edgeG;
+          col[o + 2] = edgeB;
+          col[o + 3] = coreR;
+          col[o + 4] = coreG;
+          col[o + 5] = coreB;
+          col[o + 6] = edgeR;
+          col[o + 7] = edgeG;
+          col[o + 8] = edgeB;
+        }
+        trailGeo.setDrawRange(0, (n - 1) * 12);
+        trailGeo.attributes.position.needsUpdate = true;
+        trailGeo.attributes.color.needsUpdate = true;
+      }
+
+      /* pooled shockwave rings */
+      const rings = Array.from({ length: 10 }, () => {
+        const m = new THREE.Mesh(
+          new THREE.RingGeometry(0.7, 1, 28),
+          new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            side: THREE.DoubleSide,
+            toneMapped: false,
+          }),
+        );
+        m.rotation.x = -Math.PI / 2;
+        m.visible = false;
+        table.add(m);
+        return { m, life: 1 };
+      });
+      let ringIdx = 0;
+
+      /* Contact sparks: a small additive spot dropped at the EXACT hit point on flippers, rails, slings and bumpers — the unifying "everything reacts locally to the ball, not just generally lit" effect.
+         One shared pool of billboarded quads, updated in place, so any number of rapid hits reuses the same fixed set.
+         Complements the surface flash (which stays, dimmed). */
+      const SPARK_N = 12;
+      const sparkTex = (() => {
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = 64;
+        const g = cv.getContext("2d");
+        const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        rg.addColorStop(0, "rgba(255,255,255,1)");
+        rg.addColorStop(0.25, "rgba(255,255,255,0.7)");
+        rg.addColorStop(1, "rgba(255,255,255,0)");
+        g.fillStyle = rg;
+        g.fillRect(0, 0, 64, 64);
+        return new THREE.CanvasTexture(cv);
+      })();
+      const sparks = Array.from({ length: SPARK_N }, () => {
+        const m = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: sparkTex,
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            depthTest: false, // pure overlay: never clip against 3D volumes
+          }),
+        );
+        m.visible = false;
+        m.renderOrder = 10; // composite last, cleanly on top
+        table.add(m);
+        return { m, life: 1, tint: new THREE.Color() };
+      });
+      let sparkIdx = 0;
+      function spawnSpark(x, y, color, scale) {
+        const s = sparks[sparkIdx++ % SPARK_N];
+        s.m.position.set(TX(x), 0.02, TZ(y));
+        s.tint.set(color);
+        s.life = 0;
+        s.scale = scale || 0.03;
+        s.m.visible = true;
+      }
+      function spawnRing(x, y, color) {
+        const r = rings[ringIdx++ % rings.length];
+        r.m.material.color.set(color);
+        r.m.position.set(TX(x), 0.004, TZ(y));
+        r.m.visible = true;
+        r.life = 0;
+      }
+
+      /* --------------------------------- GAME ----------------------------------- */
+      const $ = (id) => document.getElementById(id);
+      const ui = {
+        score: $("score"),
+        ball: $("ball"),
+        high: $("high"),
+        mult: $("mult"),
+        msg: $("msg"),
+        msgp: $("msgp"),
+        perf: $("perf"),
+        chargebar: $("chargebar"),
+        knob: $("knob"),
+        tilt: $("tilt"),
+        pause: $("pause"),
+        pull: $("pull"),
+        helpPanel: $("helpPanel"),
+      };
+
+      const game = {
+        state: "attract",
+        score: 0,
+        high: loadBest(),
+        balls: 0,
+        mult: 1,
+        lanesLit: [false, false, false],
+        laneLatch: [false, false, false],
+        charging: false,
+        charge: 0,
+        dragCharge: null,
+        scoreDirty: false,
+        saveUntil: 0,
+        skillUntil: 0,
+        nextExtra: GG.extraFirst,
+        totalBalls: GG.balls,
+        bumperTimes: [-9, -9, -9],
+        bumperHits: [0, 0, 0],
+        bumperTier: [0, 0, 0],
+        hotIdx: -1, // which bumper is currently hot (-1 = none)
+        hotPos: 0, // position in hotOrder
+        hotTimer: 0, // counts within the current hot/gap phase
+        hotLit: false, // true = a bumper is hot right now
+        hotStreak: 0, // consecutive hot-hits
+        tgtLit: false, // overhead target lit/armed?
+        tgtY: 0.41, // live capture-zone y (drifts while dark, frozen while lit)
+        tgtDrift: rand() * 6.283, // random start spot — SEEDED: the zone's
+        // position gates captures, so it must stay on the deterministic path
+        tgtTimer: 0, // phase timer for the target
+        tgtHeld: false, // currently capturing the ball?
+        tgtHoldT: 0, // capture countdown
+        highBeaten: false,
+        nudges: [],
+        tilted: false,
+        add(pts) {
+          if (this.tilted) return; // tilt kills scoring too
+          this.score += pts * this.mult;
+          this.scoreDirty = true;
+          if (
+            !this.highBeaten &&
+            this.high > 0 &&
+            this.score > this.high &&
+            this.state === "play"
+          ) {
+            this.highBeaten = true;
+            flashMsg("NEW HIGH", "#ffd76a");
+            Sfx.newHigh();
+          }
+          if (this.state === "play" && this.score >= this.nextExtra) {
+            this.nextExtra += GG.extraStep;
+            this.balls++;
+            this.totalBalls++;
+            ui.ball.textContent =
+              this.totalBalls - this.balls + 1 + "/" + this.totalBalls;
+            flashMsg("EXTRA BALL", "#b14cff");
+            Sfx.extra();
+          }
+        },
+        start() {
+          this.score = 0;
+          this.mult = 1;
+          this.balls = GG.balls;
+          this.totalBalls = GG.balls;
+          this.nextExtra = GG.extraFirst;
+          this.skillUntil = 0;
+          this.tilted = false;
+          this.highBeaten = false;
+          this.bumperTimes = [-9, -9, -9];
+          this.lanesLit = [false, false, false];
+          ui.score.textContent = "0";
+          ui.mult.innerHTML = "&times;1 bonus";
+          applyGI();
+          laneLights.forEach((l) => (l.material.opacity = 0.15));
+          ui.msg.classList.remove("show");
+          ui.tilt.classList.remove("show");
+          Sfx.start();
+          this.serve();
+        },
+        serve() {
+          world.place(BALL_HOME.x, BALL_HOME.y);
+          world.active = true;
+          world.flippersLive = true;
+          Sfx.serveClunk();
+          railSurge(0.9); // power-on rail surge, scrim is gone
+          this.state = "lane";
+          this.tilted = false;
+          ui.tilt.classList.remove("show");
+          ui.ball.textContent =
+            this.totalBalls - this.balls + 1 + "/" + this.totalBalls;
+          this.bumperHits = [0, 0, 0];
+          this.bumperTier = [0, 0, 0];
+          bumperViz.forEach((bv, i) => setBumperTier(i, 0));
+          this.armPlunger();
+        },
+        /* Reset the plunger to a clean, ready-to-pull state and show it.
+           Shared by the fresh serve and the re-plunge handback so the "ready" sequence lives in exactly one place. */
+        armPlunger() {
+          this.charge = 0;
+          this.charging = false;
+          this.dragCharge = null;
+          ui.knob.style.transform = "translateY(0px)";
+          ui.chargebar.style.height = "26px";
+          ui.pull.classList.add("show");
+        },
+        launch() {
+          if (this.state !== "lane") return;
+          world.vy = -(GG.plungeMin + GG.plungeRange * this.charge);
+          this.state = "play";
+          this.saveUntil = world.time + GG.saveSecs; // ball saver window
+          this.skillUntil = world.time + GG.skillSecs; // skill shot: reach a top lane in time
+          Sfx.launch(this.charge);
+          this.charge = 0;
+          this.charging = false;
+          this.dragCharge = null;
+          ui.pull.classList.remove("show");
+        },
+        drain() {
+          if (this.state !== "play" && this.state !== "lane") return;
+          /* ball saver: within the grace window (and not tilted), the drain is forgiven — the ball is served back to the lane for the player to re-plunge (no auto-launch, no ball deducted). */
+          if (
+            this.state === "play" &&
+            !this.tilted &&
+            world.time < this.saveUntil
+          ) {
+            world.active = false;
+            Sfx.saved();
+            flashMsg("BALL SAVED", "#19e3ff");
+            this.state = "serving";
+            // hand the saved ball back in the lane — player re-plunges it,
+            // no auto-launch, no ball deducted
+            after(GG.serveDelaySecs, () => this.serve());
+            return;
+          }
+          world.active = false;
+          ui.pull.classList.remove("show");
+          Sfx.drain();
+          shake = Math.max(shake, 1);
+          this.balls--;
+          if (this.balls > 0) {
+            this.state = "serving";
+            after(GG.serveDelaySecs, () => this.serve());
+          } else {
+            this.state = "over";
+            if (this.score > this.high) {
+              this.high = this.score;
+              saveBest(this.high);
+            }
+            ui.high.textContent = this.high.toLocaleString();
+            ui.msg.querySelector("h1").innerHTML = "GAME<i>OVER</i>";
+            ui.msgp.textContent = "enter / tap to play again";
+            ui.msg.classList.add("show");
+            after(GG.stingDelaySecs, () => Sfx.gameOver());
+          }
+        },
+        nudge() {
+          if (this.state !== "play" || this.tilted) return;
+          const now = performance.now();
+          this.nudges = this.nudges.filter((t) => now - t < GG.tiltWindowMs);
+          this.nudges.push(now);
+          Sfx.nudgeThump();
+          world.vx += (rand() - 0.5) * 0.7; // seeded: physics stays replayable
+          world.vy -= 0.28;
+          shake = Math.max(shake, 0.6);
+          if (this.nudges.length === GG.tiltNudges - 1) {
+            flashMsg("WARNING", "#ffb347");
+          }
+          if (this.nudges.length >= GG.tiltNudges) {
+            this.tilted = true;
+            world.flippersLive = false;
+            flipperL.pressed = flipperR.pressed = false;
+            ui.tilt.classList.add("show");
+            Sfx.tilt();
+            // a tilted machine cannot hold a ball: break any capture lock and
+            // let the ball drop free immediately
+            if (this.tgtHeld) {
+              this.tgtHeld = false;
+              world.captured = false;
+              this.tgtLit = false;
+              laneTarget.armed = false;
+              world.px = LANE_X - 0.02;
+              world.vx = -0.4;
+              world.vy = 0.6; // just drop it free onto the playfield
+            }
+          }
+        },
+        laneComplete() {
+          this.mult = Math.min(this.mult + 1, GG.multMax);
+          ui.mult.innerHTML = "&times;" + this.mult + " bonus";
+          /* restart trick: remove class, force reflow, re-add — a rapid second completion replays the pop instead of being swallowed */
+          ui.mult.classList.remove("pop");
+          void ui.mult.offsetWidth;
+          ui.mult.classList.add("pop");
+          applyGI();
+          titlePulse = 1;
+          railSurge(0.7);
+          this.add(GG.laneBonus);
+          Sfx.bonus();
+          this.lanesLit = [false, false, false];
+          laneLights.forEach((l) => (l.material.opacity = 0.15));
+        },
+      };
+
+      ui.high.textContent = game.high.toLocaleString();
+
+      /* bumper tiers: each bumper heats up with hits — 5 hits → tier 2 (250/hit), 10 → tier 3 (400/hit) — cap and ring whitening toward gold.
+         Per-ball. */
+      const TIER_SCORE = GG.tierScores,
+        TIER_MIX = [0, 0.5, 0.95];
+      /* GI heat: the table's ambience warms with the multiplier */
+      const GI_COOL = new THREE.Color(0x8888bb),
+        GI_HOT = new THREE.Color(0xb07fd8);
+      function applyGI() {
+        const k = (game.mult - 1) / 4;
+        ambient.color.copy(GI_COOL).lerp(GI_HOT, k);
+        ambient.intensity = CONFIG.lights.ambient + CONFIG.lights.giHeat * k;
+        renderer.toneMappingExposure = 1.18 + 0.1 * k;
+      }
+      const _tierCol = new THREE.Color(),
+        TIER_GOLD = new THREE.Color(0xfff3c8);
+      const HOT_COL = new THREE.Color(0xffd24a);
+      const _hotBase = new THREE.Color();
+      /* Toggle a bumper's "hot" look: gold cap + strong ring flash.
+         Stored as a flag on the viz so the per-frame pulse can animate it. */
+      function setBumperHot(i, on) {
+        bumperViz[i].hot = on;
+        if (!on) setBumperTier(i, game.bumperTier[i]); // restore normal tint
+      }
+      function setBumperTier(i, tier) {
+        const bv = bumperViz[i];
+        bv.curTint = _tierCol
+          .setHex(bv.tint)
+          .lerp(TIER_GOLD, TIER_MIX[tier])
+          .getHex();
+      }
+      bumperViz.forEach((bv, i) => setBumperTier(i, 0));
+
+      /* Announcements render ON the playfield — the classic display position — over the painted title, which stays as the idle state.
+         The canvas is redrawn only when a message fires (a few times a minute); per frame this is just an opacity/scale envelope on one small additive quad. */
+      const msgCv = document.createElement("canvas");
+      msgCv.width = 768;
+      msgCv.height = 150;
+      const msgTex = new THREE.CanvasTexture(msgCv);
+      msgTex.colorSpace = THREE.SRGBColorSpace;
+      const msgPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.3, 0.0586),
+        new THREE.MeshBasicMaterial({
+          map: msgTex,
+          transparent: true,
+          opacity: 0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+        }),
+      );
+      msgPlane.rotation.x = -Math.PI / 2;
+      msgPlane.position.set(
+        TX(0.2345),
+        0.0037,
+        TZ(0.655),
+      ); /* same depth as the title: parallax-proof alignment */
+      table.add(msgPlane);
+      let msgLife = 1e9;
+      function flashMsg(txt, css) {
+        css = css || "#19e3ff";
+        const g = msgCv.getContext("2d");
+        g.clearRect(0, 0, 768, 150);
+        g.font = '700 84px "Chakra Petch", monospace';
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.shadowColor = css;
+        g.shadowBlur = 34;
+        g.fillStyle = css;
+        g.fillText(txt, 384, 78);
+        g.fillText(txt, 384, 78); // glow buildup
+        g.shadowBlur = 0;
+        g.fillStyle = "rgba(255,255,255,0.92)";
+        g.fillText(txt, 384, 78);
+        msgTex.needsUpdate = true;
+        msgLife = 0; // restart envelope
+      }
+
+      /* sensors that live outside the impulse solver */
+      /* Hot-bumper roam: cycles hotOrder — hotSecs lit, hotGap dark — only during live play.
+         Purely visual/scoring; no physics coupling.
+         Ticked at the fixed physics DT so it is frame-rate independent. */
+      function stepHotBumper() {
+        if (game.state !== "play") {
+          if (game.hotLit) {
+            game.hotLit = false;
+            game.hotIdx = -1;
+            bumperViz.forEach((_, i) => setBumperHot(i, false));
+          }
+          return;
+        }
+        game.hotTimer += DT;
+        if (game.hotLit) {
+          if (game.hotTimer >= GG.hotSecs) {
+            // cooled unhit → break streak, go dark
+            setBumperHot(game.hotIdx, false);
+            game.hotLit = false;
+            game.hotIdx = -1;
+            game.hotStreak = 0;
+            game.hotTimer = 0;
+          }
+        } else if (game.hotTimer >= GG.hotGap) {
+          game.hotPos = (game.hotPos + 1) % GG.hotOrder.length;
+          game.hotIdx = GG.hotOrder[game.hotPos];
+          game.hotLit = true;
+          game.hotTimer = 0;
+          setBumperHot(game.hotIdx, true);
+        }
+      }
+      /* Capture zone: cycles lit (armed) / dark on a timer during play.
+         While dark it drifts up/down; on capture the ball is held for targetHoldSecs then released to the play area. */
+      function stepLaneTarget() {
+        /* drift the capture zone up/down while it is DARK; freeze it in place the moment it lights up, so each activation lands at a different height and the player must aim to wherever it stopped.
+        tgtY drives BOTH the decal visual and the capture collision, so they can never disagree. */
+        if (game.state === "play" && !game.tgtLit && !game.tgtHeld) {
+          game.tgtDrift += GG.targetDriftSpeed * DT;
+          const mid = (GG.targetDriftMin + GG.targetDriftMax) / 2;
+          const amp = (GG.targetDriftMax - GG.targetDriftMin) / 2;
+          game.tgtY = mid + Math.sin(game.tgtDrift) * amp;
+        }
+        // physics flagged a capture (bridge-mouth rail hit) → begin the hold
+        if (world.captured && !game.tgtHeld) {
+          game.tgtHeld = true;
+          game.tgtHoldT = GG.targetHoldSecs;
+          game.tgtLit = false;
+          game.tgtTimer = 0;
+        }
+        if (game.tgtHeld) {
+          game.tgtHoldT -= DT;
+          // held AT the capture zone (teleport to the frozen zone position — the ball sits centred on the lit decal, which reads better)
+          world.px = GG.targetX;
+          world.py = game.tgtY;
+          world.vx = 0;
+          world.vy = 0;
+          if (game.tgtHoldT <= 0) {
+            game.tgtHeld = false;
+            world.captured = false;
+            // release onto the PLAYFIELD: leftward into the play area, angled downfield — never back down the shooter lane
+            world.px = LANE_X - 0.02; // set just onto the playfield side
+            world.vx = -1.6;
+            world.vy = 1.0;
+          }
+          return;
+        }
+        if (game.state !== "play") {
+          if (game.tgtLit) {
+            game.tgtLit = false;
+            laneTarget.armed = false;
+          }
+          return;
+        }
+        game.tgtTimer += DT;
+        if (game.tgtLit) {
+          if (game.tgtTimer >= GG.targetLitSecs) {
+            game.tgtLit = false;
+            laneTarget.armed = false;
+            game.tgtTimer = 0;
+          }
+        } else if (game.tgtTimer >= GG.targetGapSecs) {
+          game.tgtLit = true;
+          laneTarget.armed = true;
+          game.tgtTimer = 0;
+        }
+      }
+      function sensors() {
+        stepHotBumper();
+        stepLaneTarget();
+        const { px, py } = world;
+        /* drain */
+        if (world.active && py > LY.drainY && px < LANE_X) game.drain();
+        if (world.active && py > L + 0.2) game.drain(); // catch-all
+        /* A live ball that dribbles back and settles in the shooter lane is handed BACK to the player to re-plunge. */
+        if (
+          world.active &&
+          game.state === "play" &&
+          px > LANE_X &&
+          py > 0.9 && // ball rests at ~0.933 (aligned to flipper pivots)
+          world.vx * world.vx + world.vy * world.vy < 0.01
+        ) {
+          game.state = "lane";
+          game.armPlunger();
+        }
+        /* rollover lanes */
+        const inBand = py > LY.laneBand[0] && py < LY.laneBand[1];
+        for (let i = 0; i < 3; i++) {
+          const inLane = inBand && px > GUIDE_X[i] && px < GUIDE_X[i + 1];
+          if (inLane && !game.laneLatch[i]) {
+            game.laneLatch[i] = true;
+            if (world.time < game.skillUntil) {
+              // skill shot!
+              game.skillUntil = 0;
+              game.add(GG.skillScore);
+              flashMsg("SKILL SHOT", "#ffb347");
+              Sfx.skill();
+              spawnRing(px, py, 0xffb347);
+            }
+            if (!game.lanesLit[i]) {
+              game.lanesLit[i] = true;
+              laneLights[i].material.opacity = 1;
+              game.add(GG.laneScore);
+              Sfx.roll();
+              spawnRing(px, py, 0x19e3ff);
+              if (game.lanesLit.every(Boolean)) game.laneComplete();
+            } else Sfx.laneTick(); // lit lane still clicks
+          } else if (!inLane) game.laneLatch[i] = false;
+        }
+      }
+
+      /* --------------------------------- INPUT ---------------------------------- */
+      /* lane change (classic): each flipper PRESS rotates the lit rollover lanes — left flipper shifts them left, right shifts right — so lighting all three is positioning skill, not just luck. */
+      function rotateLanes(dir) {
+        const L = game.lanesLit;
+        if (dir < 0) L.push(L.shift());
+        else L.unshift(L.pop());
+        for (let i = 0; i < 3; i++)
+          laneLights[i].material.opacity = L[i] ? 1 : 0.15;
+      }
+      function press(side, down) {
+        if (paused) return;
+        Sfx.init();
+        const f = side === "L" ? flipperL : flipperR;
+        const next = down && world.flippersLive;
+        if (next !== f.pressed) {
+          next ? Sfx.flipUp() : Sfx.flipDown();
+          if (next) {
+            // solenoid fires → glow kick
+            if (side === "L") flipFlashL = Math.max(flipFlashL, 0.65);
+            else flipFlashR = Math.max(flipFlashR, 0.65);
+          }
+          if (next && game.state === "play") rotateLanes(side === "L" ? -1 : 1);
+        }
+        f.pressed = next;
+      }
+      addEventListener("keydown", (e) => {
+        if (e.repeat) return;
+        if (e.code === "Escape") {
+          if (ui.helpPanel.classList.contains("show")) {
+            ui.helpPanel.classList.remove("show");
+          } else paused ? resume() : pause("manual");
+          e.preventDefault();
+          return;
+        }
+        if (paused && (e.code === "Enter" || e.code === "Space")) {
+          resume(); // explicit resume from pause
+          e.preventDefault();
+          return;
+        }
+        if (paused) return;
+        Sfx.init();
+        switch (e.code) {
+          case "KeyF":
+            toggleFullscreen();
+            e.preventDefault();
+            return;
+          case "KeyS":
+            muteBtn.classList.toggle("muted", Sfx.toggleMute());
+            return;
+          case "KeyH":
+            ui.helpPanel.classList.toggle("show");
+            return;
+          case "ArrowLeft":
+          case "KeyZ":
+          case "KeyA":
+            press("L", true);
+            e.preventDefault();
+            break;
+          case "ArrowRight":
+          case "KeyM":
+          case "Slash":
+            press("R", true);
+            e.preventDefault();
+            break;
+          case "Space":
+          case "ArrowDown":
+            if (game.state === "lane") game.charging = true;
+            e.preventDefault();
+            break;
+          case "KeyN":
+          case "ArrowUp":
+            game.nudge();
+            e.preventDefault();
+            break;
+          case "Enter":
+            if (game.state === "attract" || game.state === "over") game.start();
+            break;
+        }
+      });
+      addEventListener("keyup", (e) => {
+        switch (e.code) {
+          case "ArrowLeft":
+          case "KeyZ":
+          case "KeyA":
+            press("L", false);
+            break;
+          case "ArrowRight":
+          case "KeyM":
+          case "Slash":
+            press("R", false);
+            break;
+          case "Space":
+          case "ArrowDown":
+            if (game.state === "lane" && game.charging) game.launch();
+            break;
+        }
+      });
+      /* screen zones: left/right flip, centre charges the plunger or starts.
+         Ownership model: each active pointerId owns exactly one role (L/R/plunger), registered on pointerdown; window-level pointerup/pointercancel releases only that pointer's role.
+         No setPointerCapture (throws on iOS WKWebView for touch pointers), no stuck inputs, and two-thumb play — hold left while flipping right — works exactly as it should. */
+      const pointerOwners = new Map(); // pointerId → 'L' | 'R' | 'P'
+      const swipeStart = new Map(); // pointerId → {y, t} for centre-zone swipes
+      function bindZone(el, role, down) {
+        el.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          if (paused) return;
+          pointerOwners.set(e.pointerId, role);
+          down();
+        });
+      }
+      bindZone($("tzL"), "L", () => press("L", true));
+      bindZone($("tzR"), "R", () => press("R", true));
+      $("tzP").addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        if (paused) return;
+        pointerOwners.set(e.pointerId, "P");
+        swipeStart.set(e.pointerId, { y: e.clientY, t: performance.now() });
+        Sfx.init();
+        if (game.state === "attract" || game.state === "over") game.start();
+        else if (game.state === "lane") game.charging = true;
+      });
+      bindZone(ui.pull, "P", () => {
+        Sfx.init();
+        if (game.state === "lane") game.charging = true;
+      });
+
+      function releasePointer(e) {
+        if (pullDrag && e.pointerId === pullDrag.id) pullDrag = null;
+        const role = pointerOwners.get(e.pointerId);
+        if (role === undefined) return;
+        pointerOwners.delete(e.pointerId);
+        if (paused) return;
+        if (role === "L") press("L", false);
+        else if (role === "R") press("R", false);
+        else {
+          /* centre zone: swipe UP during play = nudge (like shoving the cabinet) */
+          const sw = swipeStart.get(e.pointerId);
+          swipeStart.delete(e.pointerId);
+          if (
+            game.state === "play" &&
+            sw &&
+            sw.y - e.clientY > 45 &&
+            performance.now() - sw.t < 380
+          )
+            game.nudge();
+          else if (game.state === "lane" && game.charging) game.launch();
+        }
+      }
+
+      /* drag-to-pull: power = how far you drag the handle down (120 px = full).
+         Keyboard SPACE keeps the hold-to-charge model; the two coexist. */
+      let pullDrag = null;
+      ui.pull.addEventListener("pointerdown", (e) => {
+        if (paused) return;
+        pullDrag = { id: e.pointerId, y0: e.clientY };
+        if (game.state === "lane") game.dragCharge = 0;
+      });
+      addEventListener("pointermove", (e) => {
+        if (!pullDrag || e.pointerId !== pullDrag.id) return;
+        if (game.state !== "lane") return;
+        game.dragCharge = Math.min(
+          1,
+          Math.max(
+            0,
+            (e.clientY - pullDrag.y0) / 104,
+          ) /* 1:1 with knob travel */,
+        );
+      });
+      addEventListener("pointerup", releasePointer);
+      addEventListener("pointercancel", releasePointer);
+
+      /* ------------------------------ PAUSE SYSTEM ------------------------------
+        The rAF loop is fully cancelled while paused: zero physics, zero draws, audio context suspended — no fans spinning behind an unfocused tab.
+        Two pause flavours: 'auto' (blur / tab hidden) resumes by itself on refocus; 'manual' (ESC) stays paused until ESC or a tap. */
+      let paused = false,
+        pauseReason = null,
+        rafId = 0;
+
+      /* Pause-aware, frame-rate-independent delayed callbacks.
+         Each entry counts down in REAL seconds (dtF), ticked from the frame loop — so a pending serve freezes exactly when the loop freezes and resumes with it, and fires after the same wall-clock delay at 24 or 144 fps.
+         Replaces setTimeout for game-state transitions, which ignore pause and throttle in background tabs.
+         Fixed-capacity in spirit: at most a few ever pending. */
+      const timers = [];
+      function after(delay, fn) {
+        timers.push({ t: delay, fn });
+      }
+      function tickTimers(dt) {
+        for (let i = timers.length - 1; i >= 0; i--) {
+          if ((timers[i].t -= dt) <= 0) {
+            const fn = timers[i].fn;
+            timers.splice(i, 1);
+            fn();
+          }
+        }
+      }
+      function pause(reason) {
+        if (paused) return;
+        paused = true;
+        pauseReason = reason || "manual";
+        cancelAnimationFrame(rafId);
+        flipperL.pressed = flipperR.pressed = false;
+        game.charging = false;
+        if (Sfx.ctx) Sfx.ctx.suspend();
+        ui.msg.classList.add("hidden"); // don't let the start splash bleed through
+        ui.pause.classList.add("show");
+        syncPerfHit(); // stats become tappable while paused
+      }
+      function resume() {
+        if (!paused) return;
+        paused = false;
+        pauseReason = null;
+        ui.pause.classList.remove("show");
+        ui.msg.classList.remove("hidden");
+        if (Sfx.ctx) Sfx.ctx.resume().catch(() => {});
+        last = performance.now();
+        acc = 0;
+        syncPerfHit(); // restore click-transparency if resuming into play
+        rafId = requestAnimationFrame(frame);
+      }
+      // Auto-PAUSE when the tab loses focus or is hidden, but NEVER auto-resume — coming back to the tab must not fling a live ball while the player isn't looking.
+      // Resuming is always an explicit act: tap, click, ESC, or Enter.
+      addEventListener("blur", () => pause("auto"));
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) pause("auto");
+      });
+      /* tap/click anywhere resumes; capture phase so the same tap doesn't flip */
+      addEventListener(
+        "pointerdown",
+        (e) => {
+          if (paused) {
+            if (ui.perf.contains(e.target)) return; // stats stay inspectable
+            e.preventDefault();
+            e.stopPropagation();
+            resume();
+          }
+        },
+        { capture: true },
+      );
+
+      /* ---- audio unlock: one-shot capture listeners on the first gesture ---- */
+      function unlockAudioOnce() {
+        Sfx.unlock();
+        removeEventListener("pointerdown", unlockAudioOnce, true);
+        removeEventListener("keydown", unlockAudioOnce, true);
+      }
+      addEventListener("pointerdown", unlockAudioOnce, true);
+      addEventListener("keydown", unlockAudioOnce, true);
+
+      /* ---- HUD buttons: help flyout, fullscreen (capability-detected), mute ---- */
+      /* tap the perf readout to expand into a full renderer.info panel — draw calls, triangles, live geometry/texture/program counts.
+         The readout sits inside the right flipper's touch zone, so during live play it is made click-TRANSPARENT (pointer-events: none) and every tap falls through to the flipper — the game always wins.
+         It is tappable again in attract, game-over and pause; statsOpen persists, so open it between balls (or while paused) and read the live numbers during play. */
+      let statsOpen = false;
+      let perfHitOn = true; // mirrors the stylesheet default (auto)
+      function syncPerfHit() {
+        const on = paused || (game.state !== "play" && game.state !== "lane");
+        if (on === perfHitOn) return;
+        perfHitOn = on;
+        ui.perf.style.pointerEvents = on ? "auto" : "none";
+      }
+      const _fmtN = (n) =>
+        n >= 1e6
+          ? (n / 1e6).toFixed(1) + "M"
+          : n >= 1e3
+            ? (n / 1e3).toFixed(1) + "K"
+            : String(n);
+      /* Dirty-checked painter: compare the numbers first, build and write the string only when one of them actually changed — a steady scene costs six integer compares per tick and zero DOM traffic. */
+      let perfFps = -1,
+        perfDC = -1,
+        perfTRI = -1,
+        perfGEO = -1,
+        perfTEX = -1,
+        perfPRG = -1,
+        perfSteps = -1,
+        perfOpen = false;
+      function updatePerf(force) {
+        const fps = Math.round(fpsEMA);
+        let dirty = force || fps !== perfFps || statsOpen !== perfOpen;
+        let r, m, prg;
+        if (statsOpen) {
+          r = renderer.info.render;
+          m = renderer.info.memory;
+          prg = renderer.info.programs?.length || 0;
+          dirty =
+            dirty ||
+            r.calls !== perfDC ||
+            r.triangles !== perfTRI ||
+            m.geometries !== perfGEO ||
+            m.textures !== perfTEX ||
+            prg !== perfPRG ||
+            stepsThisFrame !== perfSteps;
+        }
+        if (!dirty) return;
+        perfFps = fps;
+        perfOpen = statsOpen;
+        let txt = fps + " fps";
+        if (statsOpen) {
+          perfDC = r.calls;
+          perfTRI = r.triangles;
+          perfGEO = m.geometries;
+          perfTEX = m.textures;
+          perfPRG = prg;
+          perfSteps = stepsThisFrame;
+          txt +=
+            "\nDC  " +
+            _fmtN(r.calls) +
+            "\nTRI " +
+            _fmtN(r.triangles) +
+            "\nGEO " +
+            m.geometries +
+            "\nTEX " +
+            m.textures +
+            "\nPRG " +
+            prg +
+            "\nsteps " +
+            stepsThisFrame +
+            "×480Hz";
+        }
+        ui.perf.textContent = txt;
+      }
+      ui.perf.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        statsOpen = !statsOpen;
+        updatePerf(true); // repaint now — works even while the loop is paused
+      });
+      const helpBtn = $("helpBtn"),
+        helpPanel = $("helpPanel"),
+        fsBtn = $("fsBtn"),
+        muteBtn = $("muteBtn");
+      helpBtn.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        helpPanel.classList.toggle("show");
+      });
+      document.addEventListener("pointerdown", (e) => {
+        if (
+          helpPanel.classList.contains("show") &&
+          !helpPanel.contains(e.target) &&
+          !helpBtn.contains(e.target)
+        )
+          helpPanel.classList.remove("show");
+      });
+      function toggleFullscreen() {
+        const d = document,
+          el = d.documentElement;
+        const isFs = d.fullscreenElement || d.webkitFullscreenElement;
+        try {
+          if (!isFs) {
+            const r = el.requestFullscreen || el.webkitRequestFullscreen;
+            if (r) {
+              const p = r.call(el);
+              if (p && p.catch) p.catch(() => {});
+            }
+          } else {
+            const x = d.exitFullscreen || d.webkitExitFullscreen;
+            if (x) x.call(d);
+          }
+        } catch (_) {
+          /* blocked (e.g. sandboxed iframe) — button is a no-op */
+        }
+      }
+      if (
+        document.documentElement.requestFullscreen ||
+        document.documentElement.webkitRequestFullscreen
+      ) {
+        fsBtn.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          toggleFullscreen();
+        });
+      } else fsBtn.style.display = "none";
+      if (Sfx.muted) muteBtn.classList.add("muted");
+      muteBtn.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        Sfx.unlock();
+        muteBtn.classList.toggle("muted", Sfx.toggleMute());
+      });
+
+      /* iOS: swallow only the SECOND tap of a rapid double-tap so Safari can't page-zoom during flipper mashing; pointer events have already fired. */
+      let lastTouchEnd = 0;
+      document.addEventListener(
+        "touchend",
+        (e) => {
+          const now = performance.now();
+          if (now - lastTouchEnd < 300) e.preventDefault();
+          lastTouchEnd = now;
+        },
+        { passive: false },
+      );
+      document.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      /* camera fit: guarantee the full playfield width is on screen at any aspect */
+      const LOOK = new THREE.Vector3(...CONFIG.camera.look);
+      const FIT_LOOK = LOOK.clone(); // raised by fitCamera to centre the table
+      /* Every extreme of the table (apron corners + plunger knob), tilted into world space.
+      fitCamera projects them and pushes the camera back until all fit inside the NDC margin — the table is fully visible at ANY aspect ratio or orientation, by construction. */
+      const FIT_PTS = (() => {
+        const AP = CONFIG.table.apron,
+          c = Math.cos(SLOPE),
+          sn = Math.sin(SLOPE);
+        const pts = [];
+        const add = (x, y, z) =>
+          pts.push(new THREE.Vector3(x, y * c - z * sn, y * sn + z * c));
+        for (const sx of [-1, 1])
+          for (const sz of [-1, 1])
+            add(sx * (W / 2 + AP), 0.02, sz * (L / 2 + AP));
+        add(TX(BALL_HOME.x), 0.035, TZ(LY.plungerY + 0.035)); // plunger knob
+        return pts;
+      })();
+      const _fitDir = new THREE.Vector3(),
+        _fitV = new THREE.Vector3();
+      const _fitP = new THREE.Vector3();
+      /* Fit by choosing the tightest FOV that contains the tilted table bbox on BOTH axes at a fixed camera distance. */
+      const _aim = new THREE.Vector3();
+      /* Two-pass fit.
+         The tilted table does NOT project symmetrically about the aim point — its vertical midpoint sits well below screen centre (measured: tan −0.15), so fitting to the taller half leaves a dead band above.
+         Pass 1 measures the vertical mid-offset and RAISES the aim to centre the table; pass 2 fits FOV to the now-symmetric extents on both axes.
+         Eliminates the wasted band at any aspect. */
+      function projectExtents() {
+        camera.updateMatrixWorld(true);
+        let minY = Infinity,
+          maxY = -Infinity,
+          tanH = 1e-4;
+        for (const p of FIT_PTS) {
+          _fitP.copy(p).applyMatrix4(camera.matrixWorldInverse);
+          const z = -_fitP.z;
+          if (z <= 1e-3) continue;
+          const y = _fitP.y / z;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          tanH = Math.max(tanH, Math.abs(_fitP.x) / z);
+        }
+        return { minY, maxY, tanH };
+      }
+
+      function fitCamera() {
+        camera.aspect = innerWidth / innerHeight;
+        const dist = BASE_POS.distanceTo(LOOK);
+        camera.position.copy(BASE_POS);
+        _aim.copy(LOOK);
+        camera.lookAt(_aim);
+        let e = projectExtents();
+        _aim.y += ((e.minY + e.maxY) / 2) * dist * 0.92; // centre the table
+        camera.lookAt(_aim);
+        e = projectExtents();
+        const halfV = Math.max(Math.abs(e.minY), Math.abs(e.maxY));
+        const need =
+          Math.max(halfV, e.tanH / camera.aspect) / CONFIG.camera.ndcMargin;
+        camera.fov = Math.min(
+          CONFIG.camera.fovMax,
+          Math.max(
+            CONFIG.camera.fovMin,
+            THREE.MathUtils.radToDeg(2 * Math.atan(need)),
+          ),
+        );
+        camera.updateProjectionMatrix();
+        CAM_BASE.copy(camera.position);
+        FIT_LOOK.copy(_aim);
+      }
+
+      fitCamera();
+      addEventListener("resize", () => {
+        fitCamera();
+        renderer.setSize(innerWidth, innerHeight);
+        starField.position.copy(camera.position);
+        if (paused) renderer.render(scene, camera); // loop parked: paint once
+      });
+
+      /* -------------------------------- MAIN LOOP -------------------------------
+      accumulator → N physics steps → interpolate render state by alpha */
+      const reduceMotion = matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      let last = performance.now(),
+        acc = 0,
+        shake = 0,
+        camTrack = 0,
+        lastNotch = -1;
+      let attractT = 0,
+        attractLast = -1,
+        flickT = 1.5,
+        flickN = 0;
+      let flipFlashL = 0,
+        flipFlashR = 0,
+        railEnergy = 0,
+        railWasActive = false;
+      let railHoldUntil = -1;
+      function railSurge(hold) {
+        railHoldUntil = world.time + hold;
+        railEnergy = 1;
+      }
+      const _railCol = new THREE.Color();
+      const SLING_BASE = new THREE.Color(0xb14cff),
+        SLING_HOT = new THREE.Color(0xffffff);
+
+      /* Slingshot bow-and-snap overlay.
+         PHYSICS STAYS RIGID — this is pure theatre layered on the existing sling flash: a slim curved tube per band that, on fire, dimples inward toward the KNOWN contact point (ev.x/ev.y, data I already have) and springs back with a damped overshoot.
+         Locality comes from an exp() falloff centred on the contact. ~20 verts rewritten per active band per frame, only while flashing; idle bands cost nothing. */
+      /* Bow overlay = a fixed thin quad-strip ribbon per band (SLING_SEG+1 spine points → 2 verts each).
+         The vertex buffer is preallocated and rewritten IN PLACE every active frame — zero allocation while animating, matching the ball-trail approach. */
+      const SLING_SEG = 12;
+      const _bowN = new THREE.Vector3(),
+        _bowCol = new THREE.Color();
+      const slingBows = slingViz.map((sv) => {
+        const geo = new THREE.BufferGeometry();
+        const vtx = new Float32Array((SLING_SEG + 1) * 2 * 3);
+        geo.setAttribute(
+          "position",
+          new THREE.BufferAttribute(vtx, 3).setUsage(THREE.DynamicDrawUsage),
+        );
+        const idx = [];
+        for (let k = 0; k < SLING_SEG; k++) {
+          const a = k * 2;
+          idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+        geo.setIndex(idx);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+          side: THREE.DoubleSide,
+        });
+        const m = new THREE.Mesh(geo, mat);
+        m.frustumCulled = false;
+        m.visible = false;
+        table.add(m);
+        return m;
+      });
+
+      function updateSlingBow(sv, mesh, dtF) {
+        sv.bowV += -sv.bow * 260 * dtF; // spring stiffness
+        sv.bowV *= Math.exp(-dtF * 9); // damping
+        sv.bow += sv.bowV * dtF;
+        const amp = sv.bow;
+        if (Math.abs(amp) < 0.0002 && sv.flash < 0.02) {
+          mesh.visible = false;
+          return;
+        }
+        mesh.visible = true;
+        const ax = TX(sv.ax),
+          az = TZ(sv.ay);
+        const bx = TX(sv.bx),
+          bz = TZ(sv.by);
+        _bowN.set(bx - ax, 0, bz - az);
+        const len = _bowN.length() || 1;
+        const ux = _bowN.x / len,
+          uz = _bowN.z / len; // along-band unit
+        const nx = -uz,
+          nz = ux; // inward normal in XZ
+        const cxL = TX(sv.cx),
+          czL = TZ(sv.cy);
+        let t0 = ((cxL - ax) * _bowN.x + (czL - az) * _bowN.z) / (len * len);
+        t0 = t0 < 0 ? 0 : t0 > 1 ? 1 : t0;
+        const HW = 0.004; // ribbon half-width
+        const pos = mesh.geometry.attributes.position.array;
+        for (let k = 0; k <= SLING_SEG; k++) {
+          const t = k / SLING_SEG;
+          // pin both ends to their anchors: endpoint push is FORCED to zero so the band can never lift off its pivots.
+          // sin(π t) is exactly 0 at t=0 and t=1, and the exp() gives the locality around the contact.
+          const fall = Math.exp(-((t - t0) * (t - t0)) / 0.05);
+          const push = amp * fall * Math.sin(Math.PI * t);
+          const sx = ax + ux * len * t + nx * push;
+          const sz = az + uz * len * t + nz * push;
+          const o = k * 6;
+          pos[o] = sx - nx * HW;
+          pos[o + 1] = 0.017;
+          pos[o + 2] = sz - nz * HW;
+          pos[o + 3] = sx + nx * HW;
+          pos[o + 4] = 0.017;
+          pos[o + 5] = sz + nz * HW;
+        }
+        mesh.geometry.attributes.position.needsUpdate = true;
+        mesh.material.opacity =
+          Math.min(1, sv.flash * 1.3 + Math.abs(amp) * 40) *
+          CONFIG.table.slingBandAlpha;
+        _bowCol.copy(SLING_HOT).lerp(SLING_BASE, 1 - sv.flash);
+        mesh.material.color.copy(_bowCol);
+      }
+
+      const _slingCol = new THREE.Color();
+      const FLIP_BASE = new THREE.Color(0xb14cff),
+        FLIP_HOT = new THREE.Color(0xfff2ff);
+      let lastBx = BALL_HOME.x,
+        lastBy = BALL_HOME.y;
+      let fpsEMA = 60,
+        perfClock = 0,
+        stepsThisFrame = 0;
+      const ballQ = new THREE.Quaternion(),
+        rollAxis = new THREE.Vector3();
+      let ballHeat = 0;
+      const _chevCol = new THREE.Color();
+      let chevPhase = 0,
+        chevDanger = 0;
+      const BALL_CALM = new THREE.Color(0xffb347),
+        BALL_HOT = new THREE.Color(0xfff0dd);
+
+      function frame(now) {
+        rafId = requestAnimationFrame(frame);
+        let dtF = (now - last) / 1000;
+        last = now;
+        if (dtF > MAX_FRAME) dtF = MAX_FRAME; // spiral-of-death guard
+        acc += dtF;
+
+        /* plunger charge (frame-rate independent via dtF) */
+        if (game.charging && game.state === "lane") {
+          game.charge =
+            game.dragCharge != null
+              ? game.dragCharge
+              : Math.min(1, game.charge + dtF / GG.chargeSecs);
+          const notch = Math.floor(game.charge * 9); // spring ratchet
+          if (notch !== lastNotch) {
+            lastNotch = notch;
+            Sfx.ratchet(notch);
+          }
+          {
+            /* knob rides the finger 1:1; the gradient above it is the compressing spring — every pixel moves WITH the drag */
+            const t = game.charge * 104; // knob travel in px
+            ui.knob.style.transform = `translateY(${t}px)`;
+            ui.chargebar.style.height = (t + 26).toFixed(0) + "px";
+          }
+          plunger.position.z = TZ(LY.plungerY) + game.charge * 0.028;
+        } else {
+          lastNotch = -1;
+          plunger.position.z +=
+            (TZ(LY.plungerY) - plunger.position.z) * Math.min(1, dtF * 20);
+        }
+
+        tickTimers(dtF); // pause-frozen, frame-rate-independent delays
+
+        stepsThisFrame = 0;
+        while (acc >= DT) {
+          laneTarget.y = game.tgtY; // sync capture-zone position before physics
+          world.step(DT);
+          sensors();
+          acc -= DT;
+          stepsThisFrame++;
+        }
+        const alpha = acc / DT;
+
+        /* consume physics events → score, sound (force-modulated), fx */
+        for (let i = 0; i < evCount; i++) {
+          const ev = EV_POOL[i];
+          if (ev.k === "bumper") {
+            // hot-bumper jackpot: hitting the currently-hot bumper
+            if (game.hotLit && ev.i === game.hotIdx) {
+              game.hotStreak++;
+              const jackpot =
+                GG.hotScore[ev.i] + GG.hotStreakBonus * (game.hotStreak - 1);
+              game.add(jackpot);
+              flashMsg(
+                game.hotStreak > 1 ? "HOT x" + game.hotStreak : "HOT BUMPER",
+                "#ffd24a",
+              );
+              Sfx.combo();
+              titlePulse = 1;
+              railEnergy = 1;
+              spawnRing(bumpers[ev.i].cx, bumpers[ev.i].cy, 0xffd24a);
+              setBumperHot(ev.i, false);
+              game.hotLit = false;
+              game.hotIdx = -1;
+              game.hotTimer = 0; // brief gap before next hot
+            }
+            const bh = ++game.bumperHits[ev.i];
+            const tier = Math.min(2, (bh / GG.tierHits) | 0);
+            game.add(TIER_SCORE[tier]);
+            Sfx.bumper(ev.v);
+            const bv = bumperViz[ev.i];
+            if (tier !== game.bumperTier[ev.i]) {
+              // tier up!
+              game.bumperTier[ev.i] = tier;
+              setBumperTier(ev.i, tier);
+              Sfx.roll();
+              spawnRing(ev.x, ev.y, 0xffffff);
+            }
+            bv.flash = 1;
+            // ring/pulse belong at the bumper centre; only the spark is local
+            spawnRing(bumpers[ev.i].cx, bumpers[ev.i].cy, bv.curTint);
+            spawnSpark(ev.x, ev.y, bv.tint, 0.05);
+            /* combo: all three bumpers inside a 2.5s window */
+            game.bumperTimes[ev.i] = world.time;
+            if (
+              game.bumperTimes.every((t) => world.time - t < GG.comboWindow)
+            ) {
+              game.bumperTimes = [-9, -9, -9];
+              game.add(GG.comboScore);
+              flashMsg("BUMPER COMBO", "#b14cff");
+              Sfx.combo();
+              titlePulse = 1;
+              for (const b2 of bumperViz) b2.flash = 1;
+            }
+          } else if (ev.k === "sling") {
+            game.add(GG.slingScore);
+            Sfx.sling(ev.v);
+            spawnRing(ev.x, ev.y, 0xb14cff);
+            spawnSpark(ev.x, ev.y, 0xe0a0ff, 0.05);
+            const sv = slingViz[ev.x < 0.2345 ? 0 : 1];
+            if (sv) {
+              sv.flash = 1;
+              sv.cx = ev.x;
+              sv.cy = ev.y; // exact contact point → local bow
+              sv.bow = 0;
+              sv.bowV = -0.9 * (0.4 + ev.v * 0.2); // inward snap, scaled by impact
+            }
+            railEnergy = Math.max(railEnergy, 0.8);
+          } else if (ev.k === "flip") {
+            Sfx.flipHit(ev.v);
+            if (ev.x < 0.2345) flipFlashL = Math.max(flipFlashL, 0.7);
+            else flipFlashR = Math.max(flipFlashR, 0.7);
+            spawnSpark(ev.x, ev.y, 0xffd0ff, 0.055 + ev.v * 0.01);
+            railEnergy = Math.max(railEnergy, 0.45);
+          } else if (ev.k === "wall") {
+            Sfx.wallTick(ev.v);
+            spawnSpark(ev.x, ev.y, 0x9fe8ff, 0.04 + ev.v * 0.008);
+            railEnergy = Math.max(railEnergy, 0.5);
+          } else if (ev.k === "target") {
+            game.add(GG.targetScore);
+            flashMsg("TARGET LOCK", "#ff3b6b");
+            Sfx.saved();
+            titlePulse = 1;
+            railEnergy = 1;
+            spawnRing(ev.x, ev.y, 0xff3b6b);
+          } else if (ev.k === "kickback") Sfx.launch(0.6);
+        }
+        evCount = 0;
+        if (game.scoreDirty) {
+          // one DOM write per frame, max
+          game.scoreDirty = false;
+          ui.score.textContent = game.score.toLocaleString();
+        }
+
+        /* ---- render state = f(interpolated physics state) ---- */
+        const bx = world.ppx + (world.px - world.ppx) * alpha;
+        const by = world.ppy + (world.py - world.ppy) * alpha;
+        ball.visible = ballShadow.visible =
+          world.active || game.state === "lane";
+        ball.position.set(TX(bx), BR + 0.001, TZ(by));
+        ballShadow.position.x = ball.position.x;
+        ballShadow.position.z = ball.position.z;
+
+        updateTrail(ball.position.x, ball.position.z, dtF);
+        Sfx.setRoll(
+          world.active && !paused ? Math.hypot(world.vx, world.vy) : 0,
+        );
+
+        /* visual roll from the interpolated per-frame translation (using the last physics step's delta here would under-rotate by steps-per-frame) */
+        const rdx = bx - lastBx,
+          rdy = by - lastBy;
+        lastBx = bx;
+        lastBy = by;
+        const dist = Math.hypot(rdx, rdy);
+        if (dist > 1e-6 && dist < BR * 6) {
+          // skip teleports (serve)
+          rollAxis.set(rdy, 0, -rdx).normalize();
+          ballQ.setFromAxisAngle(rollAxis, dist / BR);
+          ball.quaternion.premultiply(ballQ);
+        }
+
+        /* energy glow: the seams heat with ball speed — amber when calm, hot orange-white when rocketing.
+           One lerp + one scalar, no new objects, driven by the velocity I already have. */
+        {
+          const spd = world.active ? Math.hypot(world.vx, world.vy) : 0;
+          ballHeat +=
+            (Math.min(1, spd / (MAX_SPEED * 0.8)) - ballHeat) *
+            Math.min(1, dtF * 6); // smooth, frame-rate independent
+          const pulse = 0.85 + 0.15 * Math.sin(now * 0.012);
+          ball.material.emissiveIntensity = (0.7 + ballHeat * 2.6) * pulse;
+          ball.material.emissive
+            .copy(BALL_CALM)
+            .lerp(BALL_HOT, ballHeat * ballHeat);
+        }
+
+        flipFlashL *= Math.exp(-dtF * 7);
+        flipFlashR *= Math.exp(-dtF * 7);
+        const fBreathe = 0.1 + 0.08 * Math.sin(now * 0.0028);
+        flipLViz.material.emissiveIntensity = 0.5 + fBreathe + flipFlashL * 1.8;
+        flipRViz.material.emissiveIntensity = 0.5 + fBreathe + flipFlashR * 1.8;
+        flipLViz.material.emissive
+          .copy(FLIP_BASE)
+          .lerp(FLIP_HOT, Math.min(1, flipFlashL) * 0.6);
+        flipRViz.material.emissive
+          .copy(FLIP_BASE)
+          .lerp(FLIP_HOT, Math.min(1, flipFlashR) * 0.6);
+
+        const aL = flipperL.pa + (flipperL.a - flipperL.pa) * alpha;
+        const aR = flipperR.pa + (flipperR.a - flipperR.pa) * alpha;
+        flipLViz.rotation.y = -aL;
+        flipRViz.rotation.y = -aR;
+
+        /* bumper flashes, rail pulse, ring fx */
+        if (world.time < railHoldUntil) railEnergy = 1;
+        else railEnergy *= Math.exp(-dtF * 3.2);
+        let railPulse = railEnergy;
+        for (const bv of bumperViz) {
+          bv.flash *= Math.exp(-dtF * 9);
+          if (bv.hot) {
+            // gold hot pulse overrides the tint while lit
+            const p = 0.6 + 0.4 * Math.sin(now * 0.012);
+            bv.cap.material.color.copy(HOT_COL).multiplyScalar(0.8 + p);
+            bv.ring.material.color.copy(HOT_COL);
+            continue;
+          }
+          bv.cap.material.color
+            .set(bv.curTint)
+            .multiplyScalar(0.7 + bv.flash * 2.6);
+          bv.ring.material.color
+            .set(bv.curTint)
+            .multiplyScalar(0.8 + bv.flash * 2.0);
+          const s = 1 + bv.flash * 0.18;
+          bv.grp.scale.set(s, 1, s);
+          railPulse += bv.flash * 0.3;
+        }
+
+        /* whiten via the instance colours themselves — a multiplied material tint cannot raise a near-zero channel, so saturated cyan never whitens that way; rewriting the per-instance colour is the mechanism that works */
+        const rp = Math.min(1, railPulse);
+        const railActive = rp > 0.012;
+        if (railActive || railWasActive) {
+          for (let i = 0; i < railBase.length; i++) {
+            if (!railPulses[i]) continue; // slings flash on their own
+            _railCol.copy(railBase[i]).lerp(SLING_HOT, rp * 0.9);
+            railTubes.setColorAt(i, _railCol);
+            railCaps.setColorAt(i * 2, _railCol);
+            railCaps.setColorAt(i * 2 + 1, _railCol);
+          }
+          railTubes.instanceColor.needsUpdate = true;
+          railCaps.instanceColor.needsUpdate = true;
+        }
+
+        railWasActive = railActive;
+        /* sling bodies flash white-hot on fire, like the flippers */
+        let slingDirty = false;
+        for (const sv of slingViz) {
+          if (sv.flash < 0.01) {
+            if (sv.flash > 0) {
+              sv.flash = 0;
+              slingDirty = true;
+              _slingCol.copy(SLING_BASE);
+              railTubes.setColorAt(sv.i, _slingCol);
+              railCaps.setColorAt(sv.i * 2, _slingCol);
+              railCaps.setColorAt(sv.i * 2 + 1, _slingCol);
+            }
+            continue;
+          }
+          sv.flash *= Math.exp(-dtF * 7);
+          _slingCol.copy(SLING_BASE).lerp(SLING_HOT, sv.flash * 0.85);
+          railTubes.setColorAt(sv.i, _slingCol);
+          railCaps.setColorAt(sv.i * 2, _slingCol);
+          railCaps.setColorAt(sv.i * 2 + 1, _slingCol);
+          slingDirty = true;
+        }
+
+        for (let si = 0; si < slingViz.length; si++)
+          updateSlingBow(slingViz[si], slingBows[si], dtF);
+
+        if (slingDirty) {
+          railTubes.instanceColor.needsUpdate = true;
+          railCaps.instanceColor.needsUpdate = true;
+        }
+
+        for (const s of sparks) {
+          if (!s.m.visible) continue;
+          s.life += dtF * 4; // quick but visible
+          if (s.life >= 1) {
+            s.m.visible = false;
+            continue;
+          }
+          const e = 1 - s.life;
+          s.m.material.opacity = Math.min(1, e * 1.4);
+          const sc = s.scale * (0.6 + s.life * 1.4); // expands
+          s.m.scale.set(sc, sc, sc);
+          s.m.material.color.copy(s.tint).lerp(SLING_HOT, e * e); // white-hot core
+        }
+
+        for (const r of rings) {
+          if (!r.m.visible) continue;
+          r.life += dtF * 3.2;
+          if (r.life >= 1) {
+            r.m.visible = false;
+            continue;
+          }
+          const s = 0.012 + r.life * 0.085;
+          r.m.scale.set(s, s, s);
+          r.m.material.opacity = (1 - r.life) * 0.85;
+        }
+
+        /* attract light show: lane chase + round-robin bumper pulses */
+        if (game.state === "attract") {
+          attractT = (attractT + dtF) % 2048;
+          for (let i = 0; i < 3; i++)
+            laneLights[i].material.opacity =
+              Math.sin(attractT * 2.6 - i * 1.05) > 0.25 ? 1 : 0.12;
+          const ai = Math.floor(attractT / 0.85) % 3;
+          if (ai !== attractLast) {
+            attractLast = ai;
+            bumperViz[ai].flash = 1;
+          }
+        }
+
+        /* playfield announcement envelope: pop in, hold, fade */
+        msgLife += dtF;
+        const mA =
+          msgLife < 0.14
+            ? msgLife / 0.14
+            : msgLife < 1.05
+              ? 1
+              : Math.max(0, 1 - (msgLife - 1.05) / 0.45);
+        msgPlane.material.opacity = mA;
+        const mS = 1 + 0.12 * Math.max(0, 1 - msgLife / 0.22);
+        msgPlane.scale.set(mS, mS, 1);
+
+        /* title sign: attract flicker / dim play idle / event surge */
+        titlePulse *= Math.exp(-dtF * 3);
+        let tOp;
+        if (game.state === "attract") {
+          flickT -= dtF;
+          if (flickT <= 0) {
+            flickT = 2.5 + Math.random() * 4;
+            flickN = 0.32;
+          }
+          if (flickN > 0) {
+            flickN -= dtF;
+            tOp = Math.random() < 0.5 ? 0.12 : 0.85;
+          } else tOp = 0.55 + 0.22 * Math.sin(now * 0.0021);
+        } else tOp = 0.18;
+        /* one display line: the sign yields while a message is showing */
+        titlePlane.material.opacity =
+          Math.min(1, tOp + titlePulse * 0.9) * (1 - mA);
+
+        /* ball-save lamp: pulses while the save window is armed */
+        const saveArmed = game.state === "play" && world.time < game.saveUntil;
+        saveLamp.material.opacity = saveArmed
+          ? 0.6 + 0.35 * Math.sin(world.time * 7)
+          : 0.05;
+
+        /* capture-zone decal: follows the drifting position, super dim while dark, bright when lit, brightest while holding */
+        {
+          laneTargetViz.setY(game.tgtY);
+          const m = laneTargetViz.material;
+          if (game.tgtHeld) m.opacity = 0.7;
+          else if (game.tgtLit) m.opacity = 0.35 + 0.2 * Math.sin(now * 0.011);
+          else m.opacity = 0.08; // dim, drifting
+        }
+
+        /* animated drain chevrons — directional status pulse.
+           Phase is ACCUMULATED (+= rate·dt), never computed as clock×rate: the latter teleports whenever the rate changes between frames, which was the glitch when a ball hovered at the danger threshold.
+           Danger and the rate are both smoothed, so nothing can jump.
+           Rate is clamped low enough that a strobe is impossible. */
+        {
+          const live = game.state === "play" || game.state === "lane";
+          const dTarget =
+            live && world.active
+              ? Math.min(1, Math.max(0, (world.py - 0.78) / 0.16)) // starts higher
+              : 0;
+          // asymmetric smoothing: reddens QUICKLY (danger rising), cools slowly
+          const kSmooth = dTarget > chevDanger ? dtF * 9 : dtF * 3;
+          chevDanger += (dTarget - chevDanger) * Math.min(1, kSmooth);
+          const dir = saveArmed ? -1 : 1;
+          const rate = saveArmed ? 1.3 : 0.8 + chevDanger * 1.4; // ≤2.2 Hz, calm
+          chevPhase = (chevPhase + rate * dtF) % 2048; // accumulate — continuous across rate changes
+          const col = saveArmed
+            ? CHEV_SAFE
+            : _chevCol.copy(CHEV_WARN).lerp(CHEV_DANGER, chevDanger);
+          for (let i = 0; i < 3; i++) {
+            const wave =
+              0.5 + 0.5 * Math.sin((chevPhase - dir * i * 0.7) * Math.PI);
+            const base = 0.3 + 0.42 * wave;
+            chevrons[i].material.opacity = live
+              ? base * (0.7 + chevDanger * 0.3)
+              : 0.14;
+            chevrons[i].material.color.copy(col);
+          }
+        }
+
+        /* camera: centered by default; subtle ball tracking only during live play */
+        shake *= Math.exp(-dtF * 6);
+        const trackTarget =
+          game.state === "play" && !reduceMotion ? ball.position.x : 0;
+        camTrack += (trackTarget - camTrack) * Math.min(1, dtF * 4);
+        camera.position.x =
+          CAM_BASE.x +
+          camTrack * 0.16 +
+          (reduceMotion ? 0 : (Math.random() - 0.5) * 0.02 * shake);
+        camera.position.y =
+          CAM_BASE.y +
+          (reduceMotion ? 0 : (Math.random() - 0.5) * 0.015 * shake);
+        camera.lookAt(camTrack * 0.25, FIT_LOOK.y, FIT_LOOK.z);
+
+        /* perf HUD @ 4 Hz — values compared, DOM written only on change */
+        fpsEMA += (1 / Math.max(dtF, 1e-4) - fpsEMA) * 0.06;
+        perfClock += dtF;
+        if (perfClock > 0.25) {
+          perfClock = 0;
+          syncPerfHit();
+          updatePerf(false);
+        }
+
+        starField.position.copy(camera.position);
+        starUniforms.time.value = (now * 0.001) % 10000; // f32-safe wrap
+
+        renderer.render(scene, camera);
+      }
+
+      /* ------------------------------ SELF-TEST --------------------------------
+        Run with ?selftest in the URL (or window.__selfTest() from the console).
+         The artifact demonstrates its own invariants:
+         1. DETERMINISM — two runs from the same seed and state produce a bit-identical trajectory hash over five simulated seconds.
+         2. SANITY — the ball never leaves the table bounds and never goes NaN across the run.
+         3. BOUNDS — the event pool never grew past its fixed 32 records.
+         Costs nothing unless invoked; restores all state afterwards. */
+      function __selfTest() {
+        const save = {
+          px: world.px,
+          py: world.py,
+          vx: world.vx,
+          vy: world.vy,
+          ppx: world.ppx,
+          ppy: world.ppy,
+          active: world.active,
+          captured: world.captured,
+          time: world.time,
+          wallCool: world.wallCool,
+        };
+        const rngSave = rngState,
+          evSave = evCount;
+        const run = () => {
+          /* reset the FULL dynamic state, not just the ball: the PRNG, the clock, and every collider's solenoid-fatigue timestamp — the self-test itself caught that a partial reset breaks run identity. */
+          rngState = 0x1234abcd | 0;
+          world.time = 0;
+          world.wallCool = 0;
+          for (const c of CIRCS) if ("lastKick" in c) c.lastKick = -Infinity;
+          for (const g of SEGS) if ("lastKick" in g) g.lastKick = -Infinity;
+          world.place(0.25, 0.35);
+          world.active = true;
+          world.vx = 1.7;
+          world.vy = -2.1;
+          let h = 0x811c9dc5 | 0,
+            sane = true;
+          for (let i = 0; i < 2400; i++) {
+            world.step(DT);
+            if (world.py > L + 0.05)
+              // drained: without the game layer nothing re-serves, so relaunch deterministically from the seeded PRNG to keep the run going
+              (world.place(0.25, 0.3),
+                (world.vx = rand() * 2 - 1),
+                (world.vy = -2 - rand()));
+            h = Math.imul(h ^ ((world.px * 1e7) | 0), 2654435761);
+            h = Math.imul(h ^ ((world.py * 1e7) | 0), 2654435761);
+            if (
+              !isFinite(world.px) ||
+              !isFinite(world.py) ||
+              world.px < -0.05 ||
+              world.px > W + 0.05 ||
+              world.py < -0.05 ||
+              world.py > L + 0.3
+            )
+              sane = false;
+          }
+          return { h, sane };
+        };
+        const a = run(),
+          b = run();
+        const pool = EV_POOL.length === 32;
+        const det = a.h === b.h;
+        const pass = det && a.sane && b.sane && pool;
+        console.log(
+          "[SELFTEST] determinism:",
+          det ? "PASS" : "FAIL (" + a.h + " vs " + b.h + ")",
+          "| sanity:",
+          a.sane && b.sane ? "PASS" : "FAIL",
+          "| event-pool bound:",
+          pool ? "PASS" : "FAIL",
+          "| overall:",
+          pass ? "ALL PASS" : "FAILURE",
+        );
+        Object.assign(world, save);
+        rngState = rngSave;
+        evCount = evSave;
+        return pass;
+      }
+      window.__selfTest = __selfTest;
+      if (
+        typeof location !== "undefined" &&
+        /[?&]selftest/.test(location.search)
+      )
+        __selfTest();
+
+      rafId = requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>

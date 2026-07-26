@@ -51,6 +51,7 @@ This repo is a **curated mirror** of my [CodePen](https://codepen.io/the-red-red
 - [`jumping-jack`](jumping-jack/) — Canvas 2D retro platformer
 - [`lines`](lines/) — 3D take on the classic Color Lines (Lines 98) five-in-a-row, with a locked orthographic board, BFS pathfinding, fully synthesized Web Audio, and pooled instanced marbles
 - [`nibbles`](nibbles/) — Canvas 2D Nibbles.BAS tribute
+- [`neon-gutter`](neon-gutter/) — Synthwave 3D pinball with a hand-rolled 480 Hz swept-collision physics engine (no physics library) and fully synthesized Web Audio
 - [`ravenfall`](ravenfall/) — Moody first-person raven shooter with Verlet wire physics and mobile controls
 - [`snow-brawl`](snow-brawl/) — Festive snowball fight as a snowman against AI opponents, with full mobile support
 - [`velvetshuffle-cards`](velvetshuffle-cards/) — Collection of original tactile card games with procedural decks and dynamic layouts

@@ -266,13 +266,22 @@
     "related": ["lines"]
   },
   {
-  "folder": "lines",
-  "title": "Lines",
-  "category": "Game",
-  "description": "3D take on the classic Color Lines (Lines 98) — orthographic board, synthesized audio, BFS pathfinding.",
-  "created": "2026-06-05",
-  "thumb": "lines.jpg",
-  "preview": "lines.webm",
-  "related": ["abalone"]
-}
+    "folder": "lines",
+    "title": "Lines",
+    "category": "Game",
+    "description": "3D take on the classic Color Lines (Lines 98) — orthographic board, synthesized audio, BFS pathfinding.",
+    "created": "2026-06-05",
+    "thumb": "lines.jpg",
+    "preview": "lines.webm",
+    "related": ["abalone"]
+  },
+  {
+    "folder": "neon-gutter",
+    "title": "Neon Gutter",
+    "category": "Game",
+    "description": "3D pinball with a hand-rolled 480 Hz swept-collision physics engine and fully synthesized audio.",
+    "created": "2026-07-26",
+    "thumb": "neon-gutter.jpg",
+    "preview": "neon-gutter.webm"
+  }
 ]
