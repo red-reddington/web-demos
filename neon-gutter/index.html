@@ -1374,6 +1374,13 @@
         muted: loadMuted(),
         init() {
           if (this.ctx) return;
+          /* iOS routes WebAudio through the "ambient" audio session by default, which the hardware silent switch mutes, so the whole game goes quiet with no error to catch. 
+          "playback" is the category media apps use; it ignores the switch. Safari-only and still an Editor's Draft, hence the feature test. */
+          if ("audioSession" in navigator) {
+            try {
+              navigator.audioSession.type = "playback";
+            } catch (_) {}
+          }
           const AC = window.AudioContext || window.webkitAudioContext;
           if (!AC) return;
           try {

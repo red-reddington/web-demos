@@ -807,6 +807,13 @@
         // Lazily build the context + a master gain. Called on first gesture.
         function ensure() {
           if (ctx) return;
+          /* iOS routes WebAudio through the "ambient" audio session by default, which the hardware silent switch mutes, so the game goes quiet with no error to catch. 
+          "playback" is the category media apps use; it ignores the switch. Safari-only and still an Editor's Draft, hence the test. */
+          if ("audioSession" in navigator) {
+            try {
+              navigator.audioSession.type = "playback";
+            } catch {}
+          }
           const AC = window.AudioContext || window.webkitAudioContext;
           if (!AC) return;
           ctx = new AC();
