@@ -2603,12 +2603,19 @@
             Sfx.newHigh();
           }
           if (this.state === "play" && this.score >= this.nextExtra) {
-            this.nextExtra += GG.extraStep;
-            this.balls++;
-            this.totalBalls++;
+            let won = 0;
+            while (this.score >= this.nextExtra) {
+              this.nextExtra += GG.extraStep; // strictly increasing: terminates
+              this.balls++;
+              this.totalBalls++;
+              won++;
+            }
             ui.ball.textContent =
               this.totalBalls - this.balls + 1 + "/" + this.totalBalls;
-            flashMsg("EXTRA BALL", "#b14cff");
+            flashMsg(
+              won > 1 ? won + "\u00d7 EXTRA BALL" : "EXTRA BALL",
+              "#b14cff",
+            );
             Sfx.extra();
           }
         },
@@ -2846,6 +2853,9 @@
             game.hotIdx = -1;
             bumperViz.forEach((_, i) => setBumperHot(i, false));
           }
+          /* Play was interrupted — drain, game over, or back in the shooter lane.
+          Losing the ball breaks the streak exactly as letting a hot bumper cool does. */
+          game.hotStreak = 0;
           return;
         }
         game.hotTimer += DT;
