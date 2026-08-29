@@ -1184,15 +1184,15 @@
 
           // Character asset.
           BODY_COLOR: 0xd23b3b,
-          MODEL_URL: "assets/character/explorer.glb",
-          TEX_COLOR: "assets/character/texture.png",
-          TEX_NORMAL: "assets/character/normal.png",
-          TEX_AO: "assets/character/occlusion.png",
+          MODEL_URL: "./assets/character/explorer.glb",
+          TEX_COLOR: "./assets/character/texture.png",
+          TEX_NORMAL: "./assets/character/normal.png",
+          TEX_AO: "./assets/character/occlusion.png",
 
           // --- Attached gear (poles + skis) from a separate GLB, parented to skeleton bones ------
           // The four meshes are parented onto hand / toe bones so they ride the body for free: the existing scene-graph world-matrix pass moves them with the skeleton, no per-frame code.
           // (See Skier.setModel for the attach.) Leave GEAR_URL null / asset absent to disable.
-          GEAR_URL: "assets/gear/gear.glb",
+          GEAR_URL: "./assets/gear/gear.glb",
           // Gear size multiplier.
           GEAR_SCALE: 100.0,
 
