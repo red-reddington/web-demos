@@ -130,7 +130,8 @@
     "description": "Massive marching cubes + LOD system",
     "created": "2026-02-01",
     "thumb": "threejs-procedural-rocks-100k.jpg",
-    "preview": "threejs-procedural-rocks-100k.webm"
+    "preview": "threejs-procedural-rocks-100k.webm",
+    "related": ["versant"]
   },
   {
     "folder": "hiss-highness-snake",
@@ -253,7 +254,7 @@
     "created": "2026-05-27",
     "thumb": "eternal-ride.jpg",
     "preview": "eternal-ride.webm",
-    "related": ["deathchase-3d", "threejs-water-ripples", "threejs-complete-sky-system"]
+    "related": ["deathchase-3d", "threejs-water-ripples", "threejs-complete-sky-system", "versant"]
   },
   {
     "folder": "abalone",
@@ -283,5 +284,15 @@
     "created": "2026-07-26",
     "thumb": "neon-gutter.jpg",
     "preview": "neon-gutter.webm"
+  },
+  {
+    "folder": "versant",
+    "title": "Versant — Skiing in the Alpine",
+    "category": "Game",
+    "description": "Alpine skiing with hand-solved ski and pole kinematics over infinite procedural terrain, and fully synthesized audio.",
+    "created": "2026-08-28",
+    "thumb": "versant.jpg",
+    "preview": "versant.webm",
+    "related": ["eternal-ride", "threejs-procedural-rocks-100k"]
   }
 ]

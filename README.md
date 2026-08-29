@@ -50,11 +50,12 @@ This repo is a **curated mirror** of my [CodePen](https://codepen.io/the-red-red
 - [`hiss-highness-snake`](hiss-highness-snake/) — Procedural snake game with realistic terrain-following slithering and a fully procedural animated head
 - [`jumping-jack`](jumping-jack/) — Canvas 2D retro platformer
 - [`lines`](lines/) — 3D take on the classic Color Lines (Lines 98) five-in-a-row, with a locked orthographic board, BFS pathfinding, fully synthesized Web Audio, and pooled instanced marbles
-- [`nibbles`](nibbles/) — Canvas 2D Nibbles.BAS tribute
 - [`neon-gutter`](neon-gutter/) — Synthwave 3D pinball with a hand-rolled 480 Hz swept-collision physics engine (no physics library) and fully synthesized Web Audio
+- [`nibbles`](nibbles/) — Canvas 2D Nibbles.BAS tribute
 - [`ravenfall`](ravenfall/) — Moody first-person raven shooter with Verlet wire physics and mobile controls
 - [`snow-brawl`](snow-brawl/) — Festive snowball fight as a snowman against AI opponents, with full mobile support
 - [`velvetshuffle-cards`](velvetshuffle-cards/) — Collection of original tactile card games with procedural decks and dynamic layouts
+- [`versant`](versant/) — Alpine skiing with hand-solved ski and pole kinematics over infinite procedural terrain, analytic ellipse shadows, and fully synthesized Web Audio
 - [`wheres-walter`](wheres-walter/) — Massive instanced crowd system (up to 100k characters) with shader-based LOD and "Where's Walter?" gameplay
 
 ### AI / Browser ML
