@@ -293,6 +293,16 @@
     "created": "2026-08-28",
     "thumb": "versant.jpg",
     "preview": "versant.webm",
-    "related": ["eternal-ride", "threejs-procedural-rocks-100k"]
+    "related": ["eternal-ride", "threejs-procedural-rocks-100k", "alive"]
+  },
+  {
+    "folder": "alive",
+    "title": "ALIVE",
+    "category": "Game",
+    "description": "Night farm with 20 procedural species, synthesized audio and an endless streaming world",
+    "created": "2026-09-25",
+    "thumb": "alive.jpg",
+    "preview": "alive.webm",
+    "related": ["versant"]
   }
 ]
